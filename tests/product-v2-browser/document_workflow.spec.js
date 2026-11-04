@@ -48,3 +48,47 @@ test('문서 표시값은 HTML로 실행하지 않는다', async ({ page }) => {
   await expect(page.locator('[data-document-workflow]')).toContainText('<img src=x');
   expect(await page.evaluate(() => window.__docXss)).toBeUndefined();
 });
+
+test('파일 지문·n8n 작업요청·실행기록을 연결하고 파일 변경 시 승인을 해제한다', async ({ page }) => {
+  const { createHash } = require('node:crypto');
+  const fs = require('node:fs/promises');
+  await page.goto('/');
+  await page.evaluate(async () => {
+    const { registerDocument } = await import('/document-workflow.js');
+    const store = window.BSOProductV2.store;
+    store.state.documentWorkflow = registerDocument([], { title:'합성 파일 검토',purpose:'내부',owner:'A',template_ref:'v1',source_ref:'합성 원본',actor:'A' });
+    store.setRoute('outputs');
+  });
+  const article = page.locator('[data-doc-id]');
+  async function openConnection() { await article.locator('summary').filter({hasText:'파일·n8n 실행 연결'}).click(); }
+  async function attach(text) {
+    const form = article.locator('[data-doc-artifact]');
+    await form.locator('[name="actor"]').fill('기록자 A');
+    await form.locator('input[type="file"]').setInputFiles({ name:'synthetic.txt',mimeType:'text/plain',buffer:Buffer.from(text) });
+    await form.locator('button').click();
+  }
+  await openConnection(); await attach('synthetic document');
+  const hash = createHash('sha256').update('synthetic document').digest('hex');
+  await expect(article).toContainText(hash);
+  await openConnection();
+  const requestForm=article.locator('[data-doc-handoff]');
+  await requestForm.locator('[name="actor"]').fill('기록자 A');
+  await requestForm.locator('[name="prompt"]').fill('Synthetic instructions only');
+  const downloadPromise=page.waitForEvent('download');
+  await requestForm.locator('button').click();
+  const downloaded=await downloadPromise;
+  const job=JSON.parse(await fs.readFile(await downloaded.path(),'utf8'));
+  expect(job.status).toBe('READY');expect(job.bso_context.artifact_sha256).toBe(hash);
+  const receipt={...job.bso_context,schema_version:'lk-bso-receipt/1.0',job_id:job.job_id,input_sha256:job.input_sha256,output_sha256:hash,execution_id:'SYNTHETIC_BROWSER_EXECUTION',status:'NEEDS_GPT_REVIEW',human_approved:false};
+  await openConnection();
+  const resultForm=article.locator('[data-doc-receipt]');
+  await resultForm.locator('[name="actor"]').fill('기록자 A');
+  await resultForm.locator('input[type="file"]').setInputFiles({name:'receipt.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(receipt))});
+  await resultForm.locator('button').click();
+  await expect(article).toContainText('실행 기록 1건');
+  await expect(article).toContainText('작성 중 · PARTIAL');
+  await page.evaluate(() => {const row=window.BSOProductV2.store.state.documentWorkflow[0];if(Object.keys(row.checks).length)throw Error('AI receipt must not approve human checks');});
+  await openConnection(); await attach('changed synthetic document');
+  await expect(article).toContainText('v2');
+  await expect(article).toContainText('작성 중 · PARTIAL');
+});

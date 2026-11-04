@@ -28,8 +28,22 @@ export function validateDocumentWorkflow(rows) {
     for (const key of ['title', 'purpose', 'owner', 'template_ref', 'source_ref']) required(row[key], key);
     if (!Number.isSafeInteger(row.revision) || row.revision < 1 || !DOCUMENT_STATES.includes(row.status) || !Array.isArray(row.history) || !Array.isArray(row.followups) || !row.checks || typeof row.checks !== 'object' || Array.isArray(row.checks)) throw new Error('문서 상태 형식이 올바르지 않습니다.');
     if (!validEvidence(row.created, 1)) throw new Error('문서 등록 근거가 없습니다.');
+    if (row.artifact != null && (!text(row.artifact.name) || !/^[a-f0-9]{64}$/.test(row.artifact.sha256 || '') || !Number.isSafeInteger(row.artifact.size) || row.artifact.size < 0 || row.artifact.revision !== row.revision)) throw new Error('문서 파일 지문 형식이 올바르지 않습니다.');
+    for (const collection of ['handoffs', 'execution_receipts']) {
+      if (row[collection] !== undefined && (!Array.isArray(row[collection]) || row[collection].length > 200)) throw new Error('실행 기록 형식이 올바르지 않습니다.');
+      const jobIds = new Set();
+      for (const item of row[collection] || []) {
+        if (!item || !text(item.job_id) || jobIds.has(item.job_id) || !Number.isSafeInteger(item.revision) || item.revision < 1 || item.revision > row.revision || !/^[a-f0-9]{64}$/.test(item.input_sha256 || '') || !/^[a-f0-9]{64}$/.test(item.artifact_sha256 || '')) throw new Error('실행 기록의 작업·수정본 연결이 올바르지 않습니다.');
+        jobIds.add(item.job_id);
+        if (collection === 'execution_receipts' && (item.human_approved !== false || !['NEEDS_GPT_REVIEW', 'BLOCKED'].includes(item.status) || !/^[a-f0-9]{64}$/.test(item.output_sha256 || '') || !text(item.execution_id))) throw new Error('실행결과를 사람의 승인으로 가져올 수 없습니다.');
+      }
+    }
+    for (const receipt of row.execution_receipts || []) {
+      const request = row.handoffs?.find((item) => item.job_id === receipt.job_id);
+      if (receipt.document_id !== row.id || !request || request.revision !== receipt.revision || request.input_sha256 !== receipt.input_sha256 || request.artifact_sha256 !== receipt.artifact_sha256) throw new Error('실행결과가 등록된 문서 작업요청과 일치하지 않습니다.');
+    }
     for (const event of row.history) {
-      if (!event || !Number.isSafeInteger(event.revision) || event.revision < 1 || event.revision > row.revision || !validEvidence(event, event.revision) || !['REGISTER', 'CHECK', 'APPROVE', 'SUBMIT', 'REVISE', 'ADD_FOLLOWUP', 'COMPLETE_FOLLOWUP'].includes(event.action)) throw new Error('문서 변경 이력 형식이 올바르지 않습니다.');
+      if (!event || !Number.isSafeInteger(event.revision) || event.revision < 1 || event.revision > row.revision || !validEvidence(event, event.revision) || !['REGISTER', 'CHECK', 'APPROVE', 'SUBMIT', 'REVISE', 'ADD_FOLLOWUP', 'COMPLETE_FOLLOWUP', 'ATTACH_ARTIFACT', 'HANDOFF_REQUEST', 'IMPORT_EXECUTION'].includes(event.action)) throw new Error('문서 변경 이력 형식이 올바르지 않습니다.');
     }
     for (const [key, value] of Object.entries(row.checks)) if (!REVIEW_CHECKS.includes(key) || !validEvidence(value, row.revision)) throw new Error('현재 수정본의 검수 근거가 올바르지 않습니다.');
     if (row.status !== 'DRAFT' && !REVIEW_CHECKS.every((key) => validEvidence(row.checks[key], row.revision))) throw new Error('문서 검수 근거가 부족합니다.');
@@ -74,6 +88,7 @@ export function changeDocument(rows, id, action, input = {}) {
   } else if (action === 'REVISE') {
     row.revision += 1; record.revision = row.revision;
     row.status = 'DRAFT'; row.checks = {}; row.approval = null; row.submission = null;
+    row.artifact = null;
     // Open followups survive revision; historical decisions remain in history.
   } else if (action === 'ADD_FOLLOWUP') {
     const task = { id: `TASK_${row.followups.length + 1}`, title: required(input.title, '후속조치'), owner: required(input.owner, '담당자'), due_date: dateOnly(input.due_date), status: 'OPEN', revision: row.revision, created: record };
@@ -91,4 +106,52 @@ export function documentProgress(row, today = new Date().toISOString().slice(0, 
   validateDocumentWorkflow([row]);
   const pending = row.followups.filter((task) => task.status === 'OPEN');
   return { status: row.status === 'SUBMITTED' && !pending.length ? 'DONE' : 'PARTIAL', pending: pending.length, overdue: pending.filter((task) => task.due_date < today).length };
+}
+
+export async function sha256Bytes(bytes) {
+  const buffer = await globalThis.crypto.subtle.digest('SHA-256', bytes);
+  return [...new Uint8Array(buffer)].map((value) => value.toString(16).padStart(2, '0')).join('');
+}
+
+export function attachDocumentArtifact(rows, id, artifact, actor) {
+  validateDocumentWorkflow(rows);
+  const existing = rows.find((row) => row.id === id);
+  if (!existing) throw new Error('문서를 찾을 수 없습니다.');
+  if (!artifact || !text(artifact.name) || text(artifact.name).length > 255 || !/^[a-f0-9]{64}$/.test(artifact.sha256 || '') || !Number.isSafeInteger(artifact.size) || artifact.size < 0) throw new Error('파일 지문이 올바르지 않습니다.');
+  const changed = existing.artifact ? existing.artifact.sha256 !== artifact.sha256 : existing.status !== 'DRAFT';
+  const next = changed ? changeDocument(rows, id, 'REVISE', { actor, reference: `파일 변경 SHA-256 ${artifact.sha256}` }) : copy(rows);
+  const row = next.find((item) => item.id === id);
+  row.artifact = { name: text(artifact.name), size: artifact.size, sha256: artifact.sha256, revision: row.revision };
+  row.history.push({ action: 'ATTACH_ARTIFACT', ...evidence(actor, artifact.sha256, row.revision) });
+  validateDocumentWorkflow(next); return next;
+}
+
+export async function createDocumentHandoff(rows, id, prompt, dataClass, actor) {
+  validateDocumentWorkflow(rows);
+  if (!['PUBLIC', 'SYNTHETIC'].includes(dataClass)) throw new Error('공개·합성 입력만 작업요청으로 내보낼 수 있습니다.');
+  if (typeof prompt !== 'string' || !prompt.trim() || prompt.length > 24000) throw new Error('작업지시는 1~24000자로 입력하세요.');
+  const next = copy(rows), row = next.find((item) => item.id === id);
+  if (!row?.artifact) throw new Error('먼저 문서 파일의 지문을 등록하세요.');
+  if ((row.handoffs || []).length >= 200) throw new Error('작업요청 기록 한도에 도달했습니다.');
+  const inputHash = await sha256Bytes(new TextEncoder().encode(prompt));
+  const job = { schema_version: 'lk-bso-job/1.0', job_id: `BSO_${globalThis.crypto.randomUUID().replaceAll('-', '')}`, status: 'READY', attempts: 0, data_class: dataClass, prompt, input_sha256: inputHash, bso_context: { schema_version: 'lk-bso-job/1.0', document_id: row.id, revision: row.revision, artifact_sha256: row.artifact.sha256 } };
+  // Keep only metadata in the case backup; prompt and file bytes are not retained here.
+  row.handoffs = [...(row.handoffs || []), { job_id: job.job_id, revision: row.revision, artifact_sha256: row.artifact.sha256, input_sha256: inputHash }];
+  row.history.push({ action: 'HANDOFF_REQUEST', ...evidence(actor, job.job_id, row.revision) });
+  validateDocumentWorkflow(next); return { rows: next, job };
+}
+
+export function importDocumentExecution(rows, id, source, actor) {
+  validateDocumentWorkflow(rows);
+  const receipt = source?.bso_receipt || source;
+  const next = copy(rows), row = next.find((item) => item.id === id);
+  if (!row?.artifact || receipt?.schema_version !== 'lk-bso-receipt/1.0' || receipt.document_id !== id || receipt.revision !== row.revision || receipt.artifact_sha256 !== row.artifact.sha256 || receipt.human_approved !== false) throw new Error('현재 문서·파일·수정본과 실행 기록이 일치하지 않습니다.');
+  const request = row.handoffs?.find((item) => item.job_id === receipt.job_id);
+  if (!request || request.input_sha256 !== receipt.input_sha256 || request.artifact_sha256 !== receipt.artifact_sha256 || request.revision !== receipt.revision) throw new Error('등록한 작업요청과 실행 기록이 일치하지 않습니다.');
+  if (row.execution_receipts?.some((item) => item.job_id === receipt.job_id)) throw new Error('이미 기록한 실행결과입니다.');
+  const record = { schema_version: receipt.schema_version, job_id: receipt.job_id, document_id: id, revision: receipt.revision, artifact_sha256: receipt.artifact_sha256, input_sha256: receipt.input_sha256, output_sha256: receipt.output_sha256, execution_id: receipt.execution_id, status: receipt.status, human_approved: false, evidence_source: 'USER_IMPORTED_NOT_AUTHENTICATED' };
+  row.execution_receipts = [...(row.execution_receipts || []), record];
+  row.history.push({ action: 'IMPORT_EXECUTION', ...evidence(actor, receipt.execution_id, row.revision) });
+  // AI execution never fills human review checks or changes the approval/submission state.
+  validateDocumentWorkflow(next); return next;
 }
