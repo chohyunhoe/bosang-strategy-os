@@ -21,7 +21,7 @@ module.exports = defineConfig({
     { name: 'webkit-390', use: { browserName: 'webkit', viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true } },
   ],
   webServer: {
-    command: 'npm run release:build && node scripts/serve_static.js dist/release-candidate 4173',
+    command: 'node scripts/build_release_candidate.js && node scripts/serve_static.js dist/release-candidate 4173',
     url: 'http://127.0.0.1:4173',
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
