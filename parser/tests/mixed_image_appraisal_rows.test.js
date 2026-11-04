@@ -36,3 +36,23 @@ const calculationAndRegister=parseAppraisalPages([
 ],{fileName:'synthetic-unit-price-calculation.pdf'});
 assert.equal(calculationAndRegister.lands.length,1);
 assert.deepEqual(calculationAndRegister.land_appraisal_results.map(row=>row.amount),[108000000], 'calculated/applied unit-price pair must not become a compensation total');
+
+const adjacentSources=[
+  {page_no:1,text:'토지가격 산출근거\n201 | 익명시 잘못 홍시 표 본 동 0015-0002 답 답 120 120 가 80,000 1.1 1.0 1.0 1.0 1.0 2.0 1.0 180,010 180,000'},
+  {page_no:2,text:'토지평가조서\n201 AEA 림 통 0015-0002 답 답 120.000 * 1/2 180,000 10,800,000'},
+];
+const restored=parseAppraisalPages(adjacentSources,{fileName:'synthetic-adjacent-address.pdf'});
+assert.equal(restored.lands.length,1);
+assert.equal(restored.lands[0].parcel_address,'표본동 15-2');
+assert.equal(restored.land_appraisal_results[0].amount,10800000);
+assert.equal(restored.land_appraisal_results[0].ownership_share_text,'1/2');
+assert.ok(restored.lands[0].source_refs.some(ref=>ref.page_no===1&&ref.raw_text_excerpt.includes('표 본 동')),'keep the independently observed address source');
+const wrongLot=parseAppraisalPages([adjacentSources[0],{page_no:2,text:adjacentSources[1].text.replace('0015-0002','0015-0003')}],{});
+assert.equal(wrongLot.lands.length,0,'same serial with a different lot cannot supply an address');
+
+const {parseCalculationRowText}=require('../src/extractors/land_price_calculation_extractor');
+const interleaved=parseCalculationRowText('301 D 200,000 1.10000 1.00 1.00 가로조건에서 우세하고 접근조건은 유사하며 환경조건은 열세이고 획지조건을 비교하여 판단함 2.53 1.00 556,600 556,000');
+assert.equal(interleaved.individual_factor_total,null);
+assert.equal(interleaved.other_factor,null);
+assert.equal(interleaved.calculated_unit_price,556600);
+assert.equal(interleaved.unit_price,556000);

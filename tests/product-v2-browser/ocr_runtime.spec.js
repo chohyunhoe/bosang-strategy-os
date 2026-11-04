@@ -143,3 +143,39 @@ test('표 셀 OCR 분할을 복원하고 첫 OCR의 유일한 법정동을 버�
   });
   expect(result.modes).toEqual(['11','6']);expect(result.calls).toBe(2);expect(result.text).toContain('표본동');expect(result.text).toContain('12-3');expect(result.confirmed).toBe(false);
 });
+
+test('조서 금액 복구는 같은 연번·지번·면적의 OCR 수치와 명시 지분을 대조하고 주소를 보존한다',async({page})=>{
+  await page.goto('/');
+  const result=await page.evaluate(async()=>{
+    const {recoverStatementMoney,statementRowCrops}=await import('/ocr-source.js');
+    const original='토지평가조서\n201 AEA 15-2 답 답 120.000 * 12 180000 1800000\n표본동';
+    const candidate='경기도\n201 익명시 15-2 답 답 120.000 * 1/2 180,000 10,800,000\n표본동';
+    const crop={serial:'201',lot:'0015-0002'};
+    const word=(str,x,y,width=40,height=16)=>({str,x,y,width,height});
+    const crops=statementRowCrops([word('201',40,500),word('15-2',200,500),word('180,000',600,500,80),word('10,800,000',800,500,110)],1200,1600);
+    return{original,recovered:recoverStatementMoney(original,candidate,crop),mismatch:recoverStatementMoney(original,candidate.replace('10,800,000','10,700,000'),crop),wrongLot:recoverStatementMoney(original,candidate.replace('15-2','15-3'),crop),wrongMountain:recoverStatementMoney(original,candidate.replace('15-2','산15-2'),crop),preserved:recoverStatementMoney(candidate,candidate.replace('180,000','200,000').replace('10,800,000','12,000,000'),crop),candidate,wrongArea:recoverStatementMoney(original,candidate.replace('120.000','121.000'),crop),noShare:recoverStatementMoney(original,candidate.replace('* 1/2',''),crop),crops};
+  });
+  expect(result.recovered).toContain('201 AEA 15-2 답 답 120.000 * 1/2 180,000 10,800,000');
+  expect(result.recovered).toContain('표본동');
+  for(const key of ['mismatch','wrongLot','wrongMountain','wrongArea','noShare'])expect(result[key]).toBe(result.original);
+  expect(result.preserved).toBe(result.candidate);
+  expect(result.crops).toHaveLength(1);expect(result.crops[0].y).toBeLessThan(500);expect(result.crops[0].serial).toBe('201');
+});
+
+test('표지 법인명은 확대 OCR의 완전한 기재를 우선하며 누락 수치는 0으로 표시하지 않는다',async({page})=>{
+  await page.goto('/');
+  const result=await page.evaluate(async()=>{
+    let calls=0;
+    window.Tesseract={OEM:{LSTM_ONLY:1},createWorker:async()=>({setParameters:async()=>{},recognize:async()=>{calls++;return calls===1?{data:{text:'(주)감정평가법인 가ABC',blocks:[{paragraphs:[{lines:[{text:'(주)감정평가법인 가ABC',bbox:{x0:100,y0:200,x1:500,y1:230},words:[]}]}]}]}}:{data:{text:'(주)감정평가법인 합성',blocks:[]}};},terminate:async()=>{}})};
+    const pdf={numPages:1,getPage:async()=>({getViewport:({scale})=>({width:600*scale,height:800*scale}),render:()=>({promise:Promise.resolve()})})};
+    const {ocrPdfDocument}=await import('/ocr-source.js');const pages=await ocrPdfDocument(pdf);
+    const parsed=BosangParser.parseAppraisalPages(pages,{appraisalId:'APP_001',fileName:'synthetic-cover.pdf'});
+    BSOProductV2.store.ingestDocument({fileMeta:{name:'synthetic-cover.pdf'},pageModel:pages,parsed});
+    BSOProductV2.store.state.appraisalResults=[{appraisal_id:'APP_001',land_id:'LAND_001',area:120,unit_price:180000,amount:10800000,official_price:null,time_correction:0,individual_factor_total:null,other_factor:null}];
+    BSOProductV2.store.setRoute('valuation');
+    return{company:parsed.appraisals[0].appraisal_company,calls};
+  });
+  expect(result.company).toBe('합성감정평가법인');expect(result.calls).toBe(2);
+  const cells=await page.locator('table').first().locator('tbody tr').first().locator('td').allTextContents();
+  expect(cells).toContain('—');expect(cells).toContain('0');
+});

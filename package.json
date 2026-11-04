@@ -1,6 +1,6 @@
 {
   "name": "bosang-strategy-os",
-  "version": "1.0.0-rc.2",
+  "version": "1.0.0-rc.3",
   "private": true,
   "description": "보상전략 OS parser, product runtime, and review tooling.",
   "dependencies": {
