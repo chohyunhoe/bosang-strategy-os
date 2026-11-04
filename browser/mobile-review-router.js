@@ -175,7 +175,7 @@
   }
 
   function route(event) {
-    if (!isMobile()) return;
+    if (!isMobile() || document.body.classList.contains('bso3-legacy')) return;
     const target = event && event.target && event.target.closest ? event.target.closest('button,[role="button"],a') : null;
     if (!target || target.closest(`#${OVERLAY_ID}`)) return;
     if (!/전체\s*검수(?:\s*\d+건)?\s*시작/.test(clean(target.textContent))) return;

@@ -1,6 +1,7 @@
 'use strict';
 
 const { test, expect } = require('@playwright/test');
+const { enterLegacyFullScreen } = require('./legacy_navigation');
 
 test('전체 검수 시작 shows stage progress and leaves a completion result', async ({ page }) => {
   const errors = [];
@@ -18,6 +19,7 @@ test('전체 검수 시작 shows stage progress and leaves a completion result',
   });
 
   await page.goto('/', { waitUntil: 'networkidle' });
+  await enterLegacyFullScreen(page);
   await expect.poll(async () => page.evaluate(() => Boolean(window.__bsoReviewProgress))).toBe(true);
   await expect.poll(async () => page.evaluate(() => window.__bsoReviewProgress && window.__bsoReviewProgress.contractVersion)).toBe('review-progress/0.1');
 
