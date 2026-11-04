@@ -74,3 +74,6 @@ live_case_bundle.json
 # Release v1 machine-local runtimes and local virtual environment
 .bso-runtime.json
 .venv-v1/
+
+# Live n8n exports may contain internal credential references.
+n8n-private/

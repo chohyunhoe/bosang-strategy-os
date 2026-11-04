@@ -139,7 +139,7 @@ export class SessionCaseRegistry {
         return {
           id: entry.id,
           active: entry.id === this.activeId,
-          label: text(caseInfo.case_name || caseInfo.project_name) || state.sourceDocuments?.[0]?.file_name || '새 사건',
+          label: text(caseInfo.case_name || caseInfo.project_name) || state.sourceDocuments?.[0]?.file_name || state.documentWorkflow?.[0]?.title || '새 사건',
           documents: Array.isArray(state.sourceDocuments) ? state.sourceDocuments.length : 0,
           lands: Array.isArray(state.lands) ? state.lands.length : 0,
           review_pending: Array.isArray(state.reviewQueue) ? state.reviewQueue.filter((item) => item.status !== 'CONFIRMED').length : 0,
@@ -159,7 +159,7 @@ export class SessionCaseRegistry {
   hasMeaningfulData() {
     if (this.activeId) this.saveActive();
     return [...this.entries.values()].some(({ snapshot = {} }) =>
-      ['sourceDocuments','appraisals','lands','standardLands','transactionCases','appraisalResults'].some((key)=>Array.isArray(snapshot[key])&&snapshot[key].length)
+      ['sourceDocuments','appraisals','lands','standardLands','transactionCases','appraisalResults','documentWorkflow'].some((key)=>Array.isArray(snapshot[key])&&snapshot[key].length)
       || (snapshot.reviewDecisions&&Object.keys(snapshot.reviewDecisions).length)
       || Boolean(snapshot.mapContext));
   }
@@ -212,3 +212,4 @@ export class SessionCaseRegistry {
 }
 
 export { BACKUP_SCHEMA };
+
