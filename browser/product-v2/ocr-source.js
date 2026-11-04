@@ -156,6 +156,9 @@ export function recoverStatementMoney(original, candidate, crop) {
     if(explicit&&Number(explicit[1])*denominator!==numerator*Number(explicit[2]))return line;
     const existing=readRow(line);
     if(!existing||existing.area!==area||existing.denominator!==null)return line;
+    // An explicit integer multiplier can be a valid whole share or quantity.
+    // Preserve its independently consistent prices rather than invent a fraction.
+    if(Number.isSafeInteger(existing.numerator)&&existing.numerator>0&&Math.abs(existing.area*existing.numerator*existing.prices[0]-existing.prices[1])<=1)return line;
     const areaEnd=existing.areaToken.index+existing.areaToken[0].length;
     return line.slice(0,areaEnd)+' * '+numerator+'/'+denominator+' '+prices.map(value=>value.toLocaleString('en-US')).join(' ');
   }).join('\n');
