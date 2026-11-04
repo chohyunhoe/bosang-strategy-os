@@ -7,7 +7,7 @@ const path = require('node:path');
 const root = path.resolve(__dirname, '..');
 const out = path.join(root, 'dist', 'product-v2-candidate');
 const required = [
-  'index.html','styles.css','map-preview.css','app.js','case-store.js','case-registry.js','case-registry-ui.js','session-diagnostics.js','review-workbench.js','execution-model.js','appraisal-coverage.js','record-inspector.js','pnu-resolver-ui.js','issue-engine.js','map-preview.js','vworld-api-map.js','map-local-adapter.js','map-bridge-ui.js','work-ops-adapter.js','work-ops-ui.js','pre-field-kit.js','output-adapter.js','public-data-adapter.js','pdf-source.js','ocr-source.js','parser-bundle.js',
+  'index.html','styles.css','map-preview.css','app.js','case-store.js','document-workflow.js','document-workflow-ui.js','case-registry.js','case-registry-ui.js','session-diagnostics.js','review-workbench.js','execution-model.js','appraisal-coverage.js','record-inspector.js','pnu-resolver-ui.js','issue-engine.js','map-preview.js','vworld-api-map.js','map-local-adapter.js','map-bridge-ui.js','work-ops-adapter.js','work-ops-ui.js','pre-field-kit.js','output-adapter.js','public-data-adapter.js','pdf-source.js','ocr-source.js','parser-bundle.js',
   'vendor/pdf.min.mjs','vendor/pdf.worker.min.mjs','vendor/tesseract/tesseract.min.js','vendor/tesseract/worker.min.js',
   'vendor/tesseract/tessdata/kor.traineddata.gz','vendor/tesseract/tessdata/eng.traineddata.gz','product-v2-manifest.json',
 ];
@@ -165,3 +165,4 @@ assert.match(store, /issueCandidates/);
 assert.doesNotMatch(store, /querySelector|closest\(|scrollIntoView/);
 
 console.log('product_v2_candidate.test.js passed');
+
