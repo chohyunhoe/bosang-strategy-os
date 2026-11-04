@@ -17,7 +17,7 @@ function evidence(actor, reference, revision) {
   return { actor: required(actor, '기록자'), reference: required(reference, '근거'), revision, recorded_at: new Date().toISOString() };
 }
 function validEvidence(value, revision) {
-  return value && text(value.actor) && text(value.reference) && value.revision === revision && Number.isFinite(Date.parse(value.recorded_at));
+  return value && text(value.actor) && text(value.actor).length <= 1000 && text(value.reference) && text(value.reference).length <= 1000 && value.revision === revision && Number.isFinite(Date.parse(value.recorded_at));
 }
 export function validateDocumentWorkflow(rows) {
   if (!Array.isArray(rows) || rows.length > 200) throw new Error('문서 목록 형식이 올바르지 않습니다.');
@@ -28,13 +28,16 @@ export function validateDocumentWorkflow(rows) {
     for (const key of ['title', 'purpose', 'owner', 'template_ref', 'source_ref']) required(row[key], key);
     if (!Number.isSafeInteger(row.revision) || row.revision < 1 || !DOCUMENT_STATES.includes(row.status) || !Array.isArray(row.history) || !Array.isArray(row.followups) || !row.checks || typeof row.checks !== 'object' || Array.isArray(row.checks)) throw new Error('문서 상태 형식이 올바르지 않습니다.');
     if (!validEvidence(row.created, 1)) throw new Error('문서 등록 근거가 없습니다.');
+    for (const event of row.history) {
+      if (!event || !Number.isSafeInteger(event.revision) || event.revision < 1 || event.revision > row.revision || !validEvidence(event, event.revision) || !['REGISTER', 'CHECK', 'APPROVE', 'SUBMIT', 'REVISE', 'ADD_FOLLOWUP', 'COMPLETE_FOLLOWUP'].includes(event.action)) throw new Error('문서 변경 이력 형식이 올바르지 않습니다.');
+    }
     for (const [key, value] of Object.entries(row.checks)) if (!REVIEW_CHECKS.includes(key) || !validEvidence(value, row.revision)) throw new Error('현재 수정본의 검수 근거가 올바르지 않습니다.');
     if (row.status !== 'DRAFT' && !REVIEW_CHECKS.every((key) => validEvidence(row.checks[key], row.revision))) throw new Error('문서 검수 근거가 부족합니다.');
     if (['APPROVED', 'SUBMITTED'].includes(row.status) && !validEvidence(row.approval, row.revision)) throw new Error('현재 수정본의 승인 근거가 없습니다.');
     if (row.status === 'SUBMITTED' && !validEvidence(row.submission, row.revision)) throw new Error('제출 근거가 없습니다.');
     const taskIds = new Set();
     for (const task of row.followups) {
-      if (!text(task.id) || taskIds.has(task.id) || !['OPEN', 'DONE'].includes(task.status)) throw new Error('후속조치 형식이 올바르지 않습니다.');
+      if (!task || !text(task.id) || taskIds.has(task.id) || !['OPEN', 'DONE'].includes(task.status) || !Number.isSafeInteger(task.revision) || task.revision < 1 || task.revision > row.revision || !validEvidence(task.created, task.revision)) throw new Error('후속조치 형식이 올바르지 않습니다.');
       taskIds.add(task.id); required(task.title, '후속조치'); required(task.owner, '담당자'); dateOnly(task.due_date);
       if (task.status === 'DONE' && !validEvidence(task.completion, task.revision)) throw new Error('후속조치 완료 근거가 없습니다.');
     }

@@ -46,6 +46,8 @@ const { pathToFileURL } = require('node:url');
   assert.throws(() => changeDocument(rows, id, 'APPROVE', proof));
   assert.throws(() => validateDocumentWorkflow([{ ...rows[0], status: 'SUBMITTED' }]));
   assert.throws(() => validateDocumentWorkflow([rows[0], rows[0]]));
+  assert.throws(() => validateDocumentWorkflow([{ ...rows[0], history: [null] }]));
+  assert.throws(() => validateDocumentWorkflow([{ ...rows[0], followups: [null] }]));
   const staleChecks = Object.fromEntries(REVIEW_CHECKS.map((key) => [key, { ...proof, revision: 1, recorded_at: new Date().toISOString() }]));
   assert.throws(() => validateDocumentWorkflow([{ ...rows[0], checks: staleChecks, status: 'REVIEWED' }]));
   const store = new CaseStore();

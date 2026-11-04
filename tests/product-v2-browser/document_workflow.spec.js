@@ -3,7 +3,7 @@ const { test, expect } = require('@playwright/test');
 
 test('문서 진행관리: 근거 입력, 수정 시 검수 해제, 사건별 분리', async ({ page }) => {
   await page.goto('/');
-  await page.locator('[data-route="outputs"]').first().click();
+  await page.locator('[data-route="outputs"]:visible').first().click();
   let panel = page.locator('[data-document-workflow]');
   await expect(panel).toContainText('문서 진행관리');
   await panel.locator('summary').filter({ hasText: '문서 등록' }).click();
@@ -30,9 +30,9 @@ test('문서 진행관리: 근거 입력, 수정 시 검수 해제, 사건별 �
   await expect(article).toContainText('v2');
   await expect(article).toContainText('작성 중 · PARTIAL');
   await expect(article.locator('select option[value="APPROVE"]')).toHaveCount(0);
-  await page.locator('[data-route="home"]').first().click();
+  await page.locator('[data-case-registry-top]').click();
   await page.locator('[data-case-new]').click();
-  await page.locator('[data-route="outputs"]').first().click();
+  await page.locator('[data-route="outputs"]:visible').first().click();
   await expect(page.locator('[data-doc-id]')).toHaveCount(0);
 });
 
