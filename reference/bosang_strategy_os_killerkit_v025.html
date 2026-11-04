@@ -1,0 +1,1028 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>보상전략 OS v0.2.5 킬러키트</title>
+  <style>
+    :root {
+      --bg:#08111f; --panel:#0f172a; --card:#172033; --card2:#202c43;
+      --line:#334155; --text:#f8fafc; --muted:#94a3b8;
+      --blue:#60a5fa; --green:#34d399; --yellow:#fbbf24;
+      --red:#f87171; --purple:#a78bfa; --cyan:#22d3ee;
+    }
+    * { box-sizing:border-box; }
+    body {
+      margin:0; background:var(--bg); color:var(--text);
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans KR",sans-serif;
+      line-height:1.48;
+    }
+    header {
+      padding:18px 22px; border-bottom:1px solid var(--line);
+      background:linear-gradient(135deg,#08111f,#1e293b);
+      position:sticky; top:0; z-index:20;
+    }
+    header h1 { margin:0; font-size:21px; font-weight:850; letter-spacing:-.6px; }
+    header p { margin:5px 0 0; color:var(--muted); font-size:13px; }
+    .layout { display:grid; grid-template-columns:285px 1fr; min-height:calc(100vh - 74px); }
+    nav {
+      border-right:1px solid var(--line); padding:14px; background:#060d19;
+      position:sticky; top:74px; height:calc(100vh - 74px); overflow:auto;
+    }
+    nav .group-label {
+      color:#64748b; font-size:11px; font-weight:800;
+      padding:8px 6px 5px; text-transform:uppercase; letter-spacing:.04em;
+    }
+    nav button {
+      width:100%; display:block; text-align:left; margin-bottom:6px; padding:9px 10px;
+      color:var(--text); background:transparent; border:1px solid transparent;
+      border-radius:10px; cursor:pointer; font-size:13px;
+    }
+    nav button:hover, nav button.active {
+      border-color:rgba(96,165,250,.75); background:rgba(96,165,250,.13);
+    }
+    main { padding:20px; overflow:auto; }
+    section { display:none; }
+    section.active { display:block; }
+    h2 { margin:0 0 12px; font-size:20px; letter-spacing:-.4px; }
+    h3 { margin:0 0 9px; font-size:15.5px; }
+    .grid { display:grid; grid-template-columns:repeat(12,1fr); gap:12px; }
+    .card {
+      background:var(--card); border:1px solid var(--line); border-radius:15px;
+      padding:14px; box-shadow:0 10px 22px rgba(0,0,0,.16);
+    }
+    .click-card { cursor:pointer; transition:transform .12s ease,border-color .12s ease,background .12s ease; }
+    .click-card:hover { transform:translateY(-2px); border-color:var(--blue); background:#1c2940; }
+    .span-12{grid-column:span 12}.span-8{grid-column:span 8}.span-6{grid-column:span 6}.span-4{grid-column:span 4}.span-3{grid-column:span 3}
+    .muted{color:var(--muted);font-size:12.5px}.value{font-size:23px;font-weight:850;margin-top:3px}
+    .kv{display:grid;grid-template-columns:135px 1fr;border-top:1px solid rgba(255,255,255,.08);padding:7px 0;gap:8px}
+    .kv:first-of-type{border-top:none}.kv .k{color:var(--muted);font-size:12px}.kv .v{font-size:13px;word-break:keep-all}
+    .badge{display:inline-flex;align-items:center;border-radius:999px;padding:3.5px 8px;font-size:11.5px;font-weight:750;border:1px solid transparent;margin:2px 4px 2px 0;white-space:nowrap}
+    .green{color:#bbf7d0;background:rgba(52,211,153,.12);border-color:rgba(52,211,153,.3)}
+    .blue{color:#bfdbfe;background:rgba(96,165,250,.12);border-color:rgba(96,165,250,.3)}
+    .yellow{color:#fde68a;background:rgba(251,191,36,.12);border-color:rgba(251,191,36,.3)}
+    .red{color:#fecaca;background:rgba(248,113,113,.12);border-color:rgba(248,113,113,.3)}
+    .purple{color:#ddd6fe;background:rgba(167,139,250,.12);border-color:rgba(167,139,250,.3)}
+    .cyan{color:#cffafe;background:rgba(34,211,238,.12);border-color:rgba(34,211,238,.3)}
+    .notice{background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.25);color:#fde68a;border-radius:14px;padding:12px;margin-bottom:14px;font-size:13px}
+    .empty{color:var(--muted);padding:20px;border:1px dashed var(--line);border-radius:14px;text-align:center}
+    .toolbar{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:14px;align-items:center}
+    .btn{background:#2563eb;color:white;border:none;padding:9px 12px;border-radius:10px;cursor:pointer;font-weight:750;font-size:13px}
+    .btn.secondary{background:#334155}.btn.warning{background:#92400e}
+    textarea{width:100%;min-height:420px;background:#020617;color:#e2e8f0;border:1px solid var(--line);border-radius:14px;padding:14px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:12px;line-height:1.5}
+    input[type=file]{color:var(--muted);font-size:13px}
+    .table-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:14px;background:var(--card);margin-top:8px}
+    table{width:100%;border-collapse:collapse;min-width:760px;font-size:12.3px}
+    th,td{border-bottom:1px solid rgba(255,255,255,.08);padding:8px 9px;text-align:left;vertical-align:top}
+    th{color:#cbd5e1;background:rgba(255,255,255,.04);font-weight:800;white-space:nowrap}
+    tr:last-child td{border-bottom:none}
+    .compact table{min-width:620px;font-size:11.6px}.compact th,.compact td{padding:6px 7px}
+    .factor-compact table{min-width:0}.factor-compact th,.factor-compact td{padding:5px 6px;white-space:nowrap}
+    .spec-table table{min-width:0;font-size:11px}.spec-table th,.spec-table td{padding:5px 6px}
+    .spec-compare table{min-width:760px;font-size:11.3px}
+    .spec-compare th,.spec-compare td{padding:6px 7px}
+    .spec-note{font-size:12px;color:#fde68a;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.18);border-radius:10px;padding:8px;margin:8px 0}
+    .spec-source{font-size:11px;color:#94a3b8;margin-top:6px}
+    .two-spec{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0}
+    .spec-card{border:1px solid rgba(148,163,184,.25);border-radius:12px;background:rgba(15,23,42,.45);padding:9px;min-width:0}
+    .spec-card h4{margin:0 0 7px;font-size:12px;color:#e2e8f0}
+    .spec-line{display:grid;grid-template-columns:58px 1fr;gap:5px;border-top:1px solid rgba(255,255,255,.06);padding:4px 0;font-size:11.2px;line-height:1.35}
+    .spec-line:first-of-type{border-top:0}
+    .spec-label{color:#94a3b8}
+    .spec-value{color:#f8fafc;overflow-wrap:anywhere}
+    .symbol-strip{display:flex;gap:5px;flex-wrap:wrap;margin:6px 0 8px}
+    .symbol-chip{font-size:11px;border:1px solid rgba(96,165,250,.35);background:rgba(37,99,235,.13);color:#bfdbfe;border-radius:999px;padding:2px 7px}
+    .factor-tight table{font-size:11.1px;min-width:0}
+    .factor-tight th,.factor-tight td{padding:5px 6px}
+    .key-strip{display:flex;gap:5px;flex-wrap:wrap;margin:6px 0 8px}
+    .key-chip{font-size:10.8px;border-radius:999px;padding:2.5px 7px;border:1px solid rgba(148,163,184,.25);background:rgba(148,163,184,.1);color:#e2e8f0}
+    .key-chip.warn{border-color:rgba(251,191,36,.35);background:rgba(251,191,36,.12);color:#fde68a}
+    .key-chip.hot{border-color:rgba(248,113,113,.38);background:rgba(248,113,113,.12);color:#fecaca}
+    .key-chip.ok{border-color:rgba(52,211,153,.32);background:rgba(52,211,153,.1);color:#bbf7d0}
+    .spec-card.compact5 .spec-line{padding:3px 0;font-size:10.9px}
+    .spec-card.compact5 h4{font-size:11.5px;margin-bottom:5px}
+    .one-screen-card{padding:11px}
+    .hero{background:linear-gradient(135deg,rgba(37,99,235,.24),rgba(14,165,233,.09));border:1px solid rgba(96,165,250,.25);border-radius:18px;padding:16px;margin-bottom:14px}
+    .hero h2{margin:0 0 6px;font-size:20px}
+    .hero p{margin:0;color:#cbd5e1}
+    .start-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px}
+    .start-card{background:rgba(15,23,42,.55);border:1px solid rgba(148,163,184,.24);border-radius:14px;padding:12px}
+    .start-card b{display:block;margin-bottom:5px}
+    .start-card small{color:#94a3b8;line-height:1.45}
+    .big-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+    .big-actions button,.upload-btn{border:0;border-radius:12px;padding:11px 13px;font-weight:900;background:#2563eb;color:white}
+    .upload-btn.secondary{background:#334155}
+    .upload-panel{border:1px dashed rgba(96,165,250,.35);border-radius:14px;padding:12px;background:rgba(37,99,235,.08);margin:10px 0}
+    .upload-panel input[type=file]{display:block;margin:8px 0;color:#cbd5e1;max-width:100%}
+    .upload-status{font-size:12px;color:#cbd5e1;margin-top:8px}
+    .flow-steps{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}
+    .flow-step{font-size:11px;border-radius:999px;padding:3px 8px;border:1px solid rgba(148,163,184,.3);background:rgba(148,163,184,.1)}
+    @media(max-width:720px){.start-grid{grid-template-columns:1fr}.hero h2{font-size:18px}}
+
+    .one-screen-card .mini-title{margin:6px 0 3px}
+    @media(max-width:520px){.key-chip{font-size:10px;padding:2px 6px}.spec-card.compact5 .spec-line{font-size:10px}.one-screen-card{padding:9px}}
+
+    @media(max-width:520px){.two-spec{grid-template-columns:1fr 1fr;gap:6px}.spec-line{grid-template-columns:46px 1fr;font-size:10.4px}.spec-card{padding:7px}.spec-card h4{font-size:11px}.factor-tight table{font-size:10.4px}}
+
+
+    .numcell{font-variant-numeric:tabular-nums;white-space:nowrap}
+    .factor-below{color:#f87171!important;font-weight:850}.factor-above{color:#60a5fa!important;font-weight:850}.factor-equal{color:#f8fafc;font-weight:750}.factor-empty{color:#64748b}
+    .diff-high{color:#fecaca;font-weight:850}.diff-mid{color:#fde68a;font-weight:850}
+    .sentence-box{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:10px;margin-top:8px}
+    .sentence-label{color:var(--muted);font-size:12px;margin-bottom:5px;font-weight:800}
+    .section-note{color:var(--muted);margin:-5px 0 12px;font-size:13px}
+    .mini-title{font-size:12px;color:#cbd5e1;font-weight:850;margin:8px 0 4px}
+    @media (max-width:980px){
+      .layout{grid-template-columns:1fr} nav{position:static;height:auto;border-right:none;border-bottom:1px solid var(--line);display:grid;grid-template-columns:repeat(2,1fr);gap:6px}
+      nav .group-label{grid-column:span 2;padding-top:10px} nav button{margin-bottom:0}
+      .span-8,.span-6,.span-4,.span-3{grid-column:span 12} main{padding:14px}.kv{grid-template-columns:115px 1fr}
+      .factor-compact table{font-size:11px}
+    }
+  </style>
+</head>
+
+<body>
+<header>
+  <h1>보상전략 OS v0.2.5 킬러키트</h1>
+  <p>홈 UX 개선 · 평가서 업로드 관리 · 패키징 배포 준비</p>
+</header>
+
+<div class="layout">
+  <nav>
+    <div class="group-label">Control</div>
+    <button class="active" data-section="overview">1. 홈·시작하기</button>
+    <button data-section="uploadHub">2. 업로드·JSON 관리</button>
+    <button data-section="sourceStatus">3. 평가서 원본·추출상태</button>
+
+    <div class="group-label">Land Base</div>
+    <button data-section="lands">4. 편입토지 기본정보</button>
+    <button data-section="publicData">5. 공적 토지특성 보강</button>
+
+    <div class="group-label">Appraisal Review</div>
+    <button data-section="stdCases">6. 표준지·거래사례 통합</button>
+    <button data-section="landCompare">7. 필지별 평가결과 비교</button>
+    <button data-section="subjectFactors">8. 편입토지↔표준지 개별요인</button>
+    <button data-section="caseFactors">9. 표준지↔거래사례 개별요인</button>
+    <button data-section="otherFactors">10. 그 밖의 요인 보정치</button>
+    <button data-section="obstacles">11. 지장물 비교</button>
+
+    <div class="group-label">Output</div>
+    <button data-section="issues">12. 쟁점 후보</button>
+    <button data-section="sentences">13. 의견서 보조문안</button>
+    <button data-section="risks">14. 리스크 경고</button>
+    <button data-section="json">15. JSON/API/OCR 관리</button>
+  </nav>
+
+  <main>
+    <div class="notice">
+      본 화면은 포트폴리오 및 실무 검토용 프로토타입입니다. 출력 결과는 법률판단, 감정평가 판단, 보상액 산정에 대한 확정 의견이 아니며 제출 전 전문가 검토가 필요합니다.
+    </div>
+
+    <section id="overview" class="active"><h2>1. 관제 대시보드</h2><div class="section-note">검토 우선순위를 바로 파악하고 관련 탭으로 이동하는 평가서 흐름형 관제 화면입니다.</div><div class="grid" id="overviewGrid"></div></section>
+    <section id="uploadHub"><h2>2. 업로드·JSON 관리</h2>
+      <div class="section-note">감정평가서 PDF는 파일 등록·추출상태 관리용입니다. 자동 분석 확정 기능이 아니며, OCR·텍스트 추출값은 수동검수 후 JSON에 반영합니다.</div>
+      <div class="grid" id="uploadHubGrid"></div>
+    </section>
+    <section id="sourceStatus"><h2>3. 평가서 원본·추출상태</h2><div class="grid" id="sourceStatusGrid"></div></section>
+    <section id="lands"><h2>3. 편입토지 기본정보</h2><div class="notice">편입토지는 소재지와 지번을 분리하지 않고 parcel_address 기준으로 표시합니다.</div><div class="grid" id="landsGrid"></div></section>
+    <section id="publicData"><h2>4. 공적 토지특성 보강</h2><div class="notice">공적 토지특성정보는 검토 보강자료이며, 감정평가 판단을 대체하지 않습니다. v0.2.4에서 API 연동 대상으로 둡니다.</div><div class="grid" id="publicDataGrid"></div></section>
+    <section id="stdCases"><h2>6. 표준지·거래사례 통합</h2><div class="section-note">평가법인별 기호가 달라도 지번이 동일하면 하나의 표준지·거래사례로 묶어 표시합니다.</div><div class="grid" id="stdCasesGrid"></div></section>
+    <section id="landCompare"><h2>7. 필지별 평가결과 비교</h2><div class="section-note">동일 필지에 대한 법인별 표준지, 개별요인 누계, 그 밖의 요인, 적용단가를 한 표에서 비교합니다.</div><div class="grid" id="landCompareGrid"></div></section>
+    <section id="subjectFactors"><h2>8. 편입토지↔표준지 개별요인</h2><div class="notice">편입토지는 공적 API 보강 스펙, 비교표준지는 평가서 기재 스펙 기준입니다. 핵심 차이 칩과 압축 스펙카드로 한 화면에서 개별요인과 함께 비교합니다.</div><div class="grid" id="subjectFactorsGrid"></div></section>
+    <section id="caseFactors"><h2>9. 표준지↔거래사례 개별요인</h2><div class="notice">표준지는 평가서 기재 스펙, 거래사례는 공적 API 보강 스펙 기준입니다. 지번쌍이 같으면 하나의 카드로 묶고 핵심 차이만 먼저 표시합니다.</div><div class="grid" id="caseFactorsGrid"></div></section>
+    <section id="otherFactors"><h2>10. 그 밖의 요인 보정치</h2><div class="notice">그 밖의 요인은 소수점 둘째자리로 표시합니다.</div><div class="grid" id="otherFactorsGrid"></div></section>
+    <section id="obstacles"><h2>11. 지장물 비교</h2><div class="grid" id="obstaclesGrid"></div></section>
+    <section id="issues"><h2>12. 쟁점 후보</h2><div class="grid" id="issuesGrid"></div></section>
+    <section id="sentences"><h2>13. 의견서 보조문안</h2><div class="notice">본 문장은 제출 전 전문가 검토가 필요한 초안 보조문안입니다.</div><div class="grid" id="sentencesGrid"></div></section>
+    <section id="risks"><h2>14. 리스크 경고</h2><div class="grid" id="risksGrid"></div></section>
+    <section id="json">
+      <h2>15. JSON/API/OCR 관리</h2>
+      <div class="toolbar">
+        <button class="btn secondary" onclick="renderFromTextarea()">JSON 적용</button>
+        <button class="btn secondary" onclick="copyJson()">JSON 복사</button>
+        <button class="btn secondary" onclick="showSection('uploadHub')">업로드 화면으로</button>
+        <button class="btn warning" onclick="clearData()">초기화</button>
+        <input type="file" id="jsonFileInput" accept=".json,application/json" />
+      </div>
+      <div class="notice">
+        JSON 업로드는 구조화된 사건 데이터 반영용입니다. 감정평가서 PDF는 업로드·추출상태 관리까지만 수행하며, 자동 분석 확정·감정평가 대체 기능은 포함하지 않습니다.
+      </div>
+      <textarea id="jsonTextarea" placeholder="merged_case.json 또는 sample_case JSON 내용을 붙여넣거나 JSON 파일을 업로드하세요."></textarea>
+    </section>
+  </main>
+</div>
+
+<script>
+let data = {};
+
+const safe = (v) => (v === null || v === undefined || v === "") ? "-" : String(v);
+const arr = (x) => Array.isArray(x) ? x : [];
+const money = (n) => {
+  if (n === null || n === undefined || n === "") return "-";
+  const value = Number(n);
+  if (Number.isNaN(value)) return String(n);
+  return value.toLocaleString("ko-KR") + "원";
+};
+const num = (n) => {
+  if (n === null || n === undefined || n === "") return "-";
+  const value = Number(n);
+  if (Number.isNaN(value)) return String(n);
+  return value.toLocaleString("ko-KR");
+};
+function fmtFactor(n) {
+  if (n === null || n === undefined || n === "") return "-";
+  const value = Number(n);
+  if (Number.isNaN(value)) return String(n);
+  return value.toFixed(2);
+}
+function fmtFactorTotal(n) {
+  if (n === null || n === undefined || n === "") return "-";
+  const value = Number(n);
+  if (Number.isNaN(value)) return String(n);
+  return value.toFixed(3);
+}
+function fmtOtherFactor(n) {
+  if (n === null || n === undefined || n === "") return "-";
+  const value = Number(n);
+  if (Number.isNaN(value)) return String(n);
+  return value.toFixed(2);
+}
+function factorColorClass(value) {
+  if (value === null || value === undefined || value === "" || value === "-") return "factor-empty";
+  const n = Number(value);
+  if (Number.isNaN(n)) return "factor-empty";
+  if (n < 1) return "factor-below";
+  if (n > 1) return "factor-above";
+  return "factor-equal";
+}
+function renderFactorValue(value, isTotal=false) {
+  if (value === null || value === undefined || value === "") return '<span class="factor-empty">-</span>';
+  const n = Number(value);
+  if (Number.isNaN(n)) return `<span class="factor-empty">${safe(value)}</span>`;
+  const text = isTotal ? fmtFactorTotal(n) : fmtFactor(n);
+  return `<span class="numcell ${factorColorClass(n)}">${text}</span>`;
+}
+function badgeClassByStatus(status) {
+  const s = String(status || "");
+  if (s.includes("CONFIRMED") || s.includes("PASS") || s.includes("TEXT_PARSED")) return "green";
+  if (s.includes("REVIEW") || s.includes("PENDING") || s.includes("READY") || s.includes("NEEDS")) return "yellow";
+  if (s.includes("HOLD") || s.includes("MISSING") || s.includes("OCR") || s.includes("FAILED")) return "red";
+  return "blue";
+}
+function badgeClassByRisk(level) {
+  const s = String(level || "");
+  if (s === "HIGH") return "red";
+  if (s === "MEDIUM") return "yellow";
+  if (s === "LOW") return "blue";
+  return "purple";
+}
+function badgeClassByGrade(grade) {
+  if (grade === "A") return "red";
+  if (grade === "B") return "yellow";
+  if (grade === "C") return "blue";
+  if (grade === "D") return "purple";
+  return "blue";
+}
+function badge(text, cls="blue") { return `<span class="badge ${cls}">${safe(text)}</span>`; }
+function kv(label, value) {
+  return `<div class="kv"><div class="k">${label}</div><div class="v">${safe(value)}</div></div>`;
+}
+function card(title, body, span="span-4", clickSection="") {
+  const clickClass = clickSection ? " click-card" : "";
+  const clickAttr = clickSection ? ` onclick="showSection('${clickSection}')"` : "";
+  return `<div class="card ${span}${clickClass}"${clickAttr}><h3>${title}</h3>${body}</div>`;
+}
+function empty(message) { return `<div class="empty span-12">${message}</div>`; }
+function table(headers, rows, extraClass="") {
+  return `<div class="table-wrap span-12 ${extraClass}"><table><thead><tr>${headers.map(h=>`<th>${h}</th>`).join("")}</tr></thead><tbody>${rows.map(row=>`<tr>${row.map(cell=>`<td>${cell}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
+}
+function miniTable(title, headers, rows) {
+  return `<div class="mini-title">${title}</div>` + table(headers, rows, "compact spec-table");
+}
+function getAppraisals() { return arr(data.appraisals); }
+function getStandardById(id) { return arr(data.standard_lands).find(s => s.standard_land_id === id) || {}; }
+function getCompCaseById(id) { return arr(data.comp_cases).find(c => c.comp_case_id === id) || {}; }
+function companyShortName(name) { return safe(name).replace("감정평가법인","").trim(); }
+function numericDiff(values) {
+  const nums = values.map(Number).filter(v => !Number.isNaN(v));
+  if (nums.length < 2) return "-";
+  return Math.max(...nums) - Math.min(...nums);
+}
+function diffCell(value, formatter="factor") {
+  if (value === "-" || value === null || value === undefined || value === "") return "-";
+  const n = Number(value);
+  if (Number.isNaN(n)) return safe(value);
+  let text = formatter === "total" ? n.toFixed(3) : formatter === "other" ? n.toFixed(2) : n.toFixed(2);
+  const cls = n >= .10 ? "diff-high" : n >= .03 ? "diff-mid" : "";
+  return `<span class="${cls}">${text}</span>`;
+}
+function specFromSubjectComparison(comp, result) {
+  let std = {};
+  if (comp.standard_land_id) std = getStandardById(comp.standard_land_id);
+  if (!std.parcel_address && comp.standard_parcel_address) {
+    std = arr(data.standard_lands).find(s => s.parcel_address === comp.standard_parcel_address && s.appraisal_id === comp.appraisal_id) || std;
+  }
+  return {
+    address: std.parcel_address || comp.standard_parcel_address || result.standard_land_symbol || "-",
+    land: [std.land_category, std.use_status].filter(Boolean).join("/") || "-",
+    zoning: std.zoning || "-",
+    roadShape: [std.road_condition, std.shape_terrain].filter(Boolean).join(" / ") || "-",
+    price: std.official_price ? money(std.official_price) : "-"
+  };
+}
+function getCaseSpecByComparison(base) {
+  let std = {};
+  let cc = {};
+  if (base.standard_land_id) std = getStandardById(base.standard_land_id);
+  if (base.comp_case_id) cc = getCompCaseById(base.comp_case_id);
+  if (!std.parcel_address && base.standard_parcel_address) {
+    std = arr(data.standard_lands).find(s => s.parcel_address === base.standard_parcel_address && s.appraisal_id === base.appraisal_id) || std;
+  }
+  if (!cc.parcel_address && base.comp_case_parcel_address) {
+    cc = arr(data.comp_cases).find(c => c.parcel_address === base.comp_case_parcel_address && c.appraisal_id === base.appraisal_id) || cc;
+  }
+  return { std, cc };
+}
+
+function normalizeSpecText(v) {
+  return String(v || "").replace(/\s+/g, "").replace(/[()（）]/g, "").trim();
+}
+function normalizeLandCategory(v) {
+  const s = normalizeSpecText(v);
+  if (s === "임") return "임야";
+  if (s === "대지") return "대";
+  return s;
+}
+function isEquivalentSpec(field, a, b) {
+  if (!a || !b) return false;
+  if (field === "지목") return normalizeLandCategory(a) === normalizeLandCategory(b);
+  return normalizeSpecText(a) === normalizeSpecText(b);
+}
+function relationBadge(field, a, b, contextText="") {
+  if (!a || !b) return badge("미기재/미조회", "yellow");
+  const ctx = String(contextText || "");
+  if ((ctx.includes("현황전") || ctx.includes("현황도로")) && String(b).includes("자연림")) {
+    return badge("현장확인", "yellow");
+  }
+  if (isEquivalentSpec(field, a, b)) return badge("같음", "green");
+  return badge("검토필요", "yellow");
+}
+function getPublicRowByAddress(address) {
+  return arr(data.public_land_characteristics).find(x => x.parcel_address === address) || {};
+}
+function mergePublicSpec(obj, address) {
+  const row = getPublicRowByAddress(address || obj.parcel_address);
+  return Object.assign({}, row, obj || {});
+}
+function publicSpecOf(obj, addressFallback="") {
+  const o = mergePublicSpec(obj || {}, addressFallback || (obj || {}).parcel_address || "");
+  const appraisalLand = [o.land_category || o.land_category_appraisal || "", o.appraisal_use_status || o.use_note || o.use_status || o.use_status_appraisal || ""].filter(Boolean).join(" / ");
+  const publicLand = [o.land_category_public || "", o.land_use_status_public || ""].filter(Boolean).join(" / ");
+  return {
+    parcel_address: o.parcel_address || addressFallback || "",
+    appraisal_land: appraisalLand || "-",
+    public_land: publicLand || "-",
+    land_category_public: o.land_category_public || "",
+    land_use_status_public: o.land_use_status_public || "",
+    zoning_public: o.zoning_public || o.zoning || o.zoning_appraisal || "",
+    road_frontage_public: o.road_frontage_public || o.road_condition || "",
+    terrain_height_public: o.terrain_height_public || "",
+    terrain_shape_public: o.terrain_shape_public || o.shape_terrain || "",
+    official_land_price_public: o.official_land_price_public,
+    official_price_appraisal: o.official_price,
+    area_public: o.area_public || o.area,
+    pnu: o.public_api_pnu || o.pnu || "",
+    fetch_status: o.public_api_fetch_status || o.api_fetch_status || "",
+    last_update: o.public_api_last_update_date || o.last_update_date || ""
+  };
+}
+function specValue(spec, field) {
+  if (field === "지번") return spec.parcel_address;
+  if (field === "평가서 지목/이용") return spec.appraisal_land;
+  if (field === "공적 지목/이용") return spec.public_land;
+  if (field === "용도지역") return spec.zoning_public;
+  if (field === "도로접면") return spec.road_frontage_public;
+  if (field === "지형고저") return spec.terrain_height_public;
+  if (field === "지형형상") return spec.terrain_shape_public;
+  if (field === "면적") return spec.area_public ? num(spec.area_public) + "㎡" : "-";
+  if (field === "공시지가") return spec.official_land_price_public ? money(spec.official_land_price_public) : (spec.official_price_appraisal ? money(spec.official_price_appraisal) : "-");
+  if (field === "PNU") return spec.pnu;
+  return "-";
+}
+function renderSpecCompareTable(leftTitle, leftObj, rightTitle, rightObj, contextText="") {
+  const left = publicSpecOf(leftObj, leftObj && leftObj.parcel_address);
+  const right = publicSpecOf(rightObj, rightObj && rightObj.parcel_address);
+  const fields = ["지번","평가서 지목/이용","공적 지목/이용","용도지역","도로접면","지형고저","지형형상","면적","공시지가","PNU"];
+  const rows = fields.map(f => {
+    const lv = specValue(left, f);
+    const rv = specValue(right, f);
+    let status = "-";
+    if (["공적 지목/이용","용도지역","도로접면","지형고저","지형형상"].includes(f)) {
+      status = relationBadge(f === "공적 지목/이용" ? "지목" : f, lv, rv, contextText);
+    }
+    return [f, safe(lv), safe(rv), status];
+  });
+  const sourceText = [
+    left.fetch_status ? `${leftTitle}: ${left.fetch_status}` : "",
+    right.fetch_status ? `${rightTitle}: ${right.fetch_status}` : "",
+    left.last_update || right.last_update ? `갱신일: ${left.last_update || right.last_update}` : ""
+  ].filter(Boolean).join(" · ");
+  return table(["항목", leftTitle, rightTitle, "표시"], rows, "compact spec-compare") +
+    (sourceText ? `<div class="spec-source">${safe(sourceText)}</div>` : "");
+}
+function findLandById(id) {
+  return arr(data.lands).find(l => l.land_id === id) || {};
+}
+function findStandardByAddressAndCompany(address, company) {
+  return arr(data.standard_lands).find(s => s.parcel_address === address && s.appraisal_company === company) ||
+         arr(data.standard_lands).find(s => s.parcel_address === address) || {};
+}
+function findCompByAddressAndCompany(address, company) {
+  return arr(data.comp_cases).find(c => c.parcel_address === address && c.appraisal_company === company) ||
+         arr(data.comp_cases).find(c => c.parcel_address === address) || {};
+}
+function fieldReviewNoteForLand(land) {
+  const use = String((land && (land.appraisal_use_status || land.use_note)) || "");
+  const addr = String((land && land.parcel_address) || "");
+  if (addr.includes("산3-1") && (use.includes("현황전") || use.includes("현황도로"))) {
+    return `<div class="spec-note">동일 PNU 기준 공적 API는 자연림으로 조회되지만, 평가서는 ${safe(use)}로 구분 평가되어 있습니다. 이는 오류 확정이 아니라 현장사진·도면·항공사진 대조가 필요한 항목입니다.</div>`;
+  }
+  return "";
+}
+
+function showSection(id) {
+  document.querySelectorAll("section").forEach(s => s.classList.remove("active"));
+  document.querySelectorAll("nav button").forEach(b => b.classList.remove("active"));
+  const section = document.getElementById(id);
+  if (section) section.classList.add("active");
+  const btn = document.querySelector(`nav button[data-section="${id}"]`);
+  if (btn) btn.classList.add("active");
+  window.scrollTo({ top:0, behavior:"smooth" });
+}
+document.querySelectorAll("nav button").forEach(btn => btn.addEventListener("click", () => showSection(btn.dataset.section)));
+
+
+function hasData() {
+  return Object.keys(data || {}).length > 0;
+}
+function onboardingHtml() {
+  return `<div class="hero">
+    <h2>보상전략 OS v0.2.5</h2>
+    <p>감정평가서 비교 · 공적자료 보강 · 쟁점 후보 정리용 실무 킬러키트</p>
+    <div class="start-grid">
+      <div class="start-card"><b>1. 평가서/JSON 넣기</b><small>PDF는 파일 등록·추출상태 관리, JSON은 즉시 화면 반영</small></div>
+      <div class="start-card"><b>2. 공적자료 보강</b><small>VWorld 토지특성정보를 별도 스크립트로 조회 후 병합</small></div>
+      <div class="start-card"><b>3. 쟁점·문안 검토</b><small>검토 후보와 의견서 보조문안을 리스크 통제하에 확인</small></div>
+    </div>
+    <div class="big-actions">
+      <button onclick="showSection('uploadHub')">업로드·JSON 관리로 이동</button>
+      <button onclick="showSection('json')">JSON 직접 붙여넣기</button>
+      <button onclick="showSection('sourceStatus')">추출상태 보기</button>
+    </div>
+  </div>`;
+}
+function getUploadRows() {
+  return arr(data.document_uploads);
+}
+function ensureBaseDataForUpload() {
+  if (!data || !Object.keys(data).length) data = {};
+  if (!Array.isArray(data.appraisals)) data.appraisals = [];
+  if (!Array.isArray(data.document_uploads)) data.document_uploads = [];
+  if (!data.meta) data.meta = {};
+  data.meta.upload_manager_version = "v0.2.5";
+  data.meta.upload_manager_last_updated = new Date().toISOString();
+}
+function guessCompanyFromFileName(name) {
+  const n = String(name || "");
+  if (n.includes("제일")) return "제일";
+  if (n.includes("가람")) return "가람";
+  if (n.includes("경일")) return "경일";
+  if (n.includes("미래새한")) return "미래새한";
+  if (n.includes("나라")) return "나라";
+  return "미지정";
+}
+function guessFileTypeFromFile(file) {
+  const n = String(file.name || "").toLowerCase();
+  if (n.endsWith(".pdf")) return "PDF_UPLOADED";
+  if (n.endsWith(".json")) return "JSON";
+  return "UPLOADED_FILE";
+}
+function registerUploadedPdfFiles(files) {
+  ensureBaseDataForUpload();
+  const list = Array.from(files || []);
+  if (!list.length) return;
+  list.forEach((file, idx) => {
+    const company = guessCompanyFromFileName(file.name);
+    const uploadId = "UPLOAD_" + Date.now() + "_" + idx;
+    const appId = "APP_UPLOAD_" + String(data.appraisals.length + 1).padStart(3, "0");
+    const upload = {
+      upload_id: uploadId,
+      file_name: file.name,
+      file_size: file.size,
+      file_type: guessFileTypeFromFile(file),
+      registered_at: new Date().toISOString(),
+      appraisal_company_guess: company,
+      extraction_status: "REGISTERED_ONLY",
+      review_status_code: "NEEDS_REVIEW",
+      note: "브라우저 단일 HTML에서는 원문 PDF 내용을 자동 확정 추출하지 않음. 텍스트/OCR 추출 후 수동검수 필요."
+    };
+    data.document_uploads.push(upload);
+    data.appraisals.push({
+      appraisal_id: appId,
+      appraisal_company: company,
+      file_name: file.name,
+      file_type: "PDF_UPLOADED",
+      extraction_method: "UPLOAD_REGISTERED",
+      parse_status: "NEEDS_EXTRACTION",
+      review_status_code: "NEEDS_REVIEW",
+      source_note: "v0.2.5 업로드 관리에서 등록됨. 텍스트/OCR 추출 및 수동검수 필요.",
+      upload_id: uploadId
+    });
+  });
+  renderAll();
+  showSection("uploadHub");
+}
+function renderUploadHub() {
+  const grid = document.getElementById("uploadHubGrid");
+  if (!grid) return;
+  const uploads = getUploadRows();
+  const appraisals = arr(data.appraisals);
+  const intro = onboardingHtml();
+  const uploadPanel = `<div class="upload-panel">
+    <b>감정평가서 PDF 등록</b>
+    <div class="muted">파일명·크기·추출상태를 appraisals 후보로 등록합니다. PDF 자동 분석 확정은 하지 않습니다.</div>
+    <input type="file" id="pdfFileInput" accept=".pdf,application/pdf" multiple />
+    <div class="flow-steps"><span class="flow-step">PDF 등록</span><span class="flow-step">TEXT/OCR 추출</span><span class="flow-step">수동검수</span><span class="flow-step">JSON 병합</span></div>
+    <div class="upload-status">등록 후 JSON 복사로 현재 상태를 저장하세요.</div>
+  </div>`;
+  const jsonPanel = `<div class="upload-panel">
+    <b>구조화 JSON 불러오기</b>
+    <div class="muted">merged_case.json 또는 sample_case JSON을 적용하면 전체 대시보드가 갱신됩니다.</div>
+    <div class="big-actions"><button onclick="showSection('json')">JSON 붙여넣기/파일 업로드</button><button class="upload-btn secondary" onclick="copyJson()">현재 JSON 복사</button></div>
+  </div>`;
+  const rows = uploads.map(u => [safe(u.file_name), num(u.file_size) + " byte", safe(u.appraisal_company_guess), badge(u.extraction_status, badgeClassByStatus(u.extraction_status)), badge(u.review_status_code, badgeClassByStatus(u.review_status_code))]);
+  const uploadTable = rows.length ? table(["파일명","크기","추정 법인","추출상태","검토상태"], rows, "compact") : empty("아직 등록된 평가서 PDF가 없습니다.");
+  const appRows = appraisals.map(a => [safe(a.appraisal_company), safe(a.file_name), badge(a.file_type, "cyan"), badge(a.extraction_method, badgeClassByStatus(a.extraction_method)), badge(a.parse_status, badgeClassByStatus(a.parse_status))]);
+  grid.innerHTML =
+    card("사용 시작", intro, "span-12") +
+    card("평가서 PDF 등록", uploadPanel, "span-6") +
+    card("JSON 불러오기", jsonPanel, "span-6") +
+    card("등록된 PDF", uploadTable, "span-12") +
+    card("평가서 원본·추출상태", appRows.length ? table(["법인","파일명","파일유형","추출방식","파싱상태"], appRows, "compact") : empty("평가서 원본 데이터가 없습니다."), "span-12");
+  const input = document.getElementById("pdfFileInput");
+  if (input) input.addEventListener("change", e => registerUploadedPdfFiles(e.target.files));
+}
+
+function renderAll() {
+  renderOverview(); renderUploadHub(); renderSourceStatus(); renderLands(); renderPublicData(); renderStdCases();
+  renderLandCompare(); renderSubjectFactors(); renderCaseFactors(); renderOtherFactors();
+  renderObstacles(); renderIssues(); renderSentences(); renderRisks();
+  document.getElementById("jsonTextarea").value = Object.keys(data).length ? JSON.stringify(data, null, 2) : "";
+}
+
+function renderOverview() {
+  const grid = document.getElementById("overviewGrid");
+  const c = data.case || {}; const meta = data.meta || {};
+  if (!Object.keys(data).length) { grid.innerHTML = card("시작하기", onboardingHtml(), "span-12") + card("현재 상태", empty("아직 사건 JSON이 적용되지 않았습니다. 업로드·JSON 관리에서 시작하세요."), "span-12"); return; }
+  const ocrCount = arr(data.appraisals).filter(a => String(a.extraction_method).includes("OCR") || String(a.parse_status).includes("FAILED")).length;
+  const publicNeedCount = arr(data.land_characteristics).filter(x => String(x.review_status_code).includes("REVIEW") || !x.road_frontage_public).length;
+  const publicSummary = (data.public_land_data_enrichment && data.public_land_data_enrichment.v024_summary) || {};
+  const publicFetched = publicSummary.fetched || 0;
+  const publicTotal = publicSummary.total || arr(data.public_land_characteristics).length || publicNeedCount;
+  const maxGap = arr(data.comparison_summary_by_land).slice().sort((a,b)=>Number(b.amount_gap||0)-Number(a.amount_gap||0))[0] || {};
+  const highRiskCount = arr(data.risk_warnings).filter(r => r.risk_level === "HIGH").length;
+  const aIssueCount = arr(data.issue_candidates).filter(i => i.issue_grade === "A").length;
+  const otherValues = arr(data.other_factor_reviews).map(o => Number(o.decided_other_factor)).filter(n => !Number.isNaN(n));
+  const otherMin = otherValues.length ? Math.min(...otherValues) : null;
+  const otherMax = otherValues.length ? Math.max(...otherValues) : null;
+
+  grid.innerHTML =
+    card("시작하기", onboardingHtml(), "span-12") +
+    card("사건 정보", kv("사건명", c.case_name)+kv("사업명", c.project_name)+kv("시행자", c.project_owner)+kv("가격시점", c.price_date)+kv("스키마", meta.schema_version)+badge(c.review_status_code, badgeClassByStatus(c.review_status_code)), "span-6") +
+    card("평가서 원본·추출상태", badge("OCR 필요 " + ocrCount + "건", ocrCount ? "red" : "green") + `<div class="value">${arr(data.appraisals).length}개 법인</div><div class="muted">텍스트 파싱 / OCR 필요 상태 확인</div>`, "span-3", "sourceStatus") +
+    card("공적 API 보강", badge(publicFetched && publicTotal ? `조회 ${publicFetched}/${publicTotal}` : "토지특성 보강", publicFetched === publicTotal && publicTotal ? "green" : "yellow") + `<div class="value">${publicFetched || publicNeedCount}건</div><div class="muted">도로접면·형상지세·공시지가 등</div>`, "span-3", "publicData") +
+    card("최대 금액 차이", badge(safe(maxGap.parcel_address), "yellow") + `<div class="value">${money(maxGap.amount_gap)}</div><div class="muted">${safe(maxGap.primary_review_axis)}</div>`, "span-4", "landCompare") +
+    card("그 밖의 요인 범위", badge("소수점 둘째자리", "blue") + `<div class="value">${fmtOtherFactor(otherMin)} ~ ${fmtOtherFactor(otherMax)}</div><div class="muted">평가법인·표준지별 보정치 비교</div>`, "span-4", "otherFactors") +
+    card("A등급 쟁점", badge("우선 검토", "red") + `<div class="value">${aIssueCount}건</div><div class="muted">확정 판단이 아닌 검토 필요 후보</div>`, "span-4", "issues") +
+    card("고위험 경고", badge("표현 리스크", "red") + `<div class="value">${highRiskCount}건</div><div class="muted">평가오류·증액 가능성 단정 금지</div>`, "span-4", "risks") +
+    card("개별요인 표시 규칙", kv("1 미만","빨간색")+kv("1 초과","파란색")+kv("누계","셋째자리"), "span-4", "subjectFactors");
+}
+function renderSourceStatus() {
+  const grid = document.getElementById("sourceStatusGrid");
+  const appraisals = arr(data.appraisals); const totals = arr(data.appraisal_totals);
+  const uploads = getUploadRows();
+  if (!appraisals.length && !uploads.length) { grid.innerHTML = empty("평가서 원본 데이터가 없습니다. 업로드·JSON 관리에서 평가서 PDF 또는 JSON을 등록하세요."); return; }
+  const rows = appraisals.map(a => { const t = totals.find(x => x.appraisal_id === a.appraisal_id) || {}; return [safe(a.appraisal_company), safe(a.file_name), badge(a.file_type,"cyan"), badge(a.extraction_method,badgeClassByStatus(a.extraction_method)), badge(a.parse_status,badgeClassByStatus(a.parse_status)), money(t.land_total_amount), money(t.obstacle_total_amount), money(t.grand_total_amount), safe(a.source_note)]; });
+  const uploadRows = uploads.map(u => [safe(u.file_name), num(u.file_size) + " byte", safe(u.appraisal_company_guess), badge(u.extraction_status, badgeClassByStatus(u.extraction_status)), safe(u.note)]);
+  grid.innerHTML =
+    (rows.length ? table(["평가법인","파일명","파일유형","추출방식","파싱상태","토지합계","지장물합계","총합계","비고"], rows, "compact") : "") +
+    (uploadRows.length ? card("업로드 등록 파일", table(["파일명","크기","추정 법인","추출상태","비고"], uploadRows, "compact"), "span-12") : "");
+}
+function renderLands() {
+  const grid = document.getElementById("landsGrid");
+  const lands = arr(data.lands);
+  if (!lands.length) { grid.innerHTML = empty("편입토지 데이터가 없습니다."); return; }
+  const splitLands = lands.filter(l => String(l.parcel_address || "").includes("산3-1") && (String(l.appraisal_use_status || l.use_note || "").includes("현황전") || String(l.appraisal_use_status || l.use_note || "").includes("현황도로")));
+  const splitCard = splitLands.length ? card("산3-1 현황구분 확인", splitLands.map(l => {
+    return `<span class="key-chip hot">${safe(l.serial_no)} · ${safe(l.appraisal_use_status || l.use_note)} · ${num(l.area)}㎡</span>`;
+  }).join("") + `<div class="muted" style="margin-top:8px">공적 API는 동일 PNU 기준 자연림으로 조회되므로, 현황전·현황도로 구분은 도면·항공사진·현장사진으로 별도 확인해야 합니다.</div>`, "span-12 one-screen-card") : "";
+  const rows = lands.map(l => {
+    const chars = arr(data.land_characteristics).find(c => c.land_id === l.land_id) || {};
+    return [safe(l.serial_no), safe(l.parcel_address), safe(l.land_category), num(l.area)+"㎡", safe(l.appraisal_use_status || l.use_note), safe(chars.zoning_appraisal || "확인 필요"), safe(chars.road_frontage_public || "조회 필요"), safe(chars.terrain_height_public || "조회 필요"), safe(chars.terrain_shape_public || "조회 필요"), badge(l.public_characteristics_status, badgeClassByStatus(l.public_characteristics_status))];
+  });
+  grid.innerHTML = splitCard + table(["일련","편입토지","지목","면적","평가서 이용상황","용도지역","도로접면","지형고저","지형형상","공적자료"], rows, "compact");
+}
+function renderPublicData() {
+  const grid = document.getElementById("publicDataGrid");
+  const module = data.public_land_data_enrichment || {};
+  const chars = arr(data.land_characteristics); const cross = arr(data.land_characteristic_crosscheck);
+  if (!chars.length && !Object.keys(module).length) { grid.innerHTML = empty("공적 토지특성 보강 데이터가 없습니다."); return; }
+  const moduleCard = card(module.module_name || "공적 토지특성 자동보강 모듈", badge("v0.2.4 API 연동 예정","yellow")+kv("현재 범위",module.v021_scope || "필드 구조 확정 및 수동 입력")+kv("다음 범위",module.v022_scope || "공식 API 또는 SHP/QGIS 연동")+kv("조회 흐름",arr(module.lookup_flow).join(" → "))+kv("대상 필드",arr(module.target_fields).join(", "))+kv("주의",module.risk_control_note), "span-12");
+  const charRows = chars.map(c => [safe(c.parcel_address), safe(c.land_category_appraisal), safe(c.use_status_appraisal), safe(c.zoning_appraisal), safe(c.road_frontage_public || "조회 필요"), safe(c.terrain_height_public || "조회 필요"), safe(c.terrain_shape_public || "조회 필요"), c.official_land_price_public ? money(c.official_land_price_public) : "조회 필요", safe(c.pnu || "조회 필요"), badge(c.review_status_code, badgeClassByStatus(c.review_status_code))]);
+  const crossRows = cross.map(x => [safe(x.parcel_address), safe(x.field_name), safe(x.appraisal_value || "미기재"), safe(x.public_data_value || "조회 필요"), badge(x.match_status, badgeClassByStatus(x.match_status)), safe(x.review_note)]);
+  grid.innerHTML = moduleCard + table(["필지","평가서 지목","평가서 이용상황","평가서 용도지역","공적 도로접면","공적 지형고저","공적 지형형상","개별공시지가","PNU","상태"], charRows, "compact") + table(["필지","항목","평가서 값","공적 데이터 값","상태","메모"], crossRows, "compact");
+}
+function renderStdCases() {
+  const grid = document.getElementById("stdCasesGrid");
+  const standards = arr(data.standard_lands); const cases = arr(data.comp_cases); const appraisals = arr(data.appraisals);
+  if (!standards.length && !cases.length) { grid.innerHTML = empty("표준지·거래사례 데이터가 없습니다."); return; }
+  const standardGrouped = {};
+  standards.forEach(s => { const key = s.parcel_address; if (!standardGrouped[key]) standardGrouped[key] = []; standardGrouped[key].push(s); });
+  const standardRows = Object.keys(standardGrouped).map(address => {
+    const group = standardGrouped[address]; const base = group[0] || {};
+    const symbolCells = appraisals.map(a => { const found = group.find(x => x.appraisal_id === a.appraisal_id || x.appraisal_company === a.appraisal_company); return found ? safe(found.standard_land_symbol) : "-"; });
+    return [safe(address), safe(base.land_category), safe(base.use_status), safe(base.zoning), num(base.area)+"㎡", money(base.official_price), safe(base.road_condition), safe(base.shape_terrain), ...symbolCells];
+  });
+  const caseGrouped = {};
+  cases.forEach(c => { const key = c.parcel_address+"|"+c.case_date+"|"+c.case_unit_price; if (!caseGrouped[key]) caseGrouped[key] = []; caseGrouped[key].push(c); });
+  const caseRows = Object.keys(caseGrouped).map(key => {
+    const group = caseGrouped[key]; const base = group[0] || {};
+    const symbolCells = appraisals.map(a => { const found = group.find(x => x.appraisal_id === a.appraisal_id || x.appraisal_company === a.appraisal_company); return found ? safe(found.case_symbol) : "-"; });
+    return [safe(base.parcel_address), safe(base.land_category), safe(base.zoning), safe(base.case_date), money(base.case_unit_price), safe(base.case_type), ...symbolCells];
+  });
+  const stdHeaders = ["표준지 지번","지목","이용상황","용도지역","면적","공시지가","도로교통","형상·지세"].concat(appraisals.map(a=>a.appraisal_company+" 기호"));
+  const caseHeaders = ["거래사례 지번","지목","용도지역","거래시점","거래단가","자료종류"].concat(appraisals.map(a=>a.appraisal_company+" 기호"));
+  grid.innerHTML = card("표준지 통합표", table(stdHeaders, standardRows, "compact"), "span-12") + card("거래사례 통합표", table(caseHeaders, caseRows, "compact"), "span-12");
+}
+function renderLandCompare() {
+  const grid = document.getElementById("landCompareGrid");
+  const summary = arr(data.comparison_summary_by_land); const results = arr(data.land_appraisal_results); const appraisals = arr(data.appraisals);
+  if (!summary.length) { grid.innerHTML = empty("필지별 비교 요약 데이터가 없습니다."); return; }
+  grid.innerHTML = summary.map(s => {
+    const perLand = results.filter(r => r.land_id === s.land_id);
+    const getByCompany = (company) => perLand.find(r => r.appraisal_company === company) || {};
+    const headers = ["항목"].concat(appraisals.map(a => companyShortName(a.appraisal_company))).concat(["Δ"]);
+    const individualValues = appraisals.map(a => getByCompany(a.appraisal_company).individual_factor_total);
+    const otherValues = appraisals.map(a => getByCompany(a.appraisal_company).other_factor);
+    const unitValues = appraisals.map(a => getByCompany(a.appraisal_company).unit_price);
+    const amountValues = appraisals.map(a => getByCompany(a.appraisal_company).amount);
+    const rows = [
+      ["표준지"].concat(appraisals.map(a => safe(getByCompany(a.appraisal_company).standard_land_symbol))).concat(["-"]),
+      ["개별누계"].concat(appraisals.map(a => renderFactorValue(getByCompany(a.appraisal_company).individual_factor_total, true))).concat([diffCell(numericDiff(individualValues), "total")]),
+      ["그밖요인"].concat(appraisals.map(a => `<span class="numcell">${fmtOtherFactor(getByCompany(a.appraisal_company).other_factor)}</span>`)).concat([diffCell(numericDiff(otherValues), "other")]),
+      ["단가"].concat(appraisals.map(a => `<span class="numcell">${money(getByCompany(a.appraisal_company).unit_price)}</span>`)).concat([money(numericDiff(unitValues))]),
+      ["금액"].concat(appraisals.map(a => `<span class="numcell">${money(getByCompany(a.appraisal_company).amount)}</span>`)).concat([money(numericDiff(amountValues))]),
+      ["상태"].concat(appraisals.map(a => badge(getByCompany(a.appraisal_company).extraction_status, badgeClassByStatus(getByCompany(a.appraisal_company).extraction_status)))).concat(["-"])
+    ];
+    return card(safe(s.parcel_address), badge("최저 "+safe(s.min_company),"blue")+badge("최고 "+safe(s.max_company),"yellow")+kv("단가 차이", money(s.unit_price_gap))+kv("금액 차이", money(s.amount_gap))+kv("검토축", s.primary_review_axis)+table(headers, rows, "compact factor-compact"), "span-12");
+  }).join("");
+}
+
+function uniqueBy(arrIn, fn) {
+  const seen = {};
+  const out = [];
+  arr(arrIn).forEach(x => {
+    const k = fn(x);
+    if (!seen[k]) { seen[k] = true; out.push(x); }
+  });
+  return out;
+}
+function symbolChips(items) {
+  const chips = uniqueBy(items, x => `${x.company}|${x.stdSymbol || ""}|${x.caseSymbol || ""}`).map(x => {
+    const parts = [safe(x.company)];
+    if (x.stdSymbol) parts.push("표준지 " + safe(x.stdSymbol));
+    if (x.caseSymbol) parts.push("사례 " + safe(x.caseSymbol));
+    return `<span class="symbol-chip">${parts.join(" · ")}</span>`;
+  });
+  return chips.length ? `<div class="symbol-strip">${chips.join("")}</div>` : "";
+}
+function compactSpecCard(title, rows) {
+  return `<div class="spec-card"><h4>${safe(title)}</h4>` + rows.map(r =>
+    `<div class="spec-line"><div class="spec-label">${safe(r[0])}</div><div class="spec-value">${r[1]}</div></div>`
+  ).join("") + `</div>`;
+}
+function appraisalSpecText(obj) {
+  const land = [obj.land_category || obj.land_category_appraisal || "", obj.use_status || obj.appraisal_use_status || obj.use_status_appraisal || obj.use_note || ""].filter(Boolean).join(" / ");
+  return land || "-";
+}
+function publicSpecText(obj) {
+  const land = [obj.land_category_public || "", obj.land_use_status_public || ""].filter(Boolean).join(" / ");
+  return land || "-";
+}
+function renderSubjectVsStandardCompact(land, std, companies) {
+  const leftRows = [
+    ["지번", `<b>${safe(land.parcel_address)}</b>`],
+    ["평가/공적", `${safe(appraisalSpecText(land))}<br>${safe(publicSpecText(land))}`],
+    ["도로", safe(land.road_frontage_public)],
+    ["지형", `${safe(land.terrain_height_public)} / ${safe(land.terrain_shape_public)}`],
+    ["공시", money(land.official_land_price_public)]
+  ];
+  const rightRows = [
+    ["지번", `<b>${safe(std.parcel_address)}</b>`],
+    ["평가서", safe(appraisalSpecText(std))],
+    ["도로", safe(std.road_condition)],
+    ["형상", safe(std.shape_terrain)],
+    ["공시", money(std.official_price)]
+  ];
+  return symbolChips(companies) + keyStripSubject(land, std) + `<div class="two-spec">` +
+    compactSpecCard("편입토지 공적스펙", leftRows).replace('spec-card"', 'spec-card compact5"') +
+    compactSpecCard("비교표준지 평가서스펙", rightRows).replace('spec-card"', 'spec-card compact5"') +
+    `</div>`;
+}
+function renderStandardVsCaseCompact(std, cc, companies) {
+  const leftRows = [
+    ["지번", `<b>${safe(std.parcel_address)}</b>`],
+    ["평가서", safe(appraisalSpecText(std))],
+    ["도로", safe(std.road_condition)],
+    ["형상", safe(std.shape_terrain)],
+    ["공시", money(std.official_price)]
+  ];
+  const rightRows = [
+    ["지번", `<b>${safe(cc.parcel_address)}</b>`],
+    ["평가/공적", `${safe(appraisalSpecText(cc))}<br>${safe(publicSpecText(cc))}`],
+    ["도로", safe(cc.road_frontage_public)],
+    ["지형", `${safe(cc.terrain_height_public)} / ${safe(cc.terrain_shape_public)}`],
+    ["공시", money(cc.official_land_price_public)]
+  ];
+  return symbolChips(companies) + keyStripCase(std, cc) + `<div class="two-spec">` +
+    compactSpecCard("비교표준지 평가서스펙", leftRows).replace('spec-card"', 'spec-card compact5"') +
+    compactSpecCard("거래사례 공적스펙", rightRows).replace('spec-card"', 'spec-card compact5"') +
+    `</div>`;
+}
+function findStandardForComparison(item, company) {
+  let std = item.standard_land_id ? getStandardById(item.standard_land_id) : {};
+  if (!std.parcel_address && item.standard_parcel_address) std = findStandardByAddressAndCompany(item.standard_parcel_address, company || item.appraisal_company);
+  return std || {};
+}
+function findCaseForComparison(item, company) {
+  let cc = item.comp_case_id ? getCompCaseById(item.comp_case_id) : {};
+  if (!cc.parcel_address && item.comp_case_parcel_address) cc = findCompByAddressAndCompany(item.comp_case_parcel_address, company || item.appraisal_company);
+  return cc || {};
+}
+
+
+function isSameOrEquivalent(a, b, field="") {
+  if (!a || !b) return false;
+  if (field === "land") return normalizeLandCategory(a) === normalizeLandCategory(b);
+  return normalizeSpecText(a) === normalizeSpecText(b);
+}
+function keyChip(label, value, cls="") {
+  return `<span class="key-chip ${cls}">${safe(label)} ${safe(value)}</span>`;
+}
+function keyStripSubject(land, std) {
+  const chips = [];
+  const lRoad = land.road_frontage_public || "";
+  const sRoad = std.road_condition || "";
+  const lTerrain = [land.terrain_height_public || "", land.terrain_shape_public || ""].filter(Boolean).join("/");
+  const sTerrain = std.shape_terrain || "";
+  const lUse = publicSpecText(land);
+  const sUse = appraisalSpecText(std);
+  const lPrice = Number(land.official_land_price_public || 0);
+  const sPrice = Number(std.official_price || 0);
+  if (lRoad && sRoad) chips.push(keyChip("도로", `${lRoad} ↔ ${sRoad}`, isSameOrEquivalent(lRoad, sRoad) ? "ok" : "warn"));
+  if (lTerrain && sTerrain) chips.push(keyChip("지형", `${lTerrain} ↔ ${sTerrain}`, "warn"));
+  if (lUse && sUse) chips.push(keyChip("이용", `${lUse} ↔ ${sUse}`, "warn"));
+  if (lPrice && sPrice) chips.push(keyChip("공시", `${money(lPrice)} ↔ ${money(sPrice)}`, Math.abs(lPrice-sPrice) ? "warn" : "ok"));
+  const use = String(land.appraisal_use_status || land.use_note || "");
+  if (String(land.parcel_address || "").includes("산3-1") && (use.includes("현황전") || use.includes("현황도로"))) {
+    chips.unshift(keyChip("현장확인", use, "hot"));
+  }
+  return chips.length ? `<div class="key-strip">${chips.join("")}</div>` : "";
+}
+function keyStripCase(std, cc) {
+  const chips = [];
+  const sRoad = std.road_condition || "";
+  const cRoad = cc.road_frontage_public || "";
+  const sTerrain = std.shape_terrain || "";
+  const cTerrain = [cc.terrain_height_public || "", cc.terrain_shape_public || ""].filter(Boolean).join("/");
+  const sUse = appraisalSpecText(std);
+  const cUse = publicSpecText(cc);
+  const sPrice = Number(std.official_price || 0);
+  const cPrice = Number(cc.official_land_price_public || 0);
+  if (sRoad && cRoad) chips.push(keyChip("도로", `${sRoad} ↔ ${cRoad}`, isSameOrEquivalent(sRoad, cRoad) ? "ok" : "warn"));
+  if (sTerrain && cTerrain) chips.push(keyChip("지형", `${sTerrain} ↔ ${cTerrain}`, "warn"));
+  if (sUse && cUse) chips.push(keyChip("이용", `${sUse} ↔ ${cUse}`, "warn"));
+  if (sPrice && cPrice) chips.push(keyChip("공시", `${money(sPrice)} ↔ ${money(cPrice)}`, Math.abs(sPrice-cPrice) ? "warn" : "ok"));
+  return chips.length ? `<div class="key-strip">${chips.join("")}</div>` : "";
+}
+
+function renderSubjectFactors() {
+  const grid = document.getElementById("subjectFactorsGrid");
+  const items = arr(data.subject_to_standard_factor_comparisons);
+  const appraisals = arr(data.appraisals);
+  const lands = arr(data.lands);
+  const results = arr(data.land_appraisal_results);
+  if (!items.length && !results.length) { grid.innerHTML = empty("편입토지↔표준지 개별요인 비교 데이터가 없습니다."); return; }
+
+  const html = lands.map(l => {
+    const group = items.filter(i => i.land_id === l.land_id);
+    const resultGroup = results.filter(r => r.land_id === l.land_id);
+    if (!group.length && !resultGroup.length) return "";
+
+    const getByCompany = (company) => group.find(i => i.appraisal_company === company) || {};
+    const getResultByCompany = (company) => resultGroup.find(r => r.appraisal_company === company) || {};
+    const getTotal = (company) => {
+      const f = getByCompany(company);
+      if (f.total_factor !== undefined && f.total_factor !== null) return f.total_factor;
+      return getResultByCompany(company).individual_factor_total;
+    };
+
+    const stdGroups = {};
+    appraisals.forEach(a => {
+      const comp = getByCompany(a.appraisal_company);
+      const result = getResultByCompany(a.appraisal_company);
+      let std = findStandardForComparison(comp, a.appraisal_company);
+      if (!std.parcel_address && result.standard_land_symbol) {
+        std = arr(data.standard_lands).find(s => s.standard_land_symbol === result.standard_land_symbol && (s.appraisal_company === a.appraisal_company || s.appraisal_id === result.appraisal_id)) || {};
+      }
+      if (!std.parcel_address) return;
+      const key = std.parcel_address;
+      if (!stdGroups[key]) stdGroups[key] = { std, companies: [] };
+      stdGroups[key].companies.push({
+        company: companyShortName(a.appraisal_company),
+        stdSymbol: std.standard_land_symbol || result.standard_land_symbol || ""
+      });
+    });
+
+    const specBlocks = Object.keys(stdGroups).map(k =>
+      renderSubjectVsStandardCompact(l, stdGroups[k].std, stdGroups[k].companies)
+    ).join("");
+
+    const headers = ["항목"].concat(appraisals.map(a => companyShortName(a.appraisal_company))).concat(["Δ"]);
+    const field = (label, key, formatter="factor") => {
+      const values = appraisals.map(a => getByCompany(a.appraisal_company)[key]);
+      return [label].concat(appraisals.map(a => renderFactorValue(getByCompany(a.appraisal_company)[key], formatter === "total"))).concat([diffCell(numericDiff(values), formatter)]);
+    };
+    const totalValues = appraisals.map(a => getTotal(a.appraisal_company));
+    const rows = [
+      field("가로","street_condition"),
+      field("접근","access_condition"),
+      field("환경","environment_or_natural_condition"),
+      field("획지","parcel_condition"),
+      field("행정","administrative_condition"),
+      field("기타","other_condition"),
+      ["누계"].concat(appraisals.map(a => renderFactorValue(getTotal(a.appraisal_company), true))).concat([diffCell(numericDiff(totalValues), "total")])
+    ];
+
+    const body = fieldReviewNoteForLand(l) + specBlocks + `<div class="mini-title">법인별 개별요인 수치</div>` + table(headers, rows, "compact factor-compact factor-tight");
+    return card(safe(l.parcel_address), body, "span-12 one-screen-card");
+  }).join("");
+  grid.innerHTML = html || empty("편입토지↔표준지 개별요인 비교 데이터가 없습니다.");
+}
+
+
+function renderCaseFactors() {
+  const grid = document.getElementById("caseFactorsGrid");
+  const items = arr(data.standard_to_comp_case_factor_comparisons);
+  const appraisals = arr(data.appraisals);
+  if (!items.length) { grid.innerHTML = empty("표준지↔거래사례 개별요인 비교 데이터가 없습니다."); return; }
+
+  const grouped = {};
+  items.forEach(i => {
+    const key = safe(i.standard_parcel_address) + " ↔ " + safe(i.comp_case_parcel_address);
+    if (!grouped[key]) grouped[key] = [];
+    grouped[key].push(i);
+  });
+
+  grid.innerHTML = Object.keys(grouped).map(key => {
+    const group = grouped[key];
+    const getByCompany = (company) => group.find(i => i.appraisal_company === company) || {};
+
+    const base = group[0] || {};
+    const std = findStandardForComparison(base, base.appraisal_company);
+    const cc = findCaseForComparison(base, base.appraisal_company);
+
+    const companies = group.map(item => {
+      const stdObj = findStandardForComparison(item, item.appraisal_company);
+      const caseObj = findCaseForComparison(item, item.appraisal_company);
+      return {
+        company: companyShortName(item.appraisal_company),
+        stdSymbol: stdObj.standard_land_symbol || "",
+        caseSymbol: caseObj.case_symbol || ""
+      };
+    });
+
+    const specBlock = renderStandardVsCaseCompact(std, cc, companies);
+
+    const headers = ["항목"].concat(appraisals.map(a => companyShortName(a.appraisal_company))).concat(["Δ"]);
+    const field = (label, keyName, formatter="factor") => {
+      const values = appraisals.map(a => getByCompany(a.appraisal_company)[keyName]);
+      return [label].concat(appraisals.map(a => renderFactorValue(getByCompany(a.appraisal_company)[keyName], formatter === "total"))).concat([diffCell(numericDiff(values), formatter)]);
+    };
+    const rows = [
+      field("가로","street_condition"),
+      field("접근","access_condition"),
+      field("환경","environment_or_natural_condition"),
+      field("획지","parcel_condition"),
+      field("행정","administrative_condition"),
+      field("기타","other_condition"),
+      field("누계","total_factor","total")
+    ];
+    return card(key, specBlock + `<div class="mini-title">법인별 표준지↔거래사례 개별요인 수치</div>` + table(headers, rows, "compact factor-compact factor-tight"), "span-12 one-screen-card");
+  }).join("");
+}
+
+
+function renderOtherFactors() {
+  const grid = document.getElementById("otherFactorsGrid");
+  const items = arr(data.other_factor_reviews); const appraisals = arr(data.appraisals);
+  if (!items.length) { grid.innerHTML = empty("그 밖의 요인 데이터가 없습니다."); return; }
+  const grouped = {};
+  items.forEach(o => {
+    const std = getStandardById(o.standard_land_id);
+    const key = std.parcel_address || o.standard_land_symbol || o.standard_land_id;
+    if (!grouped[key]) grouped[key] = [];
+    grouped[key].push(o);
+  });
+  grid.innerHTML = Object.keys(grouped).map(key => {
+    const group = grouped[key];
+    const getByCompany = (company) => group.find(o => o.appraisal_company === company) || {};
+    const headers = ["항목"].concat(appraisals.map(a => companyShortName(a.appraisal_company))).concat(["Δ"]);
+    const rowNumeric = (label, keyName, formatter="other") => {
+      const values = appraisals.map(a => getByCompany(a.appraisal_company)[keyName]);
+      return [label].concat(appraisals.map(a => {
+        const v = getByCompany(a.appraisal_company)[keyName];
+        if (formatter === "money") return `<span class="numcell">${money(v)}</span>`;
+        if (formatter === "total") return `<span class="numcell">${fmtFactorTotal(v)}</span>`;
+        return `<span class="numcell">${fmtOtherFactor(v)}</span>`;
+      })).concat([formatter === "money" ? money(numericDiff(values)) : diffCell(numericDiff(values), formatter)]);
+    };
+    const rows = [
+      ["표준지"].concat(appraisals.map(a => safe(getByCompany(a.appraisal_company).standard_land_symbol))).concat(["-"]),
+      ["사례"].concat(appraisals.map(a => safe(getByCompany(a.appraisal_company).comparison_case_symbol))).concat(["-"]),
+      rowNumeric("사례단가","case_unit_price","money"),
+      rowNumeric("시점수정","case_time_correction","other"),
+      rowNumeric("개별요인","case_individual_factor","total"),
+      rowNumeric("사례기준","case_based_standard_price","money"),
+      rowNumeric("공시지가기준","standard_based_price","money"),
+      rowNumeric("격차율","calculated_gap_ratio","other"),
+      rowNumeric("결정치","decided_other_factor","other")
+    ];
+    return card(safe(key), table(headers, rows, "compact factor-compact"), "span-12");
+  }).join("");
+}
+function renderObstacles() {
+  const grid = document.getElementById("obstaclesGrid");
+  const summary = arr(data.obstacle_summary_by_appraisal); const samples = arr(data.obstacle_appraisal_results_sample);
+  if (!summary.length && !samples.length) { grid.innerHTML = empty("지장물 데이터가 없습니다."); return; }
+  const summaryRows = summary.map(s => [safe(s.appraisal_company), money(s.obstacle_total_amount), badge(s.review_status_code, badgeClassByStatus(s.review_status_code)), safe(s.note)]);
+  const sampleRows = samples.map(o => [safe(o.parcel_address), safe(o.item_name), safe(o.spec), safe(o.quantity)+" "+safe(o.unit), arr(o.appraisal_values).map(v => `${safe(v.appraisal_company)}: ${money(v.amount)}`).join("<br>"), safe(o.review_note)]);
+  grid.innerHTML = table(["평가법인","지장물 합계","상태","메모"], summaryRows, "compact") + table(["필지","품목","규격","수량","평가액","검토 메모"], sampleRows, "compact");
+}
+function renderIssues() {
+  const grid = document.getElementById("issuesGrid");
+  const issues = arr(data.issue_candidates);
+  if (!issues.length) { grid.innerHTML = empty("쟁점 후보 데이터가 없습니다."); return; }
+  grid.innerHTML = issues.map(i => card(`${safe(i.issue_id)} / ${safe(i.issue_type_code)}`, badge(i.issue_grade ? "등급 "+i.issue_grade : "-", badgeClassByGrade(i.issue_grade)) + badge(i.reflection_status, badgeClassByStatus(i.reflection_status)) + badge(i.detail_type_code, "cyan") + kv("확인된 사실", i.confirmed_fact) + kv("해석/검토의견", i.interpretation_note) + kv("필요자료", i.required_evidence) + kv("리스크 통제", i.risk_control_note), "span-6")).join("");
+}
+function renderSentences() {
+  const grid = document.getElementById("sentencesGrid");
+  const sentences = arr(data.draft_sentences);
+  if (!sentences.length) { grid.innerHTML = empty("의견서 보조문안 데이터가 없습니다."); return; }
+  grid.innerHTML = sentences.map(s => card(`${safe(s.draft_sentence_id)} / ${safe(s.issue_id)}`, badge(s.filter_result_code, badgeClassByStatus(s.filter_result_code)) + badge(s.draft_reflection_status, badgeClassByStatus(s.draft_reflection_status)) + kv("템플릿", s.template_id) + `<div class="sentence-box"><div class="sentence-label">원문 생성문장</div>${safe(s.draft_sentence_raw)}</div><div class="sentence-box"><div class="sentence-label">안전화 문장</div>${safe(s.draft_sentence_safe)}</div>`, "span-12")).join("");
+}
+function renderRisks() {
+  const grid = document.getElementById("risksGrid");
+  const risks = arr(data.risk_warnings);
+  if (!risks.length) { grid.innerHTML = empty("리스크 경고 데이터가 없습니다."); return; }
+  grid.innerHTML = risks.map(r => card(`${safe(r.risk_id)} / ${safe(r.risk_type)}`, badge(r.risk_level, badgeClassByRisk(r.risk_level)) + kv("관련 쟁점", r.related_issue_id) + kv("관련 평가서", r.related_appraisal_id) + kv("경고 내용", r.message) + kv("조치 필요사항", r.required_action), "span-6")).join("");
+}
+function renderFromTextarea() {
+  const raw = document.getElementById("jsonTextarea").value;
+  try { data = JSON.parse(raw); renderAll(); showSection("overview"); }
+  catch (e) { alert("JSON 파싱 오류: " + e.message); }
+}
+async function copyJson() {
+  const text = JSON.stringify(data, null, 2);
+  try { await navigator.clipboard.writeText(text); alert("JSON이 클립보드에 복사되었습니다."); }
+  catch (e) { const t = document.getElementById("jsonTextarea"); t.value = text; t.select(); document.execCommand("copy"); alert("JSON 복사를 시도했습니다."); }
+}
+function clearData() {
+  if (!confirm("현재 JSON 데이터를 초기화할까요?")) return;
+  data = {}; renderAll(); showSection("json");
+}
+document.getElementById("jsonFileInput").addEventListener("change", async (e) => {
+  const file = e.target.files[0]; if (!file) return;
+  const text = await file.text();
+  try {
+    data = JSON.parse(text);
+    document.getElementById("jsonTextarea").value = JSON.stringify(data, null, 2);
+    renderAll();
+    showSection("overview");
+  }
+  catch (err) { alert("JSON 파일 파싱 오류: " + err.message); }
+});
+renderAll();
+</script>
+</body>
+</html>

@@ -1,0 +1,31 @@
+name: Brief Output CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - fix/individual-factor-detail-breakdown-20260803
+
+jobs:
+  brief-output:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: brief_output/requirements.txt
+      - name: Install dependencies
+        run: python -m pip install -r brief_output/requirements.txt
+      - name: Run unit tests
+        run: python -m unittest discover -v -s brief_output -t .
+      - name: Build golden-case output and schema
+        run: python -m brief_output.build_golden_case
+      - name: Build golden-case DOCX
+        run: python -m brief_output.build_golden_case_docx
+      - name: Validate generated files
+        run: |
+          test -s brief_output/bso_brief_output_v0.1.json
+          test -s brief_output/bso_brief_output_v0.1.schema.json
+          test -s brief_output/bso_brief_output_v0.1.docx

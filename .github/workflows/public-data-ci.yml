@@ -1,0 +1,69 @@
+name: Public Data CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  public-data-unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      # 단위테스트는 transport 주입으로 실호출 없이 검증하므로 런타임 의존성이 없다.
+      # 인증키도 주지 않는다: 키가 없어야 fail-closed 경로까지 함께 검증된다.
+      - name: Run public data unit tests
+        run: python -m unittest tests.test_public_data -v
+
+      # 아래 둘은 기본 CI 에서 절대 실행하지 않는다.
+      # - tests/test_public_data_integration.py : 실제 공공데이터포털을 호출한다(키 있을 때만).
+      # - tests/probe_public_data.py            : endpoint 진단 프로브(수동 실행 전용).
+      # 실행 대상을 discover 로 넓히지 말고 위 모듈 하나만 지정해 둘 것.
+      - name: Assert the default run makes no external call
+        run: |
+          python - <<'PY'
+          import ast
+          import pathlib
+          import sys
+
+          failures = []
+
+          # 1) integration 테스트는 인증키가 없으면 전부 SKIP 되어야 한다.
+          integration = pathlib.Path("tests/test_public_data_integration.py")
+          tree = ast.parse(integration.read_text(encoding="utf-8"))
+          for node in tree.body:
+              if not isinstance(node, ast.ClassDef):
+                  continue
+              guards = [ast.unparse(d) for d in node.decorator_list]
+              if not any("skipUnless" in g and "HAS_KEY" in g for g in guards):
+                  failures.append(f"{integration}::{node.name} is not guarded by skipUnless(HAS_KEY)")
+
+          # 2) 진단 프로브는 __main__ 가드 밖에서 호출하지 않아야 한다.
+          probe = pathlib.Path("tests/probe_public_data.py")
+          tree = ast.parse(probe.read_text(encoding="utf-8"))
+          for node in tree.body:
+              if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef,
+                                   ast.Import, ast.ImportFrom, ast.Assign, ast.AnnAssign)):
+                  continue
+              if isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant):
+                  continue
+              if isinstance(node, ast.If) and ast.unparse(node.test) == "__name__ == '__main__'":
+                  continue
+              failures.append(f"{probe}: unguarded module-level statement on line {node.lineno}")
+
+          # 3) 프로브는 자동 디스커버리에 잡히면 안 된다.
+          if probe.name.startswith("test_"):
+              failures.append(f"{probe}: manual probe must not be collectable as a test")
+
+          if failures:
+              print("\n".join(failures), file=sys.stderr)
+              raise SystemExit(1)
+          print("no-external-call boundary holds")
+          PY

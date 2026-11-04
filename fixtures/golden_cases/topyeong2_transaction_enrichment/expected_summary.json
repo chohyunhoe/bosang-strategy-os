@@ -1,0 +1,16 @@
+{
+  "total_cases": 23,
+  "transaction_events": 22,
+  "a_plus_review_candidates": 11,
+  "provider_mode": "offline_fixture",
+  "lookup_success": 21,
+  "lookup_failure": 2,
+  "api_lookup_success": 0,
+  "api_lookup_failure": 0,
+  "fixture_lookup_success": 21,
+  "fixture_lookup_failure": 2,
+  "pnu_mismatch": 1,
+  "pnu_multiple_candidates": 0,
+  "standard_multiple_candidates": 1,
+  "remaining_not_identifiable_fields": 138
+}

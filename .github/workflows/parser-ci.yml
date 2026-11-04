@@ -1,0 +1,48 @@
+name: Parser CI
+
+on:
+  pull_request:
+    paths:
+      - 'parser/**'
+      - 'browser/**'
+      - 'index.html'
+      - 'scripts/**'
+      - 'reference/sample_case_001_v021_full.json'
+      - 'tests/validate_static_site.js'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/parser-ci.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'parser/**'
+      - 'browser/**'
+      - 'index.html'
+      - 'scripts/**'
+      - 'reference/sample_case_001_v021_full.json'
+      - 'tests/validate_static_site.js'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/parser-ci.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  parser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run parser:test
+      - run: node tests/validate_static_site.js
+      - name: Check parser JavaScript syntax
+        run: find parser/src parser/tests -name '*.js' -print0 | xargs -0 -n1 node --check
+      - run: git diff --check
+      - name: Verify deterministic tracked parser output
+        run: git diff --exit-code -- parser/output/generated_case.layer1.example.json

@@ -1,0 +1,76 @@
+{
+  "case_id": "GONGJU_SONGSEON_DONGHYEON_225_4",
+  "project_name": "익명시 샘플·예시지구 도시개발사업",
+  "subject": {
+    "dong": "샘플동",
+    "lot": "301-4",
+    "land_use": "임",
+    "area_expression": "9,911×1/3"
+  },
+  "appraisals": [
+    {
+      "company": "경일",
+      "source_pages": 8,
+      "standard_symbol": "카",
+      "standard_dong": "샘플동",
+      "standard_lot": "산91-1",
+      "official_price": 26500,
+      "time_adjustment": 1.10575,
+      "subject_individual_factor": 0.970,
+      "other_factor": 7.52,
+      "calculated_unit_price": 604012,
+      "applied_unit_price": 605015,
+      "amount": 602000006,
+      "evidence_pages": {
+        "standard_selection": 3,
+        "standard_to_case": 6,
+        "other_factor_decision": 7,
+        "subject_and_schedule": 8
+      }
+    },
+    {
+      "company": "제일",
+      "source_pages": 14,
+      "standard_symbol": "K",
+      "standard_dong": "샘플동",
+      "standard_lot": "산91-1",
+      "official_price": 26500,
+      "time_adjustment": 1.10575,
+      "subject_individual_factor": 0.931,
+      "other_factor": 7.28,
+      "calculated_unit_price": 600000,
+      "applied_unit_price": 601003,
+      "amount": 600000000,
+      "evidence_pages": {
+        "standard_selection": 3,
+        "case_selection": 8,
+        "standard_to_case": [10, 11, 12],
+        "other_factor_decision": 13,
+        "subject_and_schedule": 14
+      }
+    },
+    {
+      "company": "가람",
+      "source_pages": 9,
+      "standard_symbol": "K",
+      "standard_dong": "샘플동",
+      "standard_lot": "산91-1",
+      "official_price": 26500,
+      "time_adjustment": 1.10575,
+      "subject_individual_factor": 0.951,
+      "other_factor": 7.52,
+      "calculated_unit_price": 602006,
+      "applied_unit_price": 603009,
+      "amount": 601000003,
+      "evidence_pages": {
+        "standard_selection": 3,
+        "case_selection": 6,
+        "standard_to_case": 7,
+        "other_factor_decision": 8,
+        "subject_and_schedule": 9
+      }
+    }
+  ],
+  "usage": "golden_case_only",
+  "active_parser_hardcoding_allowed": false
+}

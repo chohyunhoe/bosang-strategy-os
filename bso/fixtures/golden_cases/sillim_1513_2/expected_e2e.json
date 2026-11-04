@@ -1,0 +1,31 @@
+{
+  "case_id": "SILLIM_1513_2_E2E",
+  "usage": "golden_case_only",
+  "active_parser_hardcoding_allowed": false,
+  "appraisals": [
+    {
+      "company": "프라임",
+      "expected": {
+        "subject_lot": "1513-2",
+        "standard_lot": "1526-2",
+        "official_price": 9851000,
+        "subject_factor_total": 1.091,
+        "other_factor": 2.04,
+        "unit_price": 22000000,
+        "amount": 14667400000
+      }
+    },
+    {
+      "company": "라인",
+      "expected": {
+        "subject_lot": "1513-2",
+        "standard_lot": "1526-2",
+        "official_price": 9851000,
+        "subject_factor_total": 1.091,
+        "other_factor": 2.09,
+        "unit_price": 22500000,
+        "amount": 15000750000
+      }
+    }
+  ]
+}

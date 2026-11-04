@@ -1,0 +1,76 @@
+{
+  "schema_version": "bso_canonical_appraisal_v0.2",
+  "sample_type": "full_schema_example",
+  "schema_valid": true,
+  "source": {
+    "file": "anonymous_sample.pdf",
+    "pages": 1,
+    "text_layer_pages": 1,
+    "ocr_pages_used": []
+  },
+  "page_roles": [
+    {
+      "page": 1,
+      "labels": ["IRRELEVANT"],
+      "primary": "IRRELEVANT",
+      "classified_from": "text",
+      "confidence": 0.5,
+      "role_evidence": {}
+    }
+  ],
+  "sections": [],
+  "standard_selection": {},
+  "subject_to_standard_factors": {
+    "rows": [],
+    "raw_pages": [],
+    "section_status": "REVIEW_REQUIRED",
+    "header_detection": {
+      "detected": false,
+      "pages": [],
+      "required_headers": [
+        "street",
+        "access",
+        "environment",
+        "parcel",
+        "administrative",
+        "other",
+        "total"
+      ]
+    }
+  },
+  "case_selection": {
+    "cases": []
+  },
+  "standard_to_case_factors": {
+    "factors": null,
+    "stance": null,
+    "consistency": null
+  },
+  "other_factor": {},
+  "land_schedule": {
+    "rows": [],
+    "raw_pages": []
+  },
+  "verification": {
+    "formula_checks": [],
+    "reverse_factor_audit": {
+      "status": "NOT_IDENTIFIABLE",
+      "candidates": [],
+      "missing_fields": ["unique_land_schedule_row"],
+      "note": "대상토지 평가행이 정확히 1건일 때만 자동 역산"
+    }
+  },
+  "comparison_set": [
+    {
+      "role": "subject",
+      "dong": null,
+      "lot": "1-1",
+      "address_text": null,
+      "attrs": {},
+      "status": "REVIEW_REQUIRED",
+      "gis_ready": false,
+      "blocking_fields": ["dong"]
+    }
+  ],
+  "review_queue": []
+}

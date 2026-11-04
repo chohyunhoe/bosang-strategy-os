@@ -1,0 +1,23 @@
+{
+  "name": "bso-local-bridge",
+  "version": "0.1.0",
+  "description": "Run verified BSO QGIS and VWorld graphics jobs on the user's Windows PC without exposing local secrets or services to the internet.",
+  "author": {
+    "name": "BSO Local"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "BSO Local Bridge",
+    "shortDescription": "Run local PNU, QGIS, and VWorld graphics gates from Codex.",
+    "longDescription": "Connects Codex to the local BSO graphics gate through a restricted stdio tool. The VWorld key remains in bso/.env, the HTTP server remains loopback-only, and only manifests under bso/graphics-input can run.",
+    "developerName": "BSO Local",
+    "category": "Developer Tools",
+    "capabilities": ["Read", "Write", "Local execution"],
+    "defaultPrompt": [
+      "Check whether my local BSO graphics gate is ready.",
+      "List the verified outputs for this BSO graphics manifest.",
+      "Run this BSO graphics manifest locally after checking its PNU gate."
+    ]
+  },
+  "mcpServers": "./.mcp.json"
+}

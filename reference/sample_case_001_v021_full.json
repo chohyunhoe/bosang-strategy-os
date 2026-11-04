@@ -1,0 +1,3025 @@
+{
+
+  "meta": {
+
+    "schema_version": "v0.2.1",
+
+    "project_name": "보상전략 OS",
+
+    "prototype_type": "실사용형 복수 감정평가서 비교 프로토타입",
+
+    "created_for": "HTML_JSON_킬러키트_UI",
+
+    "case_scope": "익명시 샘플·예시지구 도시개발사업 / 동일 소유자 / 3개 평가법인 비교",
+
+    "notes": [
+
+      "본 JSON은 동일 소유자·동일 필지에 대한 복수 평가법인 평가서 비교용 샘플이다.",
+
+      "소재지와 지번은 parcel_address 필드로 세트 표시한다.",
+
+      "쟁점은 확정 판단이 아니라 검토 필요 후보로 관리한다.",
+
+      "보상금 증액 가능성, 법률판단 확정, 감정평가 대체 기능은 포함하지 않는다.",
+
+      "공적 토지특성정보는 평가서 검토 보강자료이며 최종 판단을 대체하지 않는다."
+
+    ]
+
+  },
+
+  "case": {
+
+    "case_id": "CASE_GONGJU_SONGSEON_DONGHYEON_001",
+
+    "case_name": "익명시 샘플·예시지구 도시개발사업 보상평가 비교 검토",
+
+    "project_name": "익명시 샘플·예시지구 도시개발사업",
+
+    "project_owner": "표본개발공사",
+
+    "appraisal_purpose": "사업인정 후 협의 보상 목적 감정평가",
+
+    "price_date": "2025-11-01",
+
+    "field_investigation_period": "2025-07-14 ~ 2025-08-29",
+
+    "project_approval_notice_date": "2024-11-20",
+
+    "review_status_code": "NEEDS_REVIEW"
+
+  },
+
+  "owners": [
+
+    {
+
+      "owner_id": "OWNER_001",
+
+      "owner_name": "홍길동",
+
+      "display_name": "홍길동",
+
+      "owner_role": "토지 및 지장물 소유자",
+
+      "privacy_handling_note": "실사용 프로토타입에서는 소유자명을 표시한다. 외부모델 투입 시에는 owner_id 중심으로 축약 가능하다."
+
+    }
+
+  ],
+
+  "appraisals": [
+
+    {
+
+      "appraisal_id": "APP_001",
+
+      "appraisal_company": "제일",
+
+      "file_name": "홍길동(감정평가서(제일))-표본지구.pdf",
+
+      "file_type": "IMAGE_PDF",
+
+      "extraction_method": "OCR_REQUIRED",
+
+      "parse_status": "TEXT_PARSE_FAILED",
+
+      "review_status_code": "NEEDS_REVIEW",
+
+      "source_note": "이미지 기반 PDF로 OCR 추출 프로토타입 검증 대상"
+
+    },
+
+    {
+
+      "appraisal_id": "APP_002",
+
+      "appraisal_company": "가람",
+
+      "file_name": "홍길동(감정평가서(가람))-표본지구.pdf",
+
+      "file_type": "TEXT_PDF",
+
+      "extraction_method": "TEXT_PARSE",
+
+      "parse_status": "TEXT_PARSED",
+
+      "review_status_code": "NEEDS_REVIEW",
+
+      "source_note": "토지조서, 개별요인, 그 밖의 요인, 지장물 내역 추출 가능"
+
+    },
+
+    {
+
+      "appraisal_id": "APP_003",
+
+      "appraisal_company": "경일",
+
+      "file_name": "홍길동(경일).pdf",
+
+      "file_type": "TEXT_PDF",
+
+      "extraction_method": "TEXT_PARSE",
+
+      "parse_status": "TEXT_PARSED",
+
+      "review_status_code": "NEEDS_REVIEW",
+
+      "source_note": "토지조서, 개별요인, 그 밖의 요인, 지장물 내역 추출 가능"
+
+    }
+
+  ],
+
+  "lands": [
+
+    {
+
+      "land_id": "LAND_001",
+
+      "owner_id": "OWNER_001",
+
+      "serial_no": "701",
+
+      "parcel_address": "익명시 샘플동 11-1",
+
+      "legal_dong": "샘플동",
+
+      "lot_number": "11-1",
+
+      "location": "익명시 샘플동",
+
+      "land_category": "대",
+
+      "area": 479,
+
+      "appraisal_use_status": "대",
+
+      "use_note": "대지",
+
+      "public_characteristics_status": "NEEDS_PUBLIC_DATA",
+
+      "review_status_code": "CONFIRMED"
+
+    },
+
+    {
+
+      "land_id": "LAND_002",
+
+      "owner_id": "OWNER_001",
+
+      "serial_no": "704",
+
+      "parcel_address": "익명시 샘플동 11-4",
+
+      "legal_dong": "샘플동",
+
+      "lot_number": "11-4",
+
+      "location": "익명시 샘플동",
+
+      "land_category": "전",
+
+      "area": 612,
+
+      "appraisal_use_status": "전",
+
+      "use_note": "전",
+
+      "public_characteristics_status": "NEEDS_PUBLIC_DATA",
+
+      "review_status_code": "CONFIRMED"
+
+    },
+
+    {
+
+      "land_id": "LAND_003",
+
+      "owner_id": "OWNER_001",
+
+      "serial_no": "703",
+
+      "parcel_address": "익명시 샘플동 산9-1",
+
+      "legal_dong": "샘플동",
+
+      "lot_number": "산9-1",
+
+      "location": "익명시 샘플동",
+
+      "land_category": "임",
+
+      "area": 29388,
+
+      "appraisal_use_status": "임야",
+
+      "use_note": "임야",
+
+      "public_characteristics_status": "NEEDS_PUBLIC_DATA",
+
+      "review_status_code": "CONFIRMED"
+
+    },
+
+    {
+
+      "land_id": "LAND_004",
+
+      "owner_id": "OWNER_001",
+
+      "serial_no": "703-1",
+
+      "parcel_address": "익명시 샘플동 산9-1",
+
+      "legal_dong": "샘플동",
+
+      "lot_number": "산9-1",
+
+      "location": "익명시 샘플동",
+
+      "land_category": "임",
+
+      "area": 110,
+
+      "appraisal_use_status": "현황전",
+
+      "use_note": "현황전",
+
+      "public_characteristics_status": "NEEDS_PUBLIC_DATA",
+
+      "review_status_code": "CONFIRMED"
+
+    },
+
+    {
+
+      "land_id": "LAND_005",
+
+      "owner_id": "OWNER_001",
+
+      "serial_no": "703-2",
+
+      "parcel_address": "익명시 샘플동 산9-1",
+
+      "legal_dong": "샘플동",
+
+      "lot_number": "산9-1",
+
+      "location": "익명시 샘플동",
+
+      "land_category": "임",
+
+      "area": 254,
+
+      "appraisal_use_status": "현황도로",
+
+      "use_note": "현황도로",
+
+      "public_characteristics_status": "NEEDS_PUBLIC_DATA",
+
+      "review_status_code": "CONFIRMED"
+
+    }
+
+  ],
+
+  "land_characteristics": [
+
+    {
+
+      "land_id": "LAND_001",
+
+      "parcel_address": "익명시 샘플동 11-1",
+
+      "land_category_appraisal": "대",
+
+      "use_status_appraisal": "대",
+
+      "zoning_appraisal": "계획관리 추정",
+
+      "road_frontage_public": "",
+
+      "terrain_height_public": "",
+
+      "terrain_shape_public": "",
+
+      "land_use_status_public": "",
+
+      "official_land_price_public": null,
+
+      "pnu": "",
+
+      "public_data_source": "공적 토지특성정보 조회 필요",
+
+      "review_status_code": "NEEDS_REVIEW",
+
+      "review_note": "평가서에는 지목·면적·단가가 확인되나 도로접면·형상지세 등은 공적 토지특성정보 또는 현장조사로 보강 필요"
+
+    },
+
+    {
+
+      "land_id": "LAND_002",
+
+      "parcel_address": "익명시 샘플동 11-4",
+
+      "land_category_appraisal": "전",
+
+      "use_status_appraisal": "전",
+
+      "zoning_appraisal": "계획관리 추정",
+
+      "road_frontage_public": "",
+
+      "terrain_height_public": "",
+
+      "terrain_shape_public": "",
+
+      "land_use_status_public": "",
+
+      "official_land_price_public": null,
+
+      "pnu": "",
+
+      "public_data_source": "공적 토지특성정보 조회 필요",
+
+      "review_status_code": "NEEDS_REVIEW",
+
+      "review_note": "도로접면, 지형고저, 지형형상 보강 필요"
+
+    },
+
+    {
+
+      "land_id": "LAND_003",
+
+      "parcel_address": "익명시 샘플동 산9-1",
+
+      "land_category_appraisal": "임",
+
+      "use_status_appraisal": "임야",
+
+      "zoning_appraisal": "계획관리 추정",
+
+      "road_frontage_public": "",
+
+      "terrain_height_public": "",
+
+      "terrain_shape_public": "",
+
+      "land_use_status_public": "",
+
+      "official_land_price_public": null,
+
+      "pnu": "",
+
+      "public_data_source": "공적 토지특성정보 조회 필요",
+
+      "review_status_code": "NEEDS_REVIEW",
+
+      "review_note": "임야 본번과 현황전·현황도로 구분 검토를 위해 공적자료 및 현장자료 보강 필요"
+
+    },
+
+    {
+
+      "land_id": "LAND_004",
+
+      "parcel_address": "익명시 샘플동 산9-1",
+
+      "land_category_appraisal": "임",
+
+      "use_status_appraisal": "현황전",
+
+      "zoning_appraisal": "계획관리 추정",
+
+      "road_frontage_public": "",
+
+      "terrain_height_public": "",
+
+      "terrain_shape_public": "",
+
+      "land_use_status_public": "",
+
+      "official_land_price_public": null,
+
+      "pnu": "",
+
+      "public_data_source": "공적 토지특성정보 + 현장조사 대조 필요",
+
+      "review_status_code": "NEEDS_REVIEW",
+
+      "review_note": "같은 지번 내 현황전 구분 면적 및 실제 이용상황 대조 필요"
+
+    },
+
+    {
+
+      "land_id": "LAND_005",
+
+      "parcel_address": "익명시 샘플동 산9-1",
+
+      "land_category_appraisal": "임",
+
+      "use_status_appraisal": "현황도로",
+
+      "zoning_appraisal": "계획관리 추정",
+
+      "road_frontage_public": "",
+
+      "terrain_height_public": "",
+
+      "terrain_shape_public": "",
+
+      "land_use_status_public": "",
+
+      "official_land_price_public": null,
+
+      "pnu": "",
+
+      "public_data_source": "공적 토지특성정보 + 현장조사 + 항공사진 대조 필요",
+
+      "review_status_code": "NEEDS_REVIEW",
+
+      "review_note": "현황도로 기타조건 0.33 반영 구조 검토 필요"
+
+    }
+
+  ],
+
+  "land_appraisal_results": [
+
+    {
+
+      "appraisal_id": "APP_001",
+
+      "appraisal_company": "제일",
+
+      "land_id": "LAND_001",
+
+      "parcel_address": "익명시 샘플동 11-1",
+
+      "standard_land_symbol": "C",
+
+      "individual_factor_total": 0.72,
+
+      "other_factor": 4.1,
+
+      "unit_price": 572504,
+
+      "amount": 511000077,
+
+      "extraction_status": "OCR_REQUIRED"
+
+    },
+
+    {
+
+      "appraisal_id": "APP_001",
+
+      "appraisal_company": "제일",
+
+      "land_id": "LAND_002",
+
+      "parcel_address": "익명시 샘플동 11-4",
+
+      "standard_land_symbol": "B",
+
+      "individual_factor_total": 0.526,
+
+      "other_factor": 5.05,
+
+      "unit_price": 547329,
+
+      "amount": 507000049,
+
+      "extraction_status": "OCR_REQUIRED"
+
+    },
+
+    {
+
+      "appraisal_id": "APP_001",
+
+      "appraisal_company": "제일",
+
+      "land_id": "LAND_003",
+
+      "parcel_address": "익명시 샘플동 산9-1",
+
+      "standard_land_symbol": "J",
+
+      "individual_factor_total": 1.0,
+
+      "other_factor": 5.19,
+
+      "unit_price": 517119,
+
+      "amount": 5000000000,
+
+      "extraction_status": "OCR_REQUIRED"
+
+    },
+
+    {
+
+      "appraisal_id": "APP_001",
+
+      "appraisal_company": "제일",
+
+      "land_id": "LAND_004",
+
+      "parcel_address": "익명시 샘플동 산9-1",
+
+      "standard_land_symbol": "B",
+
+      "individual_factor_total": 0.504,
+
+      "other_factor": 5.05,
+
+      "unit_price": 546322,
+
+      "amount": 51100077,
+
+      "extraction_status": "OCR_REQUIRED"
+
+    },
+
+    {
+
+      "appraisal_id": "APP_001",
+
+      "appraisal_company": "제일",
+
+      "land_id": "LAND_005",
+
+      "parcel_address": "익명시 샘플동 산9-1",
+
+      "standard_land_symbol": "J",
+
+      "individual_factor_total": 0.33,
+
+      "other_factor": 5.19,
+
+      "unit_price": 73000,
+
+      "amount": 50300021,
+
+      "extraction_status": "OCR_REQUIRED"
+
+    },
+
+    {
+
+      "appraisal_id": "APP_002",
+
+      "appraisal_company": "가람",
+
+      "land_id": "LAND_001",
+
+      "parcel_address": "익명시 샘플동 11-1",
+
+      "standard_land_symbol": "C",
+
+      "official_price": 527189,
+
+      "time_correction": 1.10575,
+
+      "regional_factor": 1.0,
+
+      "individual_factor_total": 0.737,
+
+      "other_factor": 4.18,
+
+      "calculated_unit_price": 576532,
+
+      "unit_price": 577539,
+
+      "amount": 512000084,
+
+      "extraction_status": "TEXT_PARSED"
+
+    },
+
+    {
+
+      "appraisal_id": "APP_002",
+
+      "appraisal_company": "가람",
+
+      "land_id": "LAND_002",
+
+      "parcel_address": "익명시 샘플동 11-4",
+
+      "standard_land_symbol": "B",
+
+      "official_price": 503021,
+
+      "time_correction": 1.10575,
+
+      "regional_factor": 1.0,
+
+      "individual_factor_total": 0.539,
+
+      "other_factor": 5.14,
+
+      "calculated_unit_price": 555385,
+
+      "unit_price": 556392,
+
+      "amount": 509000063,
+
+      "extraction_status": "TEXT_PARSED"
+
+    },
+
+    {
+
+      "appraisal_id": "APP_002",
+
+      "appraisal_company": "가람",
+
+      "land_id": "LAND_003",
+
+      "parcel_address": "익명시 샘플동 산9-1",
+
+      "standard_land_symbol": "J",
+
+      "official_price": 38500,
+
+      "time_correction": 1.10575,
+
+      "regional_factor": 1.0,
+
+      "individual_factor_total": 1.0,
+
+      "other_factor": 5.25,
+
+      "calculated_unit_price": 519133,
+
+      "unit_price": 518126,
+
+      "amount": 5010000007,
+
+      "extraction_status": "TEXT_PARSED"
+
+    },
+
+    {
+
+      "appraisal_id": "APP_002",
+
+      "appraisal_company": "가람",
+
+      "land_id": "LAND_004",
+
+      "parcel_address": "익명시 샘플동 산9-1",
+
+      "standard_land_symbol": "B",
+
+      "official_price": 503021,
+
+      "time_correction": 1.10575,
+
+      "regional_factor": 1.0,
+
+      "individual_factor_total": 0.523,
+
+      "other_factor": 5.14,
+
+      "calculated_unit_price": 550350,
+
+      "unit_price": 549343,
+
+      "amount": 51200084,
+
+      "extraction_status": "TEXT_PARSED"
+
+    },
+
+    {
+
+      "appraisal_id": "APP_002",
+
+      "appraisal_company": "가람",
+
+      "land_id": "LAND_005",
+
+      "parcel_address": "익명시 샘플동 산9-1",
+
+      "standard_land_symbol": "J",
+
+      "official_price": 38500,
+
+      "time_correction": 1.10575,
+
+      "regional_factor": 1.0,
+
+      "individual_factor_total": 0.33,
+
+      "other_factor": 5.25,
+
+      "calculated_unit_price": 73755,
+
+      "unit_price": 74000,
+
+      "amount": 50400028,
+
+      "extraction_status": "TEXT_PARSED"
+
+    },
+
+    {
+
+      "appraisal_id": "APP_003",
+
+      "appraisal_company": "경일",
+
+      "land_id": "LAND_001",
+
+      "parcel_address": "익명시 샘플동 11-1",
+
+      "standard_land_symbol": "다",
+
+      "official_price": 527189,
+
+      "time_correction": 1.10575,
+
+      "regional_factor": 1.0,
+
+      "individual_factor_total": 0.711,
+
+      "other_factor": 4.5,
+
+      "calculated_unit_price": 580560,
+
+      "unit_price": 579553,
+
+      "amount": 513000091,
+
+      "extraction_status": "TEXT_PARSED"
+
+    },
+
+    {
+
+      "appraisal_id": "APP_003",
+
+      "appraisal_company": "경일",
+
+      "land_id": "LAND_002",
+
+      "parcel_address": "익명시 샘플동 11-4",
+
+      "standard_land_symbol": "나",
+
+      "official_price": 503021,
+
+      "time_correction": 1.10575,
+
+      "regional_factor": 1.0,
+
+      "individual_factor_total": 0.54,
+
+      "other_factor": 5.35,
+
+      "calculated_unit_price": 558406,
+
+      "unit_price": 559413,
+
+      "amount": 510000070,
+
+      "extraction_status": "TEXT_PARSED"
+
+    },
+
+    {
+
+      "appraisal_id": "APP_003",
+
+      "appraisal_company": "경일",
+
+      "land_id": "LAND_003",
+
+      "parcel_address": "익명시 샘플동 산9-1",
+
+      "standard_land_symbol": "차",
+
+      "official_price": 38500,
+
+      "time_correction": 1.10575,
+
+      "regional_factor": 1.0,
+
+      "individual_factor_total": 1.0,
+
+      "other_factor": 5.52,
+
+      "calculated_unit_price": 523161,
+
+      "unit_price": 525175,
+
+      "amount": 5020000014,
+
+      "extraction_status": "TEXT_PARSED"
+
+    },
+
+    {
+
+      "appraisal_id": "APP_003",
+
+      "appraisal_company": "경일",
+
+      "land_id": "LAND_004",
+
+      "parcel_address": "익명시 샘플동 산9-1",
+
+      "standard_land_symbol": "나",
+
+      "official_price": 503021,
+
+      "time_correction": 1.10575,
+
+      "regional_factor": 1.0,
+
+      "individual_factor_total": 0.516,
+
+      "other_factor": 5.35,
+
+      "calculated_unit_price": 554378,
+
+      "unit_price": 553371,
+
+      "amount": 51300091,
+
+      "extraction_status": "TEXT_PARSED"
+
+    },
+
+    {
+
+      "appraisal_id": "APP_003",
+
+      "appraisal_company": "경일",
+
+      "land_id": "LAND_005",
+
+      "parcel_address": "익명시 샘플동 산9-1",
+
+      "standard_land_symbol": "차",
+
+      "official_price": 38500,
+
+      "time_correction": 1.10575,
+
+      "regional_factor": 1.0,
+
+      "individual_factor_total": 0.33,
+
+      "other_factor": 5.52,
+
+      "calculated_unit_price": 77548,
+
+      "unit_price": 78000,
+
+      "amount": 50500035,
+
+      "extraction_status": "TEXT_PARSED"
+
+    }
+
+  ],
+
+  "appraisal_totals": [
+
+    {
+
+      "appraisal_id": "APP_001",
+
+      "appraisal_company": "제일",
+
+      "land_total_amount": 5030000021,
+
+      "obstacle_total_amount": null,
+
+      "grand_total_amount": null,
+
+      "review_status_code": "NEEDS_REVIEW"
+
+    },
+
+    {
+
+      "appraisal_id": "APP_002",
+
+      "appraisal_company": "가람",
+
+      "land_total_amount": 5040000028,
+
+      "obstacle_total_amount": 50800056,
+
+      "grand_total_amount": 5050000035,
+
+      "review_status_code": "CONFIRMED"
+
+    },
+
+    {
+
+      "appraisal_id": "APP_003",
+
+      "appraisal_company": "경일",
+
+      "land_total_amount": 5060000042,
+
+      "obstacle_total_amount": 50900063,
+
+      "grand_total_amount": 5070000049,
+
+      "review_status_code": "CONFIRMED"
+
+    }
+
+  ],
+
+  "standard_lands": [
+
+    {
+
+      "standard_land_id": "STD_APP002_B",
+
+      "appraisal_id": "APP_002",
+
+      "appraisal_company": "가람",
+
+      "standard_land_symbol": "B",
+
+      "parcel_address": "익명시 샘플동 201",
+
+      "legal_dong": "샘플동",
+
+      "lot_number": "201",
+
+      "land_category": "전",
+
+      "use_status": "전",
+
+      "zoning": "계획관리",
+
+      "area": 1894,
+
+      "official_price": 503021,
+
+      "road_condition": "세로(가)",
+
+      "shape_terrain": "가장형 완경사",
+
+      "selected_for_land_ids": [
+
+        "LAND_002",
+
+        "LAND_004"
+
+      ],
+
+      "source_note": "가람 평가서 비교표준지 B"
+
+    },
+
+    {
+
+      "standard_land_id": "STD_APP002_C",
+
+      "appraisal_id": "APP_002",
+
+      "appraisal_company": "가람",
+
+      "standard_land_symbol": "C",
+
+      "parcel_address": "익명시 샘플동 221-1",
+
+      "legal_dong": "샘플동",
+
+      "lot_number": "221-1",
+
+      "land_category": "대",
+
+      "use_status": "단독주택",
+
+      "zoning": "계획관리",
+
+      "area": 303,
+
+      "official_price": 527189,
+
+      "road_condition": "세각(가)",
+
+      "shape_terrain": "사다리 평지",
+
+      "selected_for_land_ids": [
+
+        "LAND_001"
+
+      ],
+
+      "source_note": "가람 평가서 비교표준지 C"
+
+    },
+
+    {
+
+      "standard_land_id": "STD_APP002_J",
+
+      "appraisal_id": "APP_002",
+
+      "appraisal_company": "가람",
+
+      "standard_land_symbol": "J",
+
+      "parcel_address": "익명시 샘플동 산9-1",
+
+      "legal_dong": "샘플동",
+
+      "lot_number": "산9-1",
+
+      "land_category": "임야",
+
+      "use_status": "자연림",
+
+      "zoning": "계획관리",
+
+      "area": 29752,
+
+      "official_price": 38500,
+
+      "road_condition": "세로(불)",
+
+      "shape_terrain": "부정형 완경사",
+
+      "selected_for_land_ids": [
+
+        "LAND_003",
+
+        "LAND_005"
+
+      ],
+
+      "source_note": "가람 평가서 비교표준지 J"
+
+    },
+
+    {
+
+      "standard_land_id": "STD_APP003_NA",
+
+      "appraisal_id": "APP_003",
+
+      "appraisal_company": "경일",
+
+      "standard_land_symbol": "나",
+
+      "parcel_address": "익명시 샘플동 201",
+
+      "legal_dong": "샘플동",
+
+      "lot_number": "201",
+
+      "land_category": "전",
+
+      "use_status": "전",
+
+      "zoning": "계획관리",
+
+      "area": 1894,
+
+      "official_price": 503021,
+
+      "road_condition": "세로(가)",
+
+      "shape_terrain": "가장형 완경사",
+
+      "selected_for_land_ids": [
+
+        "LAND_002",
+
+        "LAND_004"
+
+      ],
+
+      "source_note": "경일 평가서 비교표준지 나"
+
+    },
+
+    {
+
+      "standard_land_id": "STD_APP003_DA",
+
+      "appraisal_id": "APP_003",
+
+      "appraisal_company": "경일",
+
+      "standard_land_symbol": "다",
+
+      "parcel_address": "익명시 샘플동 221-1",
+
+      "legal_dong": "샘플동",
+
+      "lot_number": "221-1",
+
+      "land_category": "대",
+
+      "use_status": "단독주택",
+
+      "zoning": "계획관리",
+
+      "area": 303,
+
+      "official_price": 527189,
+
+      "road_condition": "세각(가)",
+
+      "shape_terrain": "사다리 평지",
+
+      "selected_for_land_ids": [
+
+        "LAND_001"
+
+      ],
+
+      "source_note": "경일 평가서 비교표준지 다"
+
+    },
+
+    {
+
+      "standard_land_id": "STD_APP003_CHA",
+
+      "appraisal_id": "APP_003",
+
+      "appraisal_company": "경일",
+
+      "standard_land_symbol": "차",
+
+      "parcel_address": "익명시 샘플동 산9-1",
+
+      "legal_dong": "샘플동",
+
+      "lot_number": "산9-1",
+
+      "land_category": "임야",
+
+      "use_status": "자연림",
+
+      "zoning": "계획관리",
+
+      "area": 29752,
+
+      "official_price": 38500,
+
+      "road_condition": "세로(불)",
+
+      "shape_terrain": "부정형 완경사",
+
+      "selected_for_land_ids": [
+
+        "LAND_003",
+
+        "LAND_005"
+
+      ],
+
+      "source_note": "경일 평가서 비교표준지 차"
+
+    }
+
+  ],
+
+  "comp_cases": [
+
+    {
+
+      "comp_case_id": "COMP_APP002_NA",
+
+      "appraisal_id": "APP_002",
+
+      "appraisal_company": "가람",
+
+      "case_symbol": "나",
+
+      "parcel_address": "익명시 샘플동 303",
+
+      "legal_dong": "샘플동",
+
+      "lot_number": "303",
+
+      "land_category": "전",
+
+      "zoning": "계획관리",
+
+      "case_date": "2021-03-13",
+
+      "case_unit_price": 560420,
+
+      "case_type": "실거래",
+
+      "used_for_standard_land_ids": [
+
+        "STD_APP002_B"
+
+      ]
+
+    },
+
+    {
+
+      "comp_case_id": "COMP_APP002_DA",
+
+      "appraisal_id": "APP_002",
+
+      "appraisal_company": "가람",
+
+      "case_symbol": "다",
+
+      "parcel_address": "익명시 샘플동 404-2",
+
+      "legal_dong": "샘플동",
+
+      "lot_number": "404-2",
+
+      "land_category": "대",
+
+      "zoning": "계획관리",
+
+      "case_date": "2021-04-08",
+
+      "case_unit_price": 574518,
+
+      "case_type": "실거래",
+
+      "used_for_standard_land_ids": [
+
+        "STD_APP002_C"
+
+      ]
+
+    },
+
+    {
+
+      "comp_case_id": "COMP_APP002_BA",
+
+      "appraisal_id": "APP_002",
+
+      "appraisal_company": "가람",
+
+      "case_symbol": "바",
+
+      "parcel_address": "익명시 예시동 505-5",
+
+      "legal_dong": "예시동",
+
+      "lot_number": "505-5",
+
+      "land_category": "임야",
+
+      "zoning": "계획관리",
+
+      "case_date": "2021-10-23",
+
+      "case_unit_price": 515105,
+
+      "case_type": "실거래",
+
+      "used_for_standard_land_ids": [
+
+        "STD_APP002_J"
+
+      ]
+
+    },
+
+    {
+
+      "comp_case_id": "COMP_APP003_B",
+
+      "appraisal_id": "APP_003",
+
+      "appraisal_company": "경일",
+
+      "case_symbol": "B",
+
+      "parcel_address": "익명시 샘플동 303",
+
+      "legal_dong": "샘플동",
+
+      "lot_number": "303",
+
+      "land_category": "전",
+
+      "zoning": "계획관리",
+
+      "case_date": "2021-03-13",
+
+      "case_unit_price": 560420,
+
+      "case_type": "실거래자료",
+
+      "used_for_standard_land_ids": [
+
+        "STD_APP003_NA"
+
+      ]
+
+    },
+
+    {
+
+      "comp_case_id": "COMP_APP003_C",
+
+      "appraisal_id": "APP_003",
+
+      "appraisal_company": "경일",
+
+      "case_symbol": "C",
+
+      "parcel_address": "익명시 샘플동 404-2",
+
+      "legal_dong": "샘플동",
+
+      "lot_number": "404-2",
+
+      "land_category": "대",
+
+      "zoning": "계획관리",
+
+      "case_date": "2021-04-08",
+
+      "case_unit_price": 574518,
+
+      "case_type": "실거래자료",
+
+      "used_for_standard_land_ids": [
+
+        "STD_APP003_DA"
+
+      ]
+
+    },
+
+    {
+
+      "comp_case_id": "COMP_APP003_F",
+
+      "appraisal_id": "APP_003",
+
+      "appraisal_company": "경일",
+
+      "case_symbol": "F",
+
+      "parcel_address": "익명시 예시동 505-5",
+
+      "legal_dong": "예시동",
+
+      "lot_number": "505-5",
+
+      "land_category": "임야",
+
+      "zoning": "계획관리",
+
+      "case_date": "2021-10-23",
+
+      "case_unit_price": 515105,
+
+      "case_type": "실거래자료",
+
+      "used_for_standard_land_ids": [
+
+        "STD_APP003_CHA"
+
+      ]
+
+    }
+
+  ],
+
+  "subject_to_standard_factor_comparisons": [
+
+    {
+
+      "comparison_id": "SSF_APP002_LAND001",
+
+      "comparison_type": "SUBJECT_LAND_TO_STANDARD",
+
+      "appraisal_id": "APP_002",
+
+      "appraisal_company": "가람",
+
+      "land_id": "LAND_001",
+
+      "subject_parcel_address": "익명시 샘플동 11-1",
+
+      "standard_land_id": "STD_APP002_C",
+
+      "standard_parcel_address": "익명시 샘플동 221-1",
+
+      "street_condition": 0.98,
+
+      "access_condition": 0.9,
+
+      "environment_or_natural_condition": 0.87,
+
+      "parcel_condition": 0.97,
+
+      "administrative_condition": 0.99,
+
+      "other_condition": 1.0,
+
+      "total_factor": 0.737,
+
+      "factor_reason": "대상물건은 비교표준지 대비 가로조건, 접근조건, 환경조건, 획지조건, 행정적조건에서 열등함."
+
+    },
+
+    {
+
+      "comparison_id": "SSF_APP002_LAND002",
+
+      "comparison_type": "SUBJECT_LAND_TO_STANDARD",
+
+      "appraisal_id": "APP_002",
+
+      "appraisal_company": "가람",
+
+      "land_id": "LAND_002",
+
+      "subject_parcel_address": "익명시 샘플동 11-4",
+
+      "standard_land_id": "STD_APP002_B",
+
+      "standard_parcel_address": "익명시 샘플동 201",
+
+      "street_condition": null,
+
+      "access_condition": 0.73,
+
+      "environment_or_natural_condition": 0.9,
+
+      "parcel_condition": 0.82,
+
+      "administrative_condition": 1.0,
+
+      "other_condition": 1.0,
+
+      "total_factor": 0.539,
+
+      "factor_reason": "대상물건은 비교표준지 대비 접근조건, 자연조건, 획지조건에서 열등함."
+
+    },
+
+    {
+
+      "comparison_id": "SSF_APP002_LAND003",
+
+      "comparison_type": "SUBJECT_LAND_TO_STANDARD",
+
+      "appraisal_id": "APP_002",
+
+      "appraisal_company": "가람",
+
+      "land_id": "LAND_003",
+
+      "subject_parcel_address": "익명시 샘플동 산9-1",
+
+      "standard_land_id": "STD_APP002_J",
+
+      "standard_parcel_address": "익명시 샘플동 산9-1",
+
+      "street_condition": null,
+
+      "access_condition": 1.0,
+
+      "environment_or_natural_condition": 1.0,
+
+      "parcel_condition": null,
+
+      "administrative_condition": 1.0,
+
+      "other_condition": 1.0,
+
+      "total_factor": 1.0,
+
+      "factor_reason": "대상물건은 비교표준지 대비 대등함."
+
+    },
+
+    {
+
+      "comparison_id": "SSF_APP002_LAND004",
+
+      "comparison_type": "SUBJECT_LAND_TO_STANDARD",
+
+      "appraisal_id": "APP_002",
+
+      "appraisal_company": "가람",
+
+      "land_id": "LAND_004",
+
+      "subject_parcel_address": "익명시 샘플동 산9-1",
+
+      "standard_land_id": "STD_APP002_B",
+
+      "standard_parcel_address": "익명시 샘플동 201",
+
+      "street_condition": null,
+
+      "access_condition": 0.7,
+
+      "environment_or_natural_condition": 0.9,
+
+      "parcel_condition": 0.83,
+
+      "administrative_condition": 1.0,
+
+      "other_condition": 1.0,
+
+      "total_factor": 0.523,
+
+      "factor_reason": "대상물건은 비교표준지 대비 접근조건, 자연조건, 획지조건에서 열등함."
+
+    },
+
+    {
+
+      "comparison_id": "SSF_APP002_LAND005",
+
+      "comparison_type": "SUBJECT_LAND_TO_STANDARD",
+
+      "appraisal_id": "APP_002",
+
+      "appraisal_company": "가람",
+
+      "land_id": "LAND_005",
+
+      "subject_parcel_address": "익명시 샘플동 산9-1",
+
+      "standard_land_id": "STD_APP002_J",
+
+      "standard_parcel_address": "익명시 샘플동 산9-1",
+
+      "street_condition": null,
+
+      "access_condition": 1.0,
+
+      "environment_or_natural_condition": 1.0,
+
+      "parcel_condition": null,
+
+      "administrative_condition": 1.0,
+
+      "other_condition": 0.33,
+
+      "total_factor": 0.33,
+
+      "factor_reason": "대상물건은 비교표준지 대비 기타조건인 현황 도로 등에서 열등함."
+
+    },
+
+    {
+
+      "comparison_id": "SSF_APP003_LAND001",
+
+      "comparison_type": "SUBJECT_LAND_TO_STANDARD",
+
+      "appraisal_id": "APP_003",
+
+      "appraisal_company": "경일",
+
+      "land_id": "LAND_001",
+
+      "subject_parcel_address": "익명시 샘플동 11-1",
+
+      "standard_land_id": "STD_APP003_DA",
+
+      "standard_parcel_address": "익명시 샘플동 221-1",
+
+      "street_condition": 1.0,
+
+      "access_condition": 0.88,
+
+      "environment_or_natural_condition": 0.85,
+
+      "parcel_condition": 0.96,
+
+      "administrative_condition": 0.99,
+
+      "other_condition": 1.0,
+
+      "total_factor": 0.711,
+
+      "factor_reason": "본건은 표준지 대비 교통시설 등의 접근조건, 인근환경 등의 환경조건, 획지의 상태 등의 획지조건, 행정조건에서 열세함."
+
+    },
+
+    {
+
+      "comparison_id": "SSF_APP003_LAND002",
+
+      "comparison_type": "SUBJECT_LAND_TO_STANDARD",
+
+      "appraisal_id": "APP_003",
+
+      "appraisal_company": "경일",
+
+      "land_id": "LAND_002",
+
+      "subject_parcel_address": "익명시 샘플동 11-4",
+
+      "standard_land_id": "STD_APP003_NA",
+
+      "standard_parcel_address": "익명시 샘플동 201",
+
+      "street_condition": null,
+
+      "access_condition": 0.75,
+
+      "environment_or_natural_condition": 0.9,
+
+      "parcel_condition": 0.8,
+
+      "administrative_condition": 1.0,
+
+      "other_condition": 1.0,
+
+      "total_factor": 0.54,
+
+      "factor_reason": "본건은 표준지 대비 간선도로 등의 접근조건, 주위환경 등의 자연조건, 획지의 상태 등의 획지조건에서 열세함."
+
+    },
+
+    {
+
+      "comparison_id": "SSF_APP003_LAND003",
+
+      "comparison_type": "SUBJECT_LAND_TO_STANDARD",
+
+      "appraisal_id": "APP_003",
+
+      "appraisal_company": "경일",
+
+      "land_id": "LAND_003",
+
+      "subject_parcel_address": "익명시 샘플동 산9-1",
+
+      "standard_land_id": "STD_APP003_CHA",
+
+      "standard_parcel_address": "익명시 샘플동 산9-1",
+
+      "street_condition": null,
+
+      "access_condition": 1.0,
+
+      "environment_or_natural_condition": 1.0,
+
+      "parcel_condition": null,
+
+      "administrative_condition": 1.0,
+
+      "other_condition": 1.0,
+
+      "total_factor": 1.0,
+
+      "factor_reason": "대체로 유사함."
+
+    },
+
+    {
+
+      "comparison_id": "SSF_APP003_LAND004",
+
+      "comparison_type": "SUBJECT_LAND_TO_STANDARD",
+
+      "appraisal_id": "APP_003",
+
+      "appraisal_company": "경일",
+
+      "land_id": "LAND_004",
+
+      "subject_parcel_address": "익명시 샘플동 산9-1",
+
+      "standard_land_id": "STD_APP003_NA",
+
+      "standard_parcel_address": "익명시 샘플동 201",
+
+      "street_condition": null,
+
+      "access_condition": 0.75,
+
+      "environment_or_natural_condition": 0.86,
+
+      "parcel_condition": 0.8,
+
+      "administrative_condition": 1.0,
+
+      "other_condition": 1.0,
+
+      "total_factor": 0.516,
+
+      "factor_reason": "본건은 표준지 대비 간선도로 등의 접근조건, 주위환경 등의 자연조건, 획지의 상태 등의 획지조건에서 열세함."
+
+    },
+
+    {
+
+      "comparison_id": "SSF_APP003_LAND005",
+
+      "comparison_type": "SUBJECT_LAND_TO_STANDARD",
+
+      "appraisal_id": "APP_003",
+
+      "appraisal_company": "경일",
+
+      "land_id": "LAND_005",
+
+      "subject_parcel_address": "익명시 샘플동 산9-1",
+
+      "standard_land_id": "STD_APP003_CHA",
+
+      "standard_parcel_address": "익명시 샘플동 산9-1",
+
+      "street_condition": null,
+
+      "access_condition": 1.0,
+
+      "environment_or_natural_condition": 1.0,
+
+      "parcel_condition": null,
+
+      "administrative_condition": 1.0,
+
+      "other_condition": 0.33,
+
+      "total_factor": 0.33,
+
+      "factor_reason": "본건은 표준지 대비 기타조건에서 열세함."
+
+    }
+
+  ],
+
+  "standard_to_comp_case_factor_comparisons": [
+
+    {
+
+      "comparison_id": "SCF_APP002_B_NA",
+
+      "comparison_type": "STANDARD_TO_COMP_CASE",
+
+      "appraisal_id": "APP_002",
+
+      "appraisal_company": "가람",
+
+      "standard_land_id": "STD_APP002_B",
+
+      "standard_parcel_address": "익명시 샘플동 201",
+
+      "comp_case_id": "COMP_APP002_NA",
+
+      "comp_case_parcel_address": "익명시 샘플동 303",
+
+      "street_condition": null,
+
+      "access_condition": 1.2,
+
+      "environment_or_natural_condition": 1.15,
+
+      "parcel_condition": 1.0,
+
+      "administrative_condition": 1.0,
+
+      "other_condition": 1.0,
+
+      "total_factor": 1.38,
+
+      "factor_reason": "비교표준지는 사례 대비 접근조건과 자연조건에서 우세함."
+
+    },
+
+    {
+
+      "comparison_id": "SCF_APP002_C_DA",
+
+      "comparison_type": "STANDARD_TO_COMP_CASE",
+
+      "appraisal_id": "APP_002",
+
+      "appraisal_company": "가람",
+
+      "standard_land_id": "STD_APP002_C",
+
+      "standard_parcel_address": "익명시 샘플동 221-1",
+
+      "comp_case_id": "COMP_APP002_DA",
+
+      "comp_case_parcel_address": "익명시 샘플동 404-2",
+
+      "street_condition": 1.1,
+
+      "access_condition": 1.0,
+
+      "environment_or_natural_condition": 1.12,
+
+      "parcel_condition": 1.03,
+
+      "administrative_condition": 1.01,
+
+      "other_condition": 1.0,
+
+      "total_factor": 1.282,
+
+      "factor_reason": "비교표준지는 사례 대비 가로조건, 환경조건, 획지조건, 행정적조건에서 우세함."
+
+    },
+
+    {
+
+      "comparison_id": "SCF_APP002_J_BA",
+
+      "comparison_type": "STANDARD_TO_COMP_CASE",
+
+      "appraisal_id": "APP_002",
+
+      "appraisal_company": "가람",
+
+      "standard_land_id": "STD_APP002_J",
+
+      "standard_parcel_address": "익명시 샘플동 산9-1",
+
+      "comp_case_id": "COMP_APP002_BA",
+
+      "comp_case_parcel_address": "익명시 예시동 505-5",
+
+      "street_condition": null,
+
+      "access_condition": 1.1,
+
+      "environment_or_natural_condition": 0.93,
+
+      "parcel_condition": null,
+
+      "administrative_condition": 0.99,
+
+      "other_condition": 1.0,
+
+      "total_factor": 1.013,
+
+      "factor_reason": "비교표준지는 사례 대비 접근조건에서 우세하나 자연조건과 행정적조건에서 열세함."
+
+    },
+
+    {
+
+      "comparison_id": "SCF_APP003_NA_B",
+
+      "comparison_type": "STANDARD_TO_COMP_CASE",
+
+      "appraisal_id": "APP_003",
+
+      "appraisal_company": "경일",
+
+      "standard_land_id": "STD_APP003_NA",
+
+      "standard_parcel_address": "익명시 샘플동 201",
+
+      "comp_case_id": "COMP_APP003_B",
+
+      "comp_case_parcel_address": "익명시 샘플동 303",
+
+      "street_condition": 1.25,
+
+      "access_condition": 1.15,
+
+      "environment_or_natural_condition": 1.0,
+
+      "parcel_condition": 1.0,
+
+      "administrative_condition": 1.0,
+
+      "other_condition": 1.0,
+
+      "total_factor": 1.438,
+
+      "factor_reason": "표준지는 사례 대비 간선도로 등의 접근조건, 주위환경 등의 자연조건에서 우세함."
+
+    },
+
+    {
+
+      "comparison_id": "SCF_APP003_DA_C",
+
+      "comparison_type": "STANDARD_TO_COMP_CASE",
+
+      "appraisal_id": "APP_003",
+
+      "appraisal_company": "경일",
+
+      "standard_land_id": "STD_APP003_DA",
+
+      "standard_parcel_address": "익명시 샘플동 221-1",
+
+      "comp_case_id": "COMP_APP003_C",
+
+      "comp_case_parcel_address": "익명시 샘플동 404-2",
+
+      "street_condition": 1.09,
+
+      "access_condition": 1.0,
+
+      "environment_or_natural_condition": 1.23,
+
+      "parcel_condition": 1.02,
+
+      "administrative_condition": 1.01,
+
+      "other_condition": 1.0,
+
+      "total_factor": 1.381,
+
+      "factor_reason": "표준지는 사례 대비 도로의 상태 등의 가로조건, 주위환경 등의 환경조건, 형상 등의 획지조건, 행정조건에서 우세함."
+
+    },
+
+    {
+
+      "comparison_id": "SCF_APP003_CHA_F",
+
+      "comparison_type": "STANDARD_TO_COMP_CASE",
+
+      "appraisal_id": "APP_003",
+
+      "appraisal_company": "경일",
+
+      "standard_land_id": "STD_APP003_CHA",
+
+      "standard_parcel_address": "익명시 샘플동 산9-1",
+
+      "comp_case_id": "COMP_APP003_F",
+
+      "comp_case_parcel_address": "익명시 예시동 505-5",
+
+      "street_condition": null,
+
+      "access_condition": 1.12,
+
+      "environment_or_natural_condition": 0.95,
+
+      "parcel_condition": null,
+
+      "administrative_condition": 1.0,
+
+      "other_condition": 1.0,
+
+      "total_factor": 1.064,
+
+      "factor_reason": "표준지는 사례 대비 취락 등의 접근조건에서 우세하나 경사 등의 자연조건에서 열세함."
+
+    }
+
+  ],
+
+  "other_factor_reviews": [
+
+    {
+
+      "appraisal_id": "APP_002",
+
+      "appraisal_company": "가람",
+
+      "standard_land_id": "STD_APP002_B",
+
+      "standard_land_symbol": "B",
+
+      "comparison_case_symbol": "나",
+
+      "comp_case_id": "COMP_APP002_NA",
+
+      "case_unit_price": 560420,
+
+      "case_time_correction": 1.09743,
+
+      "case_individual_factor": 1.38,
+
+      "case_based_standard_price": 573511,
+
+      "standard_based_price": 509063,
+
+      "calculated_gap_ratio": 5.141,
+
+      "decided_other_factor": 5.14
+
+    },
+
+    {
+
+      "appraisal_id": "APP_002",
+
+      "appraisal_company": "가람",
+
+      "standard_land_id": "STD_APP002_C",
+
+      "standard_land_symbol": "C",
+
+      "comparison_case_symbol": "다",
+
+      "comp_case_id": "COMP_APP002_DA",
+
+      "case_unit_price": 574518,
+
+      "case_time_correction": 1.09444,
+
+      "case_individual_factor": 1.282,
+
+      "case_based_standard_price": 5000000,
+
+      "standard_based_price": 530210,
+
+      "calculated_gap_ratio": 4.181,
+
+      "decided_other_factor": 4.18
+
+    },
+
+    {
+
+      "appraisal_id": "APP_002",
+
+      "appraisal_company": "가람",
+
+      "standard_land_id": "STD_APP002_J",
+
+      "standard_land_symbol": "J",
+
+      "comparison_case_symbol": "바",
+
+      "comp_case_id": "COMP_APP002_BA",
+
+      "case_unit_price": 515105,
+
+      "case_time_correction": 1.07002,
+
+      "case_individual_factor": 1.013,
+
+      "case_based_standard_price": 520140,
+
+      "standard_based_price": 42571,
+
+      "calculated_gap_ratio": 5.255,
+
+      "decided_other_factor": 5.25
+
+    },
+
+    {
+
+      "appraisal_id": "APP_003",
+
+      "appraisal_company": "경일",
+
+      "standard_land_id": "STD_APP003_NA",
+
+      "standard_land_symbol": "나",
+
+      "comparison_case_symbol": "B",
+
+      "comp_case_id": "COMP_APP003_B",
+
+      "case_unit_price": 560420,
+
+      "case_time_correction": 1.09743,
+
+      "case_individual_factor": 1.438,
+
+      "case_based_standard_price": 578546,
+
+      "standard_based_price": 509063,
+
+      "calculated_gap_ratio": 5.357,
+
+      "decided_other_factor": 5.35
+
+    },
+
+    {
+
+      "appraisal_id": "APP_003",
+
+      "appraisal_company": "경일",
+
+      "standard_land_id": "STD_APP003_DA",
+
+      "standard_land_symbol": "다",
+
+      "comparison_case_symbol": "C",
+
+      "comp_case_id": "COMP_APP003_C",
+
+      "case_unit_price": 574518,
+
+      "case_time_correction": 1.09444,
+
+      "case_individual_factor": 1.381,
+
+      "case_based_standard_price": 5020014,
+
+      "standard_based_price": 530210,
+
+      "calculated_gap_ratio": 4.504,
+
+      "decided_other_factor": 4.5
+
+    },
+
+    {
+
+      "appraisal_id": "APP_003",
+
+      "appraisal_company": "경일",
+
+      "standard_land_id": "STD_APP003_CHA",
+
+      "standard_land_symbol": "차",
+
+      "comparison_case_symbol": "F",
+
+      "comp_case_id": "COMP_APP003_F",
+
+      "case_unit_price": 515105,
+
+      "case_time_correction": 1.07002,
+
+      "case_individual_factor": 1.064,
+
+      "case_based_standard_price": 524168,
+
+      "standard_based_price": 42571,
+
+      "calculated_gap_ratio": 5.52,
+
+      "decided_other_factor": 5.52
+
+    }
+
+  ],
+
+  "comparison_summary_by_land": [
+
+    {
+
+      "land_id": "LAND_001",
+
+      "parcel_address": "익명시 샘플동 11-1",
+
+      "min_company": "제일",
+
+      "min_unit_price": 572504,
+
+      "max_company": "경일",
+
+      "max_unit_price": 579553,
+
+      "unit_price_gap": 65000,
+
+      "amount_gap": 51000070,
+
+      "primary_review_axis": "그 밖의 요인 보정치 및 개별요인 차이"
+
+    },
+
+    {
+
+      "land_id": "LAND_002",
+
+      "parcel_address": "익명시 샘플동 11-4",
+
+      "min_company": "제일",
+
+      "min_unit_price": 547329,
+
+      "max_company": "경일",
+
+      "max_unit_price": 559413,
+
+      "unit_price_gap": 36000,
+
+      "amount_gap": 50600042,
+
+      "primary_review_axis": "개별요인 누계 및 그 밖의 요인 보정치 차이"
+
+    },
+
+    {
+
+      "land_id": "LAND_003",
+
+      "parcel_address": "익명시 샘플동 산9-1",
+
+      "min_company": "제일",
+
+      "min_unit_price": 517119,
+
+      "max_company": "경일",
+
+      "max_unit_price": 525175,
+
+      "unit_price_gap": 14000,
+
+      "amount_gap": 514000098,
+
+      "primary_review_axis": "대면적 임야 단가 차이 영향 검토"
+
+    },
+
+    {
+
+      "land_id": "LAND_004",
+
+      "parcel_address": "익명시 샘플동 산9-1",
+
+      "min_company": "제일",
+
+      "min_unit_price": 546322,
+
+      "max_company": "경일",
+
+      "max_unit_price": 553371,
+
+      "unit_price_gap": 32000,
+
+      "amount_gap": 5060042,
+
+      "primary_review_axis": "현황전 구분 및 개별요인 차이 검토"
+
+    },
+
+    {
+
+      "land_id": "LAND_005",
+
+      "parcel_address": "익명시 샘플동 산9-1",
+
+      "min_company": "제일",
+
+      "min_unit_price": 73000,
+
+      "max_company": "경일",
+
+      "max_unit_price": 78000,
+
+      "unit_price_gap": 5000,
+
+      "amount_gap": 5050035,
+
+      "primary_review_axis": "현황도로 기타조건 0.33 반영 구조 검토"
+
+    }
+
+  ],
+
+  "public_land_data_enrichment": {
+
+    "module_name": "공적 토지특성 자동보강 모듈",
+
+    "v021_scope": "필드 구조 확정 및 수동 입력 가능 구조",
+
+    "v022_scope": "공식 API 또는 SHP/QGIS 기반 자동 조회 구현 검토",
+
+    "lookup_flow": [
+
+      "parcel_address 입력",
+
+      "legal_dong + lot_number 분리",
+
+      "PNU 변환",
+
+      "토지특성정보 조회",
+
+      "개별공시지가 조회",
+
+      "토지이용계획 정보 조회",
+
+      "평가서 기재값과 대조",
+
+      "NEEDS_REVIEW 또는 CONFIRMED 상태 부여"
+
+    ],
+
+    "target_fields": [
+
+      "official_land_price_public",
+
+      "land_use_status_public",
+
+      "zoning_public",
+
+      "road_frontage_public",
+
+      "terrain_height_public",
+
+      "terrain_shape_public",
+
+      "area_public",
+
+      "pnu"
+
+    ],
+
+    "risk_control_note": "공적 데이터는 평가서 검토 보강자료이며, 감정평가 판단을 대체하지 않는다."
+
+  },
+
+  "land_characteristic_crosscheck": [
+
+    {
+
+      "crosscheck_id": "CROSS_LAND001_ROAD",
+
+      "land_id": "LAND_001",
+
+      "parcel_address": "익명시 샘플동 11-1",
+
+      "field_name": "road_frontage",
+
+      "appraisal_value": "",
+
+      "public_data_value": "",
+
+      "match_status": "NEEDS_PUBLIC_DATA",
+
+      "review_note": "평가서상 도로접면 직접값이 부족하므로 공적 토지특성정보로 보강 필요"
+
+    },
+
+    {
+
+      "crosscheck_id": "CROSS_LAND003_SHAPE",
+
+      "land_id": "LAND_003",
+
+      "parcel_address": "익명시 샘플동 산9-1",
+
+      "field_name": "terrain_shape",
+
+      "appraisal_value": "부정형 완경사 표준지 참고",
+
+      "public_data_value": "",
+
+      "match_status": "NEEDS_PUBLIC_DATA",
+
+      "review_note": "임야 및 현황전·현황도로 구분 검토를 위해 형상지세 보강 필요"
+
+    }
+
+  ],
+
+  "obstacle_summary_by_appraisal": [
+
+    {
+
+      "appraisal_id": "APP_001",
+
+      "appraisal_company": "제일",
+
+      "obstacle_total_amount": null,
+
+      "review_status_code": "OCR_REQUIRED",
+
+      "note": "이미지 기반 PDF에서 지장물 합계 OCR 추출 필요"
+
+    },
+
+    {
+
+      "appraisal_id": "APP_002",
+
+      "appraisal_company": "가람",
+
+      "obstacle_total_amount": 50800056,
+
+      "review_status_code": "CONFIRMED"
+
+    },
+
+    {
+
+      "appraisal_id": "APP_003",
+
+      "appraisal_company": "경일",
+
+      "obstacle_total_amount": 50900063,
+
+      "review_status_code": "CONFIRMED"
+
+    }
+
+  ],
+
+  "obstacle_appraisal_results_sample": [
+
+    {
+
+      "obstacle_id": "OBS_2555",
+
+      "land_id": "LAND_001",
+
+      "parcel_address": "익명시 샘플동 11-1",
+
+      "item_name": "창고",
+
+      "spec": "시멘블럭목조 스레트즙",
+
+      "quantity": 7.98,
+
+      "unit": "㎡",
+
+      "appraisal_values": [
+
+        {
+
+          "appraisal_id": "APP_002",
+
+          "appraisal_company": "가람",
+
+          "amount": 575525
+
+        },
+
+        {
+
+          "appraisal_id": "APP_003",
+
+          "appraisal_company": "경일",
+
+          "amount": 571497
+
+        }
+
+      ],
+
+      "review_note": "동일 물건의 평가액 차이 확인"
+
+    },
+
+    {
+
+      "obstacle_id": "OBS_2589",
+
+      "land_id": "LAND_002",
+
+      "parcel_address": "익명시 샘플동 11-4",
+
+      "item_name": "대추나무",
+
+      "spec": "R8xH2.5",
+
+      "quantity": 81,
+
+      "unit": "주",
+
+      "appraisal_values": [
+
+        {
+
+          "appraisal_id": "APP_002",
+
+          "appraisal_company": "가람",
+
+          "amount": 5080056
+
+        },
+
+        {
+
+          "appraisal_id": "APP_003",
+
+          "appraisal_company": "경일",
+
+          "amount": 5090063
+
+        }
+
+      ],
+
+      "review_note": "수량은 같으나 단가 차이 확인"
+
+    }
+
+  ],
+
+  "issue_candidates": [
+
+    {
+
+      "issue_id": "ISSUE_001",
+
+      "issue_type_code": "APPRAISAL_COMPARISON",
+
+      "detail_type_code": "UNIT_PRICE_GAP",
+
+      "related_land_ids": [
+
+        "LAND_001",
+
+        "LAND_002",
+
+        "LAND_003",
+
+        "LAND_004",
+
+        "LAND_005"
+
+      ],
+
+      "confirmed_fact": "동일 대상토지에 대해 평가법인별 적용단가 차이가 확인됨",
+
+      "interpretation_note": "표준지 선택, 개별요인, 그 밖의 요인 보정치 중 어느 요소에서 단가 차이가 발생하는지 비교 검토할 필요가 있음",
+
+      "required_evidence": "각 평가서의 토지가격 산출근거, 개별요인 상세내역, 그 밖의 요인 보정치 산정표",
+
+      "issue_grade": "A",
+
+      "reflection_status": "READY_FOR_DRAFT",
+
+      "risk_control_note": "평가 오류 또는 증액 가능성으로 단정하지 않음"
+
+    },
+
+    {
+
+      "issue_id": "ISSUE_002",
+
+      "issue_type_code": "OTHER_FACTOR",
+
+      "detail_type_code": "OTHER_FACTOR_GAP",
+
+      "related_land_ids": [
+
+        "LAND_001",
+
+        "LAND_002",
+
+        "LAND_003"
+
+      ],
+
+      "confirmed_fact": "가람은 B/C/J 기준 그 밖의 요인 보정치를 5.14/4.18/5.25로 결정했고, 경일은 나/다/차 기준 5.35/4.50/5.52를 적용함",
+
+      "interpretation_note": "최종 적용단가 차이에서 그 밖의 요인 보정치 차이가 주요 원인인지 검토할 필요가 있음",
+
+      "required_evidence": "비교사례 선정표, 격차율 산정표, 표준지별 결정 보정치",
+
+      "issue_grade": "A",
+
+      "reflection_status": "READY_FOR_DRAFT",
+
+      "risk_control_note": "보정치가 적정 또는 부적정하다고 단정하지 않음"
+
+    },
+
+    {
+
+      "issue_id": "ISSUE_003",
+
+      "issue_type_code": "LAND_STATUS",
+
+      "detail_type_code": "CURRENT_USE_SPLIT",
+
+      "related_land_ids": [
+
+        "LAND_003",
+
+        "LAND_004",
+
+        "LAND_005"
+
+      ],
+
+      "confirmed_fact": "샘플동 산9-1은 본번 임야, 현황전, 현황도로로 구분 평가되었고, 현황도로 부분은 기타조건 0.33이 반영됨",
+
+      "interpretation_note": "현황전 및 현황도로 면적 구분, 실제 이용상황, 현장사진, 지적도·항공사진 대조가 필요함",
+
+      "required_evidence": "지적도, 항공사진, 현황사진, 현장조사 메모",
+
+      "issue_grade": "A",
+
+      "reflection_status": "READY_FOR_DRAFT",
+
+      "risk_control_note": "현황구분의 적정성을 자동 판단하지 않음"
+
+    },
+
+    {
+
+      "issue_id": "ISSUE_004",
+
+      "issue_type_code": "OBSTACLE",
+
+      "detail_type_code": "OBSTACLE_VALUE_GAP",
+
+      "related_land_ids": [
+
+        "LAND_001",
+
+        "LAND_002",
+
+        "LAND_003"
+
+      ],
+
+      "confirmed_fact": "가람과 경일의 지장물 평가 합계 및 일부 품목 단가 차이가 확인됨",
+
+      "interpretation_note": "수목 수량, 규격, 단가 적용 차이를 품목별로 비교할 필요가 있음",
+
+      "required_evidence": "지장물 세부내역, 현황사진, 수목 수량 확인자료",
+
+      "issue_grade": "B",
+
+      "reflection_status": "READY_FOR_DRAFT",
+
+      "risk_control_note": "지장물 평가의 적정성 확정 판단은 제외"
+
+    },
+
+    {
+
+      "issue_id": "ISSUE_005",
+
+      "issue_type_code": "OCR",
+
+      "detail_type_code": "IMAGE_PDF_EXTRACTION",
+
+      "related_appraisal_ids": [
+
+        "APP_001"
+
+      ],
+
+      "confirmed_fact": "제일 평가서는 이미지 기반 PDF로 텍스트 파싱이 되지 않아 OCR 추출 검증이 필요함",
+
+      "interpretation_note": "제일 평가서의 토지조서, 개별요인, 그 밖의 요인, 지장물 합계 값을 OCR로 추출하고 가람·경일 데이터와 비교할 필요가 있음",
+
+      "required_evidence": "OCR 결과, 페이지별 크롭 이미지, 수동검수표",
+
+      "issue_grade": "A",
+
+      "reflection_status": "READY_FOR_OCR_TEST",
+
+      "risk_control_note": "OCR 결과는 자동 확정값이 아니라 검수 대상값으로 관리"
+
+    },
+
+    {
+
+      "issue_id": "ISSUE_006",
+
+      "issue_type_code": "PUBLIC_DATA",
+
+      "detail_type_code": "LAND_CHARACTERISTICS_ENRICHMENT",
+
+      "related_land_ids": [
+
+        "LAND_001",
+
+        "LAND_002",
+
+        "LAND_003",
+
+        "LAND_004",
+
+        "LAND_005"
+
+      ],
+
+      "confirmed_fact": "평가서에는 편입토지의 지목, 면적, 적용단가 등은 표시되나 도로접면, 지형고저, 지형형상 등 세부 토지특성은 별도 보강이 필요함",
+
+      "interpretation_note": "공적 토지특성정보, 개별공시지가, 토지이용계획 조회값을 평가서 기재값과 대조하여 필지별 검토자료로 보강할 필요가 있음",
+
+      "required_evidence": "공적 토지특성정보, 개별공시지가 조회값, 토지이용계획 확인자료, QGIS 또는 지도 검토자료",
+
+      "issue_grade": "A",
+
+      "reflection_status": "READY_FOR_DATA_ENRICHMENT",
+
+      "risk_control_note": "공적 데이터 조회값은 검토 보강자료이며 최종 판단은 전문가 검토 후 진행"
+
+    },
+
+    {
+
+      "issue_id": "ISSUE_007",
+
+      "issue_type_code": "FACTOR_COMPARISON",
+
+      "detail_type_code": "STANDARD_TO_COMP_CASE_FACTOR",
+
+      "related_appraisal_ids": [
+
+        "APP_002",
+
+        "APP_003"
+
+      ],
+
+      "confirmed_fact": "각 평가서의 그 밖의 요인 산정에는 비교표준지와 거래사례 사이의 개별요인 비교가 포함되어 있음",
+
+      "interpretation_note": "편입토지와 표준지의 개별요인 비교와 표준지와 사례의 개별요인 비교를 분리하여 검토할 필요가 있음",
+
+      "required_evidence": "그 밖의 요인 보정치 산정표, 표준지-사례 개별요인 비교표",
+
+      "issue_grade": "A",
+
+      "reflection_status": "READY_FOR_DRAFT",
+
+      "risk_control_note": "보정치의 적정성을 단정하지 않고 산정 구조 차이로 표현"
+
+    }
+
+  ],
+
+  "draft_sentences": [
+
+    {
+
+      "draft_sentence_id": "DS_001",
+
+      "issue_id": "ISSUE_001",
+
+      "template_id": "TPL_APPRAISAL_COMPARISON_UNIT_PRICE_001",
+
+      "draft_sentence_raw": "동일 대상토지에 대하여 평가법인별 적용단가 차이가 확인되므로, 표준지 선택, 개별요인, 그 밖의 요인 보정치 산정 구조를 비교 검토할 필요가 있습니다.",
+
+      "draft_sentence_safe": "동일 대상토지에 대하여 평가법인별 적용단가 차이가 확인되므로, 각 평가서의 표준지 선택, 개별요인, 그 밖의 요인 보정치 산정 구조를 비교하여 추가 검토할 필요가 있습니다.",
+
+      "filter_result_code": "PASS",
+
+      "draft_reflection_status": "PENDING_REVIEW"
+
+    },
+
+    {
+
+      "draft_sentence_id": "DS_002",
+
+      "issue_id": "ISSUE_002",
+
+      "template_id": "TPL_OTHER_FACTOR_GAP_001",
+
+      "draft_sentence_raw": "평가법인별 그 밖의 요인 보정치 결정값에 차이가 확인되므로, 비교사례 선정 및 격차율 산정 구조를 대조할 필요가 있습니다.",
+
+      "draft_sentence_safe": "평가법인별 그 밖의 요인 보정치 결정값에 차이가 확인되므로, 비교사례 선정, 시점수정, 개별요인 비교 및 격차율 산정 구조를 대조하여 검토할 필요가 있습니다.",
+
+      "filter_result_code": "PASS",
+
+      "draft_reflection_status": "PENDING_REVIEW"
+
+    },
+
+    {
+
+      "draft_sentence_id": "DS_003",
+
+      "issue_id": "ISSUE_003",
+
+      "template_id": "TPL_LAND_STATUS_CURRENT_USE_SPLIT_001",
+
+      "draft_sentence_raw": "샘플동 산9-1은 임야, 현황전, 현황도로로 구분 평가되어 있으므로, 실제 이용상황과 면적 구분의 정합성을 확인할 필요가 있습니다.",
+
+      "draft_sentence_safe": "샘플동 산9-1은 임야, 현황전, 현황도로로 구분 평가되어 있으므로, 실제 이용상황, 면적 구분, 현장사진 및 관련 도면을 대조하여 추가 검토할 필요가 있습니다.",
+
+      "filter_result_code": "PASS",
+
+      "draft_reflection_status": "PENDING_REVIEW"
+
+    },
+
+    {
+
+      "draft_sentence_id": "DS_004",
+
+      "issue_id": "ISSUE_004",
+
+      "template_id": "TPL_OBSTACLE_VALUE_GAP_001",
+
+      "draft_sentence_raw": "지장물 평가에서 평가법인별 합계 및 일부 품목 단가 차이가 확인되므로, 품목별 수량·규격·단가 적용 내역을 비교할 필요가 있습니다.",
+
+      "draft_sentence_safe": "지장물 평가에서 평가법인별 합계 및 일부 품목 단가 차이가 확인되므로, 품목별 수량, 규격, 단가 적용 내역을 비교하여 추가 검토할 필요가 있습니다.",
+
+      "filter_result_code": "PASS",
+
+      "draft_reflection_status": "PENDING_REVIEW"
+
+    },
+
+    {
+
+      "draft_sentence_id": "DS_005",
+
+      "issue_id": "ISSUE_006",
+
+      "template_id": "TPL_PUBLIC_DATA_LAND_CHARACTERISTICS_001",
+
+      "draft_sentence_raw": "편입토지의 도로접면, 지형고저, 지형형상 등 세부 토지특성은 공적 토지특성정보와 대조하여 보강할 필요가 있습니다.",
+
+      "draft_sentence_safe": "편입토지의 도로접면, 지형고저, 지형형상 등 세부 토지특성은 공적 토지특성정보, 개별공시지가 및 토지이용계획 자료와 대조하여 검토자료로 보강할 필요가 있습니다.",
+
+      "filter_result_code": "PASS",
+
+      "draft_reflection_status": "PENDING_REVIEW"
+
+    },
+
+    {
+
+      "draft_sentence_id": "DS_006",
+
+      "issue_id": "ISSUE_007",
+
+      "template_id": "TPL_FACTOR_COMPARISON_STANDARD_CASE_001",
+
+      "draft_sentence_raw": "그 밖의 요인 보정치 산정에서는 편입토지와 표준지의 개별요인 비교와 표준지와 거래사례의 개별요인 비교를 분리하여 확인할 필요가 있습니다.",
+
+      "draft_sentence_safe": "그 밖의 요인 보정치 산정 구조를 검토하기 위해서는 편입토지와 비교표준지의 개별요인 비교, 비교표준지와 거래사례의 개별요인 비교를 분리하여 확인할 필요가 있습니다.",
+
+      "filter_result_code": "PASS",
+
+      "draft_reflection_status": "PENDING_REVIEW"
+
+    }
+
+  ],
+
+  "risk_warnings": [
+
+    {
+
+      "risk_id": "RISK_001",
+
+      "risk_type": "PROHIBITED_INTERPRETATION",
+
+      "risk_level": "HIGH",
+
+      "related_issue_id": "ISSUE_001",
+
+      "message": "평가법인별 단가 차이를 평가 오류, 증액 가능성, 부당 평가로 단정하면 안 됨",
+
+      "required_action": "산정 구조 차이 및 추가 검토 필요성 중심으로 표현"
+
+    },
+
+    {
+
+      "risk_id": "RISK_002",
+
+      "risk_type": "OCR_REQUIRED",
+
+      "risk_level": "HIGH",
+
+      "related_appraisal_id": "APP_001",
+
+      "message": "제일 평가서는 이미지 기반 PDF이므로 OCR 추출값의 신뢰도와 수동검수가 필요함",
+
+      "required_action": "페이지별 OCR 결과와 수동확정값을 구분"
+
+    },
+
+    {
+
+      "risk_id": "RISK_003",
+
+      "risk_type": "FACT_VERIFICATION_REQUIRED",
+
+      "risk_level": "MEDIUM",
+
+      "related_issue_id": "ISSUE_003",
+
+      "message": "현황전·현황도로 구분은 평가서 수치만으로 확정하지 말고 현장사진, 도면, 항공사진과 대조해야 함",
+
+      "required_action": "현장조사 자료 입력 후 쟁점 카드 보완"
+
+    },
+
+    {
+
+      "risk_id": "RISK_004",
+
+      "risk_type": "EXPERT_REVIEW_REQUIRED",
+
+      "risk_level": "MEDIUM",
+
+      "related_issue_id": "ISSUE_002",
+
+      "message": "그 밖의 요인 보정치 차이는 감정평가 판단을 대체하지 않고 검토 필요 항목으로만 표시해야 함",
+
+      "required_action": "의견서 반영 전 전문가 검토 필요 문구 유지"
+
+    },
+
+    {
+
+      "risk_id": "RISK_005",
+
+      "risk_type": "PUBLIC_DATA_REVIEW_REQUIRED",
+
+      "risk_level": "MEDIUM",
+
+      "related_issue_id": "ISSUE_006",
+
+      "message": "공적 토지특성정보는 평가서 보강자료이며 최종 판단값으로 자동 확정하면 안 됨",
+
+      "required_action": "공적 데이터 조회값과 평가서 기재값을 분리 표시"
+
+    }
+
+  ],
+
+  "ui_recommendations": {
+
+    "v021_required_tabs": [
+
+      "사건 요약",
+
+      "평가법인 비교",
+
+      "필지별 단가 비교",
+
+      "표준지 상세",
+
+      "거래사례 상세",
+
+      "편입토지↔표준지 개별요인",
+
+      "표준지↔거래사례 개별요인",
+
+      "그 밖의 요인 비교",
+
+      "공적 토지특성 보강",
+
+      "현황전·현황도로 검토",
+
+      "지장물 비교",
+
+      "쟁점 후보",
+
+      "의견서 보조문안",
+
+      "리스크 경고",
+
+      "JSON 보기"
+
+    ],
+
+    "priority_cards": [
+
+      "평가법인별 총액 비교 카드",
+
+      "필지별 최고·최저 단가 차이 카드",
+
+      "표준지 선택 비교 카드",
+
+      "거래사례 선택 비교 카드",
+
+      "편입토지↔표준지 개별요인 비교 카드",
+
+      "표준지↔사례 개별요인 비교 카드",
+
+      "그 밖의 요인 보정치 비교 카드",
+
+      "산9-1 현황구분 카드",
+
+      "지장물 합계 비교 카드",
+
+      "공적 토지특성 보강 카드",
+
+      "OCR 필요 항목 카드"
+
+    ],
+
+    "card_display_rules": [
+
+      "모든 필지·표준지·사례는 parcel_address를 우선 표시한다.",
+
+      "legal_dong과 lot_number는 보조 정보로만 표시한다.",
+
+      "편입토지 개별요인 비교와 표준지-사례 개별요인 비교는 별도 탭으로 분리한다.",
+
+      "공적 토지특성정보는 평가서값과 분리하여 표시한다.",
+
+      "공적 데이터 미조회 항목은 빈값이 아니라 조회필요 상태로 표시한다."
+
+    ]
+
+  }
+
+}

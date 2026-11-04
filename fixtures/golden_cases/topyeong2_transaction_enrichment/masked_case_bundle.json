@@ -1,0 +1,672 @@
+{
+  "fixture_notice": "SYNTHETIC_MASKED_EXPECTATION_ONLY_NO_REAL_ADDRESS_OR_TRANSACTION_VALUE",
+  "transactions": [
+    {
+      "case_id": "masked-topyeong-001",
+      "address": "구리시 **동 ***-*",
+      "transaction_date": "2022-01-15",
+      "land_category": "전",
+      "zoning": "개발제한구역",
+      "area_m2": 817,
+      "unit_price_m2": 755000,
+      "pnu": "9999900000000000001",
+      "standard_candidate_ids": [
+        "S_GB_FIELD"
+      ]
+    },
+    {
+      "case_id": "masked-topyeong-002",
+      "address": "구리시 **동 ***-*",
+      "transaction_date": "2022-01-15",
+      "land_category": "전",
+      "zoning": "개발제한구역",
+      "area_m2": 834,
+      "unit_price_m2": 755000,
+      "pnu": "9999900000000000002",
+      "standard_candidate_ids": [
+        "S_GB_FIELD"
+      ]
+    },
+    {
+      "case_id": "masked-topyeong-003",
+      "address": "구리시 **동 ***-*",
+      "transaction_date": "2022-03-10",
+      "land_category": "답",
+      "zoning": "개발제한구역",
+      "area_m2": 851,
+      "unit_price_m2": 734400,
+      "pnu": "9999900000000000003",
+      "standard_candidate_ids": [
+        "S_GB_PADDY"
+      ]
+    },
+    {
+      "case_id": "masked-topyeong-004",
+      "address": "구리시 **동 ***-*",
+      "transaction_date": "2022-04-11",
+      "land_category": "잡종지",
+      "zoning": "개발제한구역",
+      "area_m2": 868,
+      "unit_price_m2": 954800,
+      "pnu": "9999900000000000004",
+      "standard_candidate_ids": [
+        "S_GB_MISC"
+      ]
+    },
+    {
+      "case_id": "masked-topyeong-005",
+      "address": "구리시 **동 ***-*",
+      "transaction_date": "2022-05-12",
+      "land_category": "전",
+      "zoning": "제1종일반주거지역",
+      "area_m2": 885,
+      "unit_price_m2": 1395000,
+      "pnu": "9999900000000000005",
+      "standard_candidate_ids": [
+        "S_R1_FIELD"
+      ]
+    },
+    {
+      "case_id": "masked-topyeong-006",
+      "address": "구리시 **동 ***-*",
+      "transaction_date": "2022-06-13",
+      "land_category": "잡종지",
+      "zoning": "제1종일반주거지역",
+      "area_m2": 902,
+      "unit_price_m2": 1528800,
+      "pnu": "9999900000000000006",
+      "standard_candidate_ids": [
+        "S_R1_MISC"
+      ]
+    },
+    {
+      "case_id": "masked-topyeong-007",
+      "address": "구리시 **동 ***-*",
+      "transaction_date": "2022-07-14",
+      "land_category": "대",
+      "zoning": "제1종일반주거지역",
+      "area_m2": 919,
+      "unit_price_m2": 1884000,
+      "pnu": "9999900000000000007",
+      "standard_candidate_ids": [
+        "S_R1_SITE"
+      ]
+    },
+    {
+      "case_id": "masked-topyeong-008",
+      "address": "구리시 **동 ***-*",
+      "transaction_date": "2022-08-15",
+      "land_category": "전",
+      "zoning": "개발제한구역",
+      "area_m2": 936,
+      "unit_price_m2": 790000,
+      "pnu": "9999900000000000008",
+      "standard_candidate_ids": [
+        "S_GB_FIELD"
+      ]
+    },
+    {
+      "case_id": "masked-topyeong-009",
+      "address": "구리시 **동 ***-*",
+      "transaction_date": "2022-09-16",
+      "land_category": "답",
+      "zoning": "개발제한구역",
+      "area_m2": 953,
+      "unit_price_m2": 763200,
+      "pnu": "9999900000000000009",
+      "standard_candidate_ids": [
+        "S_GB_PADDY"
+      ]
+    },
+    {
+      "case_id": "masked-topyeong-010",
+      "address": "구리시 **동 ***-*",
+      "transaction_date": "2022-10-17",
+      "land_category": "전",
+      "zoning": "제1종일반주거지역",
+      "area_m2": 970,
+      "unit_price_m2": 1440000,
+      "pnu": "9999900000000000010",
+      "standard_candidate_ids": [
+        "S_R1_FIELD"
+      ]
+    },
+    {
+      "case_id": "masked-topyeong-011",
+      "address": "구리시 **동 ***-*",
+      "transaction_date": "2023-01-18",
+      "land_category": "잡종지",
+      "zoning": "개발제한구역",
+      "area_m2": 987,
+      "unit_price_m2": 998200,
+      "pnu": "9999900000000000011",
+      "standard_candidate_ids": [
+        "S_GB_MISC"
+      ]
+    },
+    {
+      "case_id": "masked-topyeong-012",
+      "address": "구리시 **동 ***-*",
+      "transaction_date": "2024-02-01",
+      "land_category": "대",
+      "zoning": "제1종일반주거지역",
+      "area_m2": 1004,
+      "unit_price_m2": 1944000,
+      "pnu": "9999900000000000012",
+      "standard_candidate_ids": [
+        "S_R1_SITE"
+      ]
+    },
+    {
+      "case_id": "masked-topyeong-013",
+      "address": "구리시 **동 ***-*",
+      "transaction_date": "2024-03-01",
+      "land_category": "답",
+      "zoning": "개발제한구역",
+      "area_m2": 1021,
+      "unit_price_m2": 782400,
+      "pnu": "9999900000000000013",
+      "standard_candidate_ids": [
+        "S_GB_PADDY"
+      ]
+    },
+    {
+      "case_id": "masked-topyeong-014",
+      "address": "구리시 **동 ***-*",
+      "transaction_date": "2025-01-02",
+      "land_category": "잡종지",
+      "zoning": "제1종일반주거지역",
+      "area_m2": 1038,
+      "unit_price_m2": 1607200,
+      "pnu": "9999900000000000014",
+      "standard_candidate_ids": [
+        "S_R1_MISC"
+      ]
+    },
+    {
+      "case_id": "masked-topyeong-015",
+      "address": "구리시 **동 ***-*",
+      "transaction_date": "2022-11-01",
+      "land_category": "전",
+      "zoning": "개발제한구역",
+      "area_m2": 1055,
+      "unit_price_m2": 825000,
+      "pnu": "9999900000000000015",
+      "standard_candidate_ids": [
+        "S_GB_FIELD"
+      ]
+    },
+    {
+      "case_id": "masked-topyeong-016",
+      "address": "구리시 **동 ***-*",
+      "transaction_date": "2022-12-01",
+      "land_category": "답",
+      "zoning": "개발제한구역",
+      "area_m2": 1072,
+      "unit_price_m2": 796800,
+      "pnu": "9999900000000000016",
+      "standard_candidate_ids": [
+        "S_GB_PADDY"
+      ]
+    },
+    {
+      "case_id": "masked-topyeong-017",
+      "address": "구리시 **동 ***-*",
+      "transaction_date": "2023-02-01",
+      "land_category": "전",
+      "zoning": "제1종일반주거지역",
+      "area_m2": 1089,
+      "unit_price_m2": 1503000,
+      "pnu": "9999900000000000017",
+      "standard_candidate_ids": [
+        "S_R1_FIELD"
+      ]
+    },
+    {
+      "case_id": "masked-topyeong-018",
+      "address": "구리시 **동 ***-*",
+      "transaction_date": "2023-03-01",
+      "land_category": "대",
+      "zoning": "제1종일반주거지역",
+      "area_m2": 1106,
+      "unit_price_m2": 2016000,
+      "pnu": "9999900000000000018",
+      "standard_candidate_ids": [
+        "S_R1_SITE"
+      ]
+    },
+    {
+      "case_id": "masked-topyeong-019",
+      "address": "구리시 **동 ***-*",
+      "transaction_date": "2023-04-01",
+      "land_category": "잡종지",
+      "zoning": "개발제한구역",
+      "area_m2": 1123,
+      "unit_price_m2": 1047800,
+      "pnu": "9999900000000000019",
+      "standard_candidate_ids": [
+        "S_GB_MISC"
+      ]
+    },
+    {
+      "case_id": "masked-topyeong-020",
+      "address": "구리시 **동 ***-*",
+      "transaction_date": "2023-05-01",
+      "land_category": "잡종지",
+      "zoning": "제1종일반주거지역",
+      "area_m2": 1140,
+      "unit_price_m2": 1666000,
+      "pnu": "9999900000000000020",
+      "standard_candidate_ids": [
+        "S_R1_MISC"
+      ]
+    },
+    {
+      "case_id": "masked-topyeong-021",
+      "address": "구리시 **동 ***-*",
+      "transaction_date": "2023-06-01",
+      "land_category": "전",
+      "zoning": "개발제한구역",
+      "area_m2": 1157,
+      "unit_price_m2": 855000,
+      "pnu": "9999900000000000021",
+      "standard_candidate_ids": [
+        "S_GB_FIELD",
+        "S_GB_FIELD_ALT"
+      ]
+    },
+    {
+      "case_id": "masked-topyeong-022",
+      "address": "구리시 **동 ***-*",
+      "transaction_date": "2023-07-01",
+      "land_category": "답",
+      "zoning": "개발제한구역",
+      "area_m2": 1174,
+      "unit_price_m2": 825600,
+      "pnu": "9999900000000000022",
+      "standard_candidate_ids": [
+        "S_GB_PADDY"
+      ]
+    },
+    {
+      "case_id": "masked-topyeong-023",
+      "address": "구리시 **동 ***-*",
+      "transaction_date": "2023-08-01",
+      "land_category": "대",
+      "zoning": "제1종일반주거지역",
+      "area_m2": 1191,
+      "unit_price_m2": 2076000,
+      "pnu": "9999900000000000023",
+      "standard_candidate_ids": [
+        "S_R1_SITE"
+      ]
+    }
+  ],
+  "land_characteristics": {
+    "9999900000000000001": {
+      "pnu": "9999900000000000001",
+      "legal_dong": "**동",
+      "lot_number": "***-*",
+      "land_category": "전",
+      "zoning": "개발제한구역",
+      "land_use": "전",
+      "road_access": "세로(가)",
+      "shape": "사다리형",
+      "elevation": "평지",
+      "individual_official_price": 500000,
+      "price_year": 2022
+    },
+    "9999900000000000002": {
+      "pnu": "9999900000000000002",
+      "legal_dong": "**동",
+      "lot_number": "***-*",
+      "land_category": "전",
+      "zoning": "개발제한구역",
+      "land_use": "전",
+      "road_access": "세로(가)",
+      "shape": "사다리형",
+      "elevation": "평지",
+      "individual_official_price": 500000,
+      "price_year": 2022
+    },
+    "9999900000000000003": {
+      "pnu": "9999900000000000003",
+      "legal_dong": "**동",
+      "lot_number": "***-*",
+      "land_category": "답",
+      "zoning": "개발제한구역",
+      "land_use": "답",
+      "road_access": "세로(불)",
+      "shape": "부정형",
+      "elevation": "평지",
+      "individual_official_price": 480000,
+      "price_year": 2022
+    },
+    "9999900000000000004": {
+      "pnu": "9999900000000000004",
+      "legal_dong": "**동",
+      "lot_number": "***-*",
+      "land_category": "잡종지",
+      "zoning": "개발제한구역",
+      "land_use": "잡종지",
+      "road_access": "중로한면",
+      "shape": "부정형",
+      "elevation": "평지",
+      "individual_official_price": 620000,
+      "price_year": 2022
+    },
+    "9999900000000000005": {
+      "pnu": "9999900000000000005",
+      "legal_dong": "**동",
+      "lot_number": "***-*",
+      "land_category": "전",
+      "zoning": "제1종일반주거지역",
+      "land_use": "전",
+      "road_access": "소로한면",
+      "shape": "사다리형",
+      "elevation": "완경사",
+      "individual_official_price": 900000,
+      "price_year": 2022
+    },
+    "9999900000000000006": {
+      "pnu": "9999900000000000006",
+      "legal_dong": "**동",
+      "lot_number": "***-*",
+      "land_category": "잡종지",
+      "zoning": "제1종일반주거지역",
+      "land_use": "잡종지",
+      "road_access": "소로각지",
+      "shape": "부정형",
+      "elevation": "평지",
+      "individual_official_price": 980000,
+      "price_year": 2022
+    },
+    "9999900000000000007": {
+      "pnu": "9999900000000000007",
+      "legal_dong": "**동",
+      "lot_number": "***-*",
+      "land_category": "대",
+      "zoning": "제1종일반주거지역",
+      "land_use": "단독주택",
+      "road_access": "중로각지",
+      "shape": "정방형",
+      "elevation": "평지",
+      "individual_official_price": 1200000,
+      "price_year": 2022
+    },
+    "9999900000000000008": {
+      "pnu": "9999900000000000008",
+      "legal_dong": "**동",
+      "lot_number": "***-*",
+      "land_category": "전",
+      "zoning": "개발제한구역",
+      "land_use": "전",
+      "road_access": "세로(가)",
+      "shape": "사다리형",
+      "elevation": "평지",
+      "individual_official_price": 500000,
+      "price_year": 2022
+    },
+    "9999900000000000009": {
+      "pnu": "9999900000000000009",
+      "legal_dong": "**동",
+      "lot_number": "***-*",
+      "land_category": "답",
+      "zoning": "개발제한구역",
+      "land_use": "답",
+      "road_access": "세로(불)",
+      "shape": "부정형",
+      "elevation": "평지",
+      "individual_official_price": 480000,
+      "price_year": 2022
+    },
+    "9999900000000000010": {
+      "pnu": "9999900000000000010",
+      "legal_dong": "**동",
+      "lot_number": "***-*",
+      "land_category": "전",
+      "zoning": "제1종일반주거지역",
+      "land_use": "전",
+      "road_access": "소로한면",
+      "shape": "사다리형",
+      "elevation": "완경사",
+      "individual_official_price": 900000,
+      "price_year": 2022
+    },
+    "9999900000000000011": {
+      "pnu": "9999900000000000011",
+      "legal_dong": "**동",
+      "lot_number": "***-*",
+      "land_category": "잡종지",
+      "zoning": "개발제한구역",
+      "land_use": "잡종지",
+      "road_access": "중로한면",
+      "shape": "부정형",
+      "elevation": "평지",
+      "individual_official_price": 620000,
+      "price_year": 2023
+    },
+    "9999900000000000012": {
+      "pnu": "9999900000000000012",
+      "legal_dong": "**동",
+      "lot_number": "***-*",
+      "land_category": "대",
+      "zoning": "제1종일반주거지역",
+      "land_use": "단독주택",
+      "road_access": "중로각지",
+      "shape": "정방형",
+      "elevation": "평지",
+      "individual_official_price": 1200000,
+      "price_year": 2024
+    },
+    "9999900000000000013": {
+      "pnu": "9999900000000000013",
+      "legal_dong": "**동",
+      "lot_number": "***-*",
+      "land_category": "답",
+      "zoning": "개발제한구역",
+      "land_use": "답",
+      "road_access": "세로(불)",
+      "shape": "부정형",
+      "elevation": "평지",
+      "individual_official_price": 480000,
+      "price_year": 2024
+    },
+    "9999900000000000014": {
+      "pnu": "9999900000000000014",
+      "legal_dong": "**동",
+      "lot_number": "***-*",
+      "land_category": "잡종지",
+      "zoning": "제1종일반주거지역",
+      "land_use": "잡종지",
+      "road_access": "소로각지",
+      "shape": "부정형",
+      "elevation": "평지",
+      "individual_official_price": 980000,
+      "price_year": 2025
+    },
+    "9999900000000000015": {
+      "pnu": "9999900000000000015",
+      "legal_dong": "**동",
+      "lot_number": "***-*",
+      "land_category": "전",
+      "zoning": "개발제한구역",
+      "land_use": "전",
+      "road_access": "맹지",
+      "shape": "사다리형",
+      "elevation": "평지",
+      "individual_official_price": 500000,
+      "price_year": 2022
+    },
+    "9999900000000000016": {
+      "pnu": "9999900000000000016",
+      "legal_dong": "**동",
+      "lot_number": "***-*",
+      "land_category": "답",
+      "zoning": "개발제한구역",
+      "land_use": "답",
+      "road_access": "맹지",
+      "shape": "부정형",
+      "elevation": "평지",
+      "individual_official_price": 480000,
+      "price_year": 2022
+    },
+    "9999900000000000017": {
+      "pnu": "9999900000000000017",
+      "legal_dong": "**동",
+      "lot_number": "***-*",
+      "land_category": "전",
+      "zoning": "제1종일반주거지역",
+      "land_use": "전",
+      "road_access": "맹지",
+      "shape": "사다리형",
+      "elevation": "완경사",
+      "individual_official_price": 900000,
+      "price_year": 2023
+    },
+    "9999900000000000018": {
+      "pnu": "9999900000000000018",
+      "legal_dong": "**동",
+      "lot_number": "***-*",
+      "land_category": "대",
+      "zoning": "제1종일반주거지역",
+      "land_use": "단독주택",
+      "road_access": "맹지",
+      "shape": "정방형",
+      "elevation": "평지",
+      "individual_official_price": 1200000,
+      "price_year": 2023
+    },
+    "9999900000000000019": {
+      "pnu": "9999900000000000019",
+      "legal_dong": "**동",
+      "lot_number": "***-*",
+      "land_category": "잡종지",
+      "zoning": "개발제한구역",
+      "land_use": null,
+      "road_access": "중로한면",
+      "shape": "부정형",
+      "elevation": "평지",
+      "individual_official_price": 620000,
+      "price_year": 2023
+    },
+    "9999900000000000020": {
+      "pnu": "9999900000000000020",
+      "legal_dong": "**동",
+      "lot_number": "***-*",
+      "land_category": "잡종지",
+      "zoning": "제1종일반주거지역",
+      "land_use": null,
+      "road_access": "소로각지",
+      "shape": "부정형",
+      "elevation": "평지",
+      "individual_official_price": 980000,
+      "price_year": 2023
+    },
+    "9999900000000000021": {
+      "pnu": "9999900000000000021",
+      "legal_dong": "**동",
+      "lot_number": "***-*",
+      "land_category": "전",
+      "zoning": "개발제한구역",
+      "land_use": "전",
+      "road_access": "세로(가)",
+      "shape": "사다리형",
+      "elevation": "평지",
+      "individual_official_price": 500000,
+      "price_year": 2023
+    },
+    "9999900000000000023": {
+      "pnu": "8888800000000000023",
+      "legal_dong": "**동",
+      "lot_number": "***-*",
+      "land_category": "대",
+      "zoning": "제1종일반주거지역",
+      "land_use": "단독주택",
+      "road_access": "중로각지",
+      "shape": "정방형",
+      "elevation": "평지",
+      "individual_official_price": 1200000,
+      "price_year": 2023
+    }
+  },
+  "standard_candidates": [
+    {
+      "standard_id": "S_GB_FIELD",
+      "official_price_m2": 500000,
+      "land_category": "전",
+      "zoning": "개발제한구역",
+      "land_use": "전",
+      "road_access": "세로(가)",
+      "shape": "사다리형",
+      "elevation": "평지",
+      "distance_m": 420
+    },
+    {
+      "standard_id": "S_GB_PADDY",
+      "official_price_m2": 480000,
+      "land_category": "답",
+      "zoning": "개발제한구역",
+      "land_use": "답",
+      "road_access": "세로(불)",
+      "shape": "부정형",
+      "elevation": "평지",
+      "distance_m": 610
+    },
+    {
+      "standard_id": "S_GB_MISC",
+      "official_price_m2": 620000,
+      "land_category": "잡종지",
+      "zoning": "개발제한구역",
+      "land_use": "잡종지",
+      "road_access": "중로한면",
+      "shape": "부정형",
+      "elevation": "평지",
+      "distance_m": 750
+    },
+    {
+      "standard_id": "S_R1_FIELD",
+      "official_price_m2": 900000,
+      "land_category": "전",
+      "zoning": "제1종일반주거지역",
+      "land_use": "전",
+      "road_access": "소로한면",
+      "shape": "사다리형",
+      "elevation": "완경사",
+      "distance_m": 380
+    },
+    {
+      "standard_id": "S_R1_MISC",
+      "official_price_m2": 980000,
+      "land_category": "잡종지",
+      "zoning": "제1종일반주거지역",
+      "land_use": "잡종지",
+      "road_access": "소로각지",
+      "shape": "부정형",
+      "elevation": "평지",
+      "distance_m": 520
+    },
+    {
+      "standard_id": "S_R1_SITE",
+      "official_price_m2": 1200000,
+      "land_category": "대",
+      "zoning": "제1종일반주거지역",
+      "land_use": "단독주택",
+      "road_access": "중로각지",
+      "shape": "정방형",
+      "elevation": "평지",
+      "distance_m": 300
+    },
+    {
+      "standard_id": "S_GB_FIELD_ALT",
+      "official_price_m2": 500000,
+      "land_category": "전",
+      "zoning": "개발제한구역",
+      "land_use": "전",
+      "road_access": "세로(가)",
+      "shape": "사다리형",
+      "elevation": "평지",
+      "distance_m": 460
+    }
+  ]
+}

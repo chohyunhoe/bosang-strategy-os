@@ -1,0 +1,192 @@
+{
+  "schema_version": "bso_graphics_v0.6",
+  "case_id": "SILLIM_1513_2",
+  "title": "신림동 1513-2 독립검증",
+  "crs": "EPSG:5186",
+  "output_formats": ["png", "pdf"],
+  "outputs": ["subject_vs_standard", "standard_vs_case"],
+  "skip_standard_vs_case_if_review_unresolved": true,
+  "vworld_referer": "http://localhost",
+  "output_disclaimer": "본 자료는 감정평가서 기재값과 공적 연속지적도 geometry의 대조 결과이며, 감정평가 판단을 대체하지 않습니다. 제출 전 전문가 검토가 필요합니다.",
+  "map_output_status": "VERIFIED_SOURCE_GEOMETRY",
+  "privacy": {
+    "processing_mode": "LOCAL_WITH_EXTERNAL_MAP_TILES",
+    "raw_personal_data_in_output": false,
+    "external_map_request_note": "VWorld 조회에는 지도 범위의 타일 좌표와 API 요청정보만 전송하며 원문 PDF와 사건관계인 정보는 전송하지 않습니다."
+  },
+  "map_profiles": {
+    "subject_vs_standard": {
+      "page_width_mm": 210,
+      "page_height_mm": 120,
+      "map_rect": [4, 16, 202, 99],
+      "extent_scale": 1.16
+    },
+    "standard_vs_case": {
+      "page_width_mm": 210,
+      "page_height_mm": 120,
+      "map_rect": [4, 16, 202, 99],
+      "extent_scale": 1.12
+    }
+  },
+  "map_titles": {
+    "subject_vs_standard": "대상토지 1513-2 · 비교표준지 1526-2",
+    "standard_vs_case": "비교표준지 1526-2 · 거래사례 112-37"
+  },
+  "parcel_verification": {
+    "enabled": true,
+    "expected_source_crs": "EPSG:5186",
+    "municipality_pnu_prefix": "11620",
+    "coordinate_bounds_epsg4326": {
+      "min_longitude": 126.85,
+      "max_longitude": 127.00,
+      "min_latitude": 37.40,
+      "max_latitude": 37.55
+    },
+    "max_pairwise_distance_m": 300,
+    "required_pnus": [
+      {
+        "label": "신림동 1513-2",
+        "role": "subject",
+        "pnu": "1162010200115130002",
+        "expected_jibun": "1513-2"
+      },
+      {
+        "label": "신림동 1526-2",
+        "role": "standard",
+        "pnu": "1162010200115260002",
+        "expected_jibun": "1526-2"
+      },
+      {
+        "label": "신림동 112-37",
+        "role": "case",
+        "pnu": "1162010200101120037",
+        "expected_jibun": "112-37"
+      }
+    ]
+  },
+  "layers": [
+    {
+      "role": "subject",
+      "label": "대상토지 신림동 1513-2",
+      "label_prefix": "대상",
+      "lot": "1513-2",
+      "archive": "source/AL_D002_11_20260719.zip",
+      "pnus": ["1162010200115130002"],
+      "pnu_field": "A1",
+      "jibun_field": "A4"
+    },
+    {
+      "role": "standard",
+      "label": "비교표준지 신림동 1526-2",
+      "label_prefix": "표준지",
+      "lot": "1526-2",
+      "archive": "source/AL_D002_11_20260719.zip",
+      "pnus": ["1162010200115260002"],
+      "pnu_field": "A1",
+      "jibun_field": "A4"
+    },
+    {
+      "role": "case",
+      "label": "거래사례 신림동 112-37",
+      "label_prefix": "사례",
+      "lot": "112-37",
+      "archive": "source/AL_D002_11_20260719.zip",
+      "pnus": ["1162010200101120037"],
+      "pnu_field": "A1",
+      "jibun_field": "A4"
+    }
+  ],
+  "sample_brief": {
+    "page1_title": "자동표1 – 신림동 1513-2 대상토지·비교표준지 품등비교",
+    "page1_summary": [
+      "신림동 1513-2", "준주거", "대", "상업용",
+      "신림동 1526-2", "준주거", "대", "상업용", "처 / K", "9,851,000", "중로각지", "가장형·평지"
+    ],
+    "page1_rows": [
+      {
+        "company": "프라임",
+        "street": "1.00",
+        "access": "1.07",
+        "environment": "1.00",
+        "parcel": "1.02",
+        "admin": "1.00",
+        "other": "1.00",
+        "total": "1.091",
+        "other_factor": "2.04",
+        "applied_price": "22,000,000"
+      },
+      {
+        "company": "라인",
+        "street": "1.00",
+        "access": "1.07",
+        "environment": "1.00",
+        "parcel": "1.02",
+        "admin": "1.00",
+        "other": "1.00",
+        "total": "1.091",
+        "other_factor": "2.09",
+        "applied_price": "22,500,000"
+      }
+    ],
+    "page1_claims": "양 법인은 신림동 1513-2에 같은 비교표준지 1526-2(프라임 처·라인 K)와 같은 개별요인 누계 1.091을 적용했습니다. 단가 차이는 주로 그 밖의 요인 2.04와 2.09의 차이에서 발생합니다. 원문 위치: 프라임 PDF 92면, 라인 PDF 62면.",
+    "page1_review_required": false,
+    "page2_title": "자동표2 – 비교표준지 1526-2·거래사례 112-37 품등비교",
+    "page2_calc_rows": [
+      {
+        "type": "프라임 사례#5",
+        "lot": "신림동 112-37",
+        "price": "18,846,718",
+        "time_factor": "1.02036",
+        "regional_factor": "1.00",
+        "individual_factor": "1.050",
+        "calculated_price": "20,191,959"
+      },
+      {
+        "type": "라인 사례c",
+        "lot": "신림동 112-37",
+        "price": "18,776,893",
+        "time_factor": "1.02036",
+        "regional_factor": "1.00",
+        "individual_factor": "1.081",
+        "calculated_price": "20,711,085"
+      },
+      {
+        "type": "비교표준지",
+        "lot": "신림동 1526-2",
+        "price": "9,851,000",
+        "time_factor": "1.00324",
+        "regional_factor": "—",
+        "individual_factor": "—",
+        "calculated_price": "9,882,917"
+      }
+    ],
+    "page2_rows": [
+      {
+        "company": "프라임",
+        "street": "1.00",
+        "access": "1.00",
+        "environment": "1.01",
+        "parcel": "1.04",
+        "admin": "1.00",
+        "other": "1.00",
+        "total": "1.050",
+        "gap_ratio": "2.043",
+        "decision": "2.04"
+      },
+      {
+        "company": "라인",
+        "street": "1.00",
+        "access": "1.00",
+        "environment": "1.02",
+        "parcel": "1.06",
+        "admin": "1.00",
+        "other": "1.00",
+        "total": "1.081",
+        "gap_ratio": "2.095",
+        "decision": "2.09"
+      }
+    ],
+    "page2_claims": "양 법인은 비교표준지 1526-2의 그 밖의 요인 산정에 같은 거래사례 112-37을 사용했습니다. 사례 배분단가와 환경·획지 판단 차이로 격차율이 2.043과 2.095로 달라졌습니다. 원문 위치: 프라임 PDF 50·63면, 라인 PDF 34·40·42면.",
+    "page2_review_required": false
+  }
+}

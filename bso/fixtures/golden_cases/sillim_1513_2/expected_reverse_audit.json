@@ -1,0 +1,78 @@
+{
+  "case_id": "SILLIM_1513_2_REVERSE_AUDIT",
+  "subject": {
+    "dong": "신림동",
+    "lot": "1513-2",
+    "area_sqm": 666.7
+  },
+  "appraisals": [
+    {
+      "company": "프라임",
+      "subject_lot": "1513-2",
+      "applied_unit_price": 22000000,
+      "amount": 14667400000,
+      "reverse_factor_candidates": [
+        {
+          "candidate_id": "prime_cheo_1526_2",
+          "standard_symbol": "처",
+          "standard_dong": "신림동",
+          "standard_lot": "1526-2",
+          "official_price": 9851000,
+          "time_adjustment": 1.00324,
+          "regional_factor": 1.0,
+          "other_factor": 2.04,
+          "selection_status": "REVIEW_REQUIRED"
+        },
+        {
+          "candidate_id": "prime_teo_1559_20",
+          "standard_symbol": "터",
+          "standard_dong": "신림동",
+          "standard_lot": "1559-20",
+          "official_price": 6768000,
+          "time_adjustment": 1.00324,
+          "regional_factor": 1.0,
+          "other_factor": 1.88,
+          "selection_status": "REVIEW_REQUIRED"
+        }
+      ]
+    },
+    {
+      "company": "라인",
+      "subject_lot": "1513-2",
+      "applied_unit_price": 22500000,
+      "amount": 15000750000,
+      "reverse_factor_candidates": [
+        {
+          "candidate_id": "line_k_1526_2",
+          "standard_symbol": "K",
+          "standard_dong": "신림동",
+          "standard_lot": "1526-2",
+          "official_price": 9851000,
+          "time_adjustment": 1.00324,
+          "regional_factor": 1.0,
+          "other_factor": 2.09,
+          "selection_status": "REVIEW_REQUIRED"
+        },
+        {
+          "candidate_id": "line_j_1559_20",
+          "standard_symbol": "J",
+          "standard_dong": "신림동",
+          "standard_lot": "1559-20",
+          "official_price": 6768000,
+          "time_adjustment": 1.00324,
+          "regional_factor": 1.0,
+          "other_factor": 1.88,
+          "selection_status": "REVIEW_REQUIRED"
+        }
+      ]
+    }
+  ],
+  "expected": {
+    "prime_1526_2_implied_factor": 1.091208,
+    "line_1526_2_implied_factor": 1.089309,
+    "best_supported_standard_lot": "1526-2",
+    "best_supported_absolute_spread": 0.001899
+  },
+  "usage": "golden_case_only",
+  "active_parser_hardcoding_allowed": false
+}

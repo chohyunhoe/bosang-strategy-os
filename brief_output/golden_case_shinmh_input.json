@@ -1,0 +1,207 @@
+{
+  "run_meta": {
+    "schema_version": "bso_brief_output_v0.1",
+    "run_id": "gmsh-shinmh-v0.1",
+    "generated_at": "2026-08-04T01:20:00Z",
+    "status": "partial",
+    "local_processing": true
+  },
+  "project_meta": {
+    "project_name": "광명시흥 공공주택지구",
+    "client_name_masked": "신○환",
+    "report_date": "2026-08-03",
+    "ownership_share": "1/2",
+    "output_mode": "internal"
+  },
+  "document_meta": [
+    {
+      "document_id": "doc-central",
+      "file_name_masked": "중앙_협의감정평가서.pdf",
+      "appraisal_company": "중앙감정평가법인",
+      "page_count": null,
+      "extraction_method": "verified_page_capture"
+    },
+    {
+      "document_id": "doc-junghae",
+      "file_name_masked": "정해_협의감정평가서.pdf",
+      "appraisal_company": "정해감정평가법인",
+      "page_count": 48,
+      "extraction_method": "verified_page_capture"
+    }
+  ],
+  "source_bundle": {
+    "input_mode": "golden_case_fixture",
+    "original_pdf_stored": false,
+    "verification_note": "토지가격 산출근거 39페이지 캡처에서 수동 확인"
+  },
+  "subject_bundle": {
+    "subject_parcels": [
+      {
+        "parcel_id": "subject-120-7",
+        "lot_number": "과림동 120-7",
+        "area_sqm": 891.0,
+        "land_category": "답",
+        "current_use": "답",
+        "ownership_share": "1/2",
+        "source_refs": [
+          {"document_id": "doc-central", "page": 39, "locator": "일련번호 584"},
+          {"document_id": "doc-junghae", "page": 39, "locator": "일련번호 584"}
+        ]
+      },
+      {
+        "parcel_id": "subject-120-8",
+        "lot_number": "과림동 120-8",
+        "area_sqm": 4006.0,
+        "land_category": "답",
+        "current_use": "답",
+        "ownership_share": "1/2",
+        "source_refs": [
+          {"document_id": "doc-central", "page": 39, "locator": "일련번호 585"},
+          {"document_id": "doc-junghae", "page": 39, "locator": "일련번호 585"}
+        ]
+      }
+    ],
+    "reference_parcels": [
+      {
+        "reference_id": "reference-130-7",
+        "lot_number": "과림동 130-7",
+        "official_price_per_sqm": 293000,
+        "source_refs": [
+          {"document_id": "doc-central", "page": 39, "locator": "표준지공시지가"},
+          {"document_id": "doc-junghae", "page": 39, "locator": "표준지공시지가"}
+        ]
+      }
+    ]
+  },
+  "valuation_bundle": [
+    {
+      "valuator_id": "central-120-7",
+      "appraisal_company": "중앙감정평가법인",
+      "subject_parcel_id": "subject-120-7",
+      "reference_parcel_id": "reference-130-7",
+      "official_price_per_sqm": 293000,
+      "time_adjustment": 1.1898,
+      "regional_factor": 1.0,
+      "individual_factors": {
+        "street_condition": null,
+        "access_condition": 1.0,
+        "environment_condition": 1.0,
+        "parcel_condition": 1.0,
+        "administrative_condition": 1.0,
+        "other_condition": 1.0,
+        "overall_individual_factor": 1.0,
+        "source_refs": [
+          {"document_id": "doc-central", "page": 39, "locator": "일련번호 584 개별요인", "excerpt": "가로조건 -, 접근·환경·획지·행정·기타 각 1.00, 소계 1.000"}
+        ],
+        "review_status": "PASS"
+      },
+      "other_factor": 2.53,
+      "calculated_unit_price": 881987,
+      "decided_unit_price": 882000,
+      "appraised_amount": null,
+      "source_refs": [{"document_id": "doc-central", "page": 39, "locator": "일련번호 584"}]
+    },
+    {
+      "valuator_id": "central-120-8",
+      "appraisal_company": "중앙감정평가법인",
+      "subject_parcel_id": "subject-120-8",
+      "reference_parcel_id": "reference-130-7",
+      "official_price_per_sqm": 293000,
+      "time_adjustment": 1.1898,
+      "regional_factor": 1.0,
+      "individual_factors": {
+        "street_condition": null,
+        "access_condition": 1.0,
+        "environment_condition": 1.0,
+        "parcel_condition": 1.0,
+        "administrative_condition": 1.0,
+        "other_condition": 1.0,
+        "overall_individual_factor": 1.0,
+        "source_refs": [
+          {"document_id": "doc-central", "page": 39, "locator": "일련번호 585 개별요인", "excerpt": "가로조건 -, 접근·환경·획지·행정·기타 각 1.00, 소계 1.000"}
+        ],
+        "review_status": "PASS"
+      },
+      "other_factor": 2.53,
+      "calculated_unit_price": 881987,
+      "decided_unit_price": 882000,
+      "appraised_amount": null,
+      "source_refs": [{"document_id": "doc-central", "page": 39, "locator": "일련번호 585"}]
+    },
+    {
+      "valuator_id": "junghae-120-7",
+      "appraisal_company": "정해감정평가법인",
+      "subject_parcel_id": "subject-120-7",
+      "reference_parcel_id": "reference-130-7",
+      "official_price_per_sqm": 293000,
+      "time_adjustment": 1.1898,
+      "regional_factor": 1.0,
+      "individual_factors": {
+        "street_condition": null,
+        "access_condition": 1.0,
+        "environment_condition": 1.0,
+        "parcel_condition": 1.0,
+        "administrative_condition": 1.0,
+        "other_condition": 1.0,
+        "overall_individual_factor": 1.0,
+        "source_refs": [
+          {"document_id": "doc-junghae", "page": 39, "locator": "일련번호 584 개별요인", "excerpt": "가로조건 -, 접근·환경·획지·행정·기타 각 1.00, 누계 1.000"}
+        ],
+        "review_status": "PASS"
+      },
+      "other_factor": 2.66,
+      "calculated_unit_price": 927306,
+      "decided_unit_price": 927000,
+      "appraised_amount": null,
+      "source_refs": [{"document_id": "doc-junghae", "page": 39, "locator": "일련번호 584"}]
+    },
+    {
+      "valuator_id": "junghae-120-8",
+      "appraisal_company": "정해감정평가법인",
+      "subject_parcel_id": "subject-120-8",
+      "reference_parcel_id": "reference-130-7",
+      "official_price_per_sqm": 293000,
+      "time_adjustment": 1.1898,
+      "regional_factor": 1.0,
+      "individual_factors": {
+        "street_condition": null,
+        "access_condition": 1.0,
+        "environment_condition": 1.0,
+        "parcel_condition": 1.0,
+        "administrative_condition": 1.0,
+        "other_condition": 1.0,
+        "overall_individual_factor": 1.0,
+        "source_refs": [
+          {"document_id": "doc-junghae", "page": 39, "locator": "일련번호 585 개별요인", "excerpt": "가로조건 -, 접근·환경·획지·행정·기타 각 1.00, 누계 1.000"}
+        ],
+        "review_status": "PASS"
+      },
+      "other_factor": 2.66,
+      "calculated_unit_price": 927306,
+      "decided_unit_price": 927000,
+      "appraised_amount": null,
+      "source_refs": [{"document_id": "doc-junghae", "page": 39, "locator": "일련번호 585"}]
+    }
+  ],
+  "analysis_bundle": {
+    "special_phrases": [
+      {
+        "phrase": "획지조건에서 우세함",
+        "linked_value": 1.0,
+        "source_ref": "doc-central p.39"
+      }
+    ],
+    "issue_candidates": []
+  },
+  "graphics_bundle": [],
+  "page_payloads": [
+    {"page_id": "page1_summary", "title": "대기", "paragraphs": [], "tables": [], "graphic_asset_ids": [], "source_keys": []},
+    {"page_id": "page2_analysis", "title": "대기", "paragraphs": [], "tables": [], "graphic_asset_ids": [], "source_keys": []},
+    {"page_id": "page3_analysis", "title": "대기", "paragraphs": [], "tables": [], "graphic_asset_ids": [], "source_keys": []},
+    {"page_id": "page4_analysis", "title": "대기", "paragraphs": [], "tables": [], "graphic_asset_ids": [], "source_keys": []},
+    {"page_id": "page5_conclusion", "title": "대기", "paragraphs": [], "tables": [], "graphic_asset_ids": [], "source_keys": []}
+  ],
+  "docx_assembly": [],
+  "qa_bundle": [],
+  "review_queue": []
+}

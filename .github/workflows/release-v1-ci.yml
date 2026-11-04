@@ -1,0 +1,44 @@
+name: Release v1 Windows PC
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'browser/product-v2/**'
+      - 'scripts/**'
+      - 'tests/**'
+      - 'parser/**'
+      - 'brief_output/**'
+      - 'RUN_BSO.cmd'
+      - 'SETUP_BSO_OUTPUT.cmd'
+      - 'playwright.release-v1.config.js'
+      - 'package*.json'
+      - '.github/workflows/release-v1-ci.yml'
+permissions:
+  contents: read
+jobs:
+  windows-pc:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: npm ci
+      - run: python -m pip install -r brief_output/requirements.txt
+      - run: npx playwright install chromium
+      - name: Windows launcher checks
+        shell: pwsh
+        run: |
+          $env:BSO_PYTHON = (Get-Command python).Source
+          ./scripts/run_bso_v1.ps1 -CheckOnly -NoBrowser
+      - name: Parser, release and real output gates
+        shell: pwsh
+        run: |
+          $env:BSO_PYTHON = (Get-Command python).Source
+          $env:PYTHON = $env:BSO_PYTHON
+          npm run release:v1:gate

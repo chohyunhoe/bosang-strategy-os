@@ -1,0 +1,220 @@
+{
+  "meta": {
+    "generated_for": "killerkit_v025_review_ui",
+    "parser_stage": "parser_layer_1_text_pdf",
+    "schema_reference": "reference/sample_case_001_v021_full.json",
+    "notice": "본 JSON은 검토 보조용 구조화 데이터이며 감정평가 결과 산정 또는 법률판단 확정값이 아닙니다.",
+    "coverage_version": "product_v2/0.1",
+    "input_file_name": "text_pdf_layer1_sample.txt",
+    "input_type": "TEXT_PDF",
+    "parse_status": "TEXT_PARSED",
+    "parser_notes": "실제 PDF가 없어 TEXT_PDF 형식의 익명화 fixture를 사용했습니다. 실제 PDF 입력 검증은 후속 단계가 필요합니다. 명시적인 표와 유일하게 연결된 평가행만 검토 후보로 구조화합니다. 거래/평가사례, 그 밖의 요인 결정치, 지장물도 원문에 명시된 값만 보존합니다. 세부 빈 셀의 열 위치가 불명확하면 세부비교 배열에 넣지 않고, 별도 누계 후보만 유지합니다. 어떤 값도 자동 확정하지 않습니다.",
+    "auto_confirmed": false,
+    "subject_land_extraction": {
+      "section_lines": 0,
+      "heading_lines": 0,
+      "table_heading_lines": 0,
+      "non_numeric_lines": 0,
+      "data_row_candidates": 0,
+      "parsed_rows": 0,
+      "lost_rows": 0,
+      "drops": {
+        "MISSING_TABLE_HEADER": 0,
+        "MISSING_SEQUENCE_PREFIX": 0,
+        "UNPARSED_ROW": 0,
+        "DUPLICATE_ROW": 0
+      },
+      "evaluation_statement_mode": false,
+      "requires_sequence": false
+    },
+    "appraisal_row_extraction": {
+      "calculation_section_lines": 0,
+      "row_candidates": 0,
+      "continuation_lines": 0,
+      "unparsed_rows": 0,
+      "parsed_rows": 0,
+      "duplicate_rows": 0,
+      "matched_rows": 0,
+      "unmatched_row_identity": 0,
+      "ambiguous_row_identity": 0,
+      "unindexable_lands": 0,
+      "unlinked_lands": 0,
+      "reject": {
+        "reasons": {
+          "TOKEN_COUNT_LT_6": 0,
+          "SECTION_VOCAB_MATCH": 0,
+          "LAND_CATEGORY_POSITION_INVALID": 0,
+          "NUMERIC_TOKENS_AFTER_CATEGORY_LT_3": 0,
+          "APPRAISAL_NUMERIC_VALUES_LT_2": 0,
+          "LAND_NO_MISSING": 0,
+          "ADDRESS_FORMAT_MISMATCH": 0,
+          "AREA_OR_AMOUNT_NULL": 0
+        },
+        "token_count_min": null,
+        "token_count_max": null,
+        "numeric_after_category_max": null,
+        "category_index_min": null,
+        "category_index_max": null,
+        "starts_with_address_count": 0
+      }
+    }
+  },
+  "case": {
+    "review_status_code": "NEEDS_REVIEW",
+    "case_name": "익명 도시계획도로 개설사업",
+    "project_name": "익명 도시계획도로 개설사업",
+    "base_date": "2024.01.01",
+    "price_date": "",
+    "confidence_level": "MEDIUM",
+    "auto_confirmed": false,
+    "source_refs": [
+      {
+        "appraisal_id": "APP_001",
+        "file_name": "text_pdf_layer1_sample.txt",
+        "page_no": 1,
+        "line_start": 2,
+        "line_end": 2,
+        "source_label": "기본정보",
+        "raw_text_excerpt": "사업명: 익명 도시계획도로 개설사업"
+      },
+      {
+        "appraisal_id": "APP_001",
+        "file_name": "text_pdf_layer1_sample.txt",
+        "page_no": 1,
+        "line_start": 3,
+        "line_end": 3,
+        "source_label": "기본정보",
+        "raw_text_excerpt": "기준시점: 2024.01.01"
+      }
+    ],
+    "parser_notes": "기본정보 라벨, 다음 줄 값 또는 감정평가 목적 문장 구조에서 후보값을 추출했습니다. 설명문 법령명은 사업명 후보에서 제외했으며 수동 검수 필요."
+  },
+  "appraisals": [
+    {
+      "appraisal_id": "APP_001",
+      "appraisal_company": "경일감정평가법인",
+      "valuation_date": "2024.01.01",
+      "file_name": "text_pdf_layer1_sample.txt",
+      "file_type": "TEXT_PDF",
+      "valuation_date_status": "FOUND",
+      "parse_status": "TEXT_PARSED",
+      "review_status_code": "NEEDS_REVIEW",
+      "confidence_level": "MEDIUM",
+      "auto_confirmed": false,
+      "source_refs": [
+        {
+          "appraisal_id": "APP_001",
+          "file_name": "text_pdf_layer1_sample.txt",
+          "page_no": 1,
+          "line_start": 4,
+          "line_end": 4,
+          "source_label": "기본정보",
+          "raw_text_excerpt": "평가법인: 경일감정평가법인"
+        },
+        {
+          "appraisal_id": "APP_001",
+          "file_name": "text_pdf_layer1_sample.txt",
+          "page_no": 1,
+          "line_start": 3,
+          "line_end": 3,
+          "source_label": "기본정보",
+          "raw_text_excerpt": "기준시점: 2024.01.01"
+        }
+      ],
+      "parser_notes": "평가법인 라벨, 헤더 또는 footer 반복 후보에서 법인명을 추출했습니다. 동일 법인명 반복(1회)은 충돌로 보지 않으며 자동 확정하지 않았습니다."
+    }
+  ],
+  "standard_lands": [
+    {
+      "standard_land_id": "STD_001",
+      "appraisal_id": "APP_001",
+      "standard_land_symbol": "A",
+      "parcel_address": "익명시 샘플동 100-1",
+      "land_category": "답",
+      "area": 1200,
+      "official_price": 350000,
+      "source_refs": [
+        {
+          "appraisal_id": "APP_001",
+          "file_name": "text_pdf_layer1_sample.txt",
+          "page_no": 1,
+          "line_start": 7,
+          "line_end": 7,
+          "source_label": "비교표준지 목록",
+          "raw_text_excerpt": "A 익명시 샘플동 100-1 답 1,200 350,000"
+        }
+      ],
+      "confidence_level": "HIGH",
+      "review_status_code": "NEEDS_REVIEW",
+      "auto_confirmed": false,
+      "parser_notes": "비교표준지 표 행 또는 인접 줄 결합 패턴에서 후보값을 추출했습니다. 수동 검수 필요."
+    },
+    {
+      "standard_land_id": "STD_002",
+      "appraisal_id": "APP_001",
+      "standard_land_symbol": "B",
+      "parcel_address": "익명시 샘플동 200-2",
+      "land_category": "전",
+      "area": 800,
+      "official_price": 280000,
+      "source_refs": [
+        {
+          "appraisal_id": "APP_001",
+          "file_name": "text_pdf_layer1_sample.txt",
+          "page_no": 1,
+          "line_start": 8,
+          "line_end": 8,
+          "source_label": "비교표준지 목록",
+          "raw_text_excerpt": "B 익명시 샘플동 200-2 전 800 280,000"
+        }
+      ],
+      "confidence_level": "HIGH",
+      "review_status_code": "NEEDS_REVIEW",
+      "auto_confirmed": false,
+      "parser_notes": "비교표준지 표 행 또는 인접 줄 결합 패턴에서 후보값을 추출했습니다. 수동 검수 필요."
+    }
+  ],
+  "lands": [],
+  "land_appraisal_results": [],
+  "subject_to_standard_factor_comparisons": [],
+  "subject_factor_total_candidates": [],
+  "comp_cases": [],
+  "standard_to_comp_case_factor_comparisons": [],
+  "other_factor_reviews": [],
+  "obstacle_summary_by_appraisal": [],
+  "obstacle_appraisal_results_sample": [],
+  "appraisal_totals": [
+    {
+      "appraisal_total_id": "TOTAL_001",
+      "appraisal_id": "APP_001",
+      "appraisal_company": "경일감정평가법인",
+      "total_amount": 474600000,
+      "source_refs": [
+        {
+          "appraisal_id": "APP_001",
+          "file_name": "text_pdf_layer1_sample.txt",
+          "page_no": 2,
+          "line_start": 6,
+          "line_end": 6,
+          "source_label": "평가총액",
+          "raw_text_excerpt": "합계 474,600,000"
+        }
+      ],
+      "confidence_level": "HIGH",
+      "review_status_code": "NEEDS_REVIEW",
+      "auto_confirmed": false,
+      "parser_notes": "평가총액 후보 행의 기재 금액을 구조화했습니다. 새로 합산하지 않았으며 수동 검수 필요."
+    }
+  ],
+  "document_uploads": [],
+  "owners": [],
+  "land_characteristics": [],
+  "public_land_characteristics": [],
+  "public_land_data_enrichment": {},
+  "land_characteristic_crosscheck": [],
+  "comparison_summary_by_land": [],
+  "ocr_review_items": [],
+  "issue_candidates": [],
+  "draft_sentences": [],
+  "risk_warnings": []
+}

@@ -1,0 +1,4 @@
+case_id,land_id,pnu,parcel_address,stdrYear
+CASE_SAMPLE,LAND_001,9999999999100780001,익명도 익명시 샘플동 11-1,2025
+CASE_SAMPLE,LAND_002,,익명화된 샘플 주소,
+CASE_SAMPLE,LAND_003,12345,익명화된 샘플 주소,2025

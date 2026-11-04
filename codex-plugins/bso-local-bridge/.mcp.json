@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "bso-local-bridge": {
+      "cwd": ".",
+      "command": "node",
+      "args": ["./mcp/launch.mjs"]
+    }
+  }
+}

@@ -1,0 +1,76 @@
+# 실제 감정평가서 PDF는 개인정보이므로 어떤 경로에서도 추적하지 않습니다.
+# (parser/fixtures/pdf/README.md 정책) 합성 fixture가 필요하면 git add -f로
+# 명시 추가하되 privacy guard의 tracked-path 검사를 먼저 통과해야 합니다.
+*.pdf
+*.PDF
+parser/fixtures/pdf/*.pdf
+parser/fixtures/pdf/*.PDF
+parser/output/*.actual.json
+parser/output/*actual*.json
+
+parser/output/debug_actual_text_sample.txt
+
+node_modules/
+dist/
+browser/parser-bundle.js
+browser/vendor/
+playwright-report/
+test-results/
+pc-gate-results/
+parser/output/layer1_actual_qa_report.md
+parser/output/layer1_actual_qa_report.json
+parser/output/layer2_experiment_pack.md
+parser/output/layer2_prompt_gpt.md
+parser/output/layer2_prompt_claude.md
+parser/output/layer2_prompt_gemini.md
+parser/output/layer2_model_comparison_sheet.md
+parser/output/layer2_model_eval_report.md
+parser/output/layer2_model_eval_report.json
+parser/output/layer2_results/*.json
+
+parser/output/layer2_prompt_gpt_v2.md
+parser/output/generated_case.layer2.review_candidate.json
+parser/output/layer2_adapter_report.md
+parser/output/layer2_adapter_report.json
+
+parser/output/layer2_review_candidate_summary.md
+parser/output/layer2_review_candidate_summary.json
+
+__pycache__/
+brief_output/bso_brief_output_v0.1.json
+brief_output/bso_brief_output_v0.1.schema.json
+brief_output/bso_brief_output_v0.1.docx
+
+# Local-only secrets and graphics inputs/outputs
+.env
+bso/.env
+bso/graphics-output/
+bso/graphics-input/geometry/
+bso/graphics-input/source/*.zip
+bso/graphics-input/source/*.ZIP
+bso/graphics-input/source/*/
+*.qgz
+
+# Local validation renders and disposable QA files
+output/pdf/
+output/runs/
+# 사건 JSON -> 분석보고서 산출물(실사건 데이터 포함). 저장소에 올리지 않는다.
+output/brief/
+tmp/
+
+# Live enrichment local-only outputs (real addresses, PNU, API responses)
+output/live_enrichment/
+output/live_enrichment/local_only/
+**/local_only/
+*_live_case_bundle.json
+live_case_bundle.json
+
+# Real case inputs must never be committed. Keep real XLSX exports and the
+# live verified-standards file local-only (place under any local_only/ dir).
+# Fixtures are masked JSON, so ignoring root-level spreadsheets is safe.
+/*.xlsx
+/standards.json
+
+# Release v1 machine-local runtimes and local virtual environment
+.bso-runtime.json
+.venv-v1/

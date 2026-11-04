@@ -1,0 +1,23 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Bosang: Cycle",
+      "type": "shell",
+      "command": "npm run bosang:cycle",
+      "problemMatcher": []
+    },
+    {
+      "label": "Bosang: Parser Actual QA",
+      "type": "shell",
+      "command": "npm run parser:actual",
+      "problemMatcher": []
+    },
+    {
+      "label": "Bosang: Static Validate",
+      "type": "shell",
+      "command": "node tests/validate_static_site.js",
+      "problemMatcher": []
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "template_version": "bso_brief_docx_v0.1",
+  "mode": "NATIVE",
+  "page_count_target": 5,
+  "slots": [
+    {"slot": "{{PAGE1_TITLE}}", "page": 1, "type": "text", "required": true},
+    {"slot": "{{PAGE1_HERO_GRAPHIC}}", "page": 1, "type": "image", "required": true},
+    {"slot": "{{PAGE1_SUBJECT_TABLE}}", "page": 1, "type": "table", "required": true},
+    {"slot": "{{PAGE1_SUMMARY}}", "page": 1, "type": "text", "required": true},
+    {"slot": "{{PAGE2_STRUCTURE_TABLE}}", "page": 2, "type": "table", "required": true},
+    {"slot": "{{PAGE2_ANALYSIS}}", "page": 2, "type": "text", "required": true},
+    {"slot": "{{PAGE3_SUBJECT_GRAPHIC}}", "page": 3, "type": "image", "required": true},
+    {"slot": "{{PAGE3_STANDARD_GRAPHIC}}", "page": 3, "type": "image", "required": true},
+    {"slot": "{{PAGE3_FACTOR_TABLE}}", "page": 3, "type": "table", "required": true},
+    {"slot": "{{PAGE3_ANALYSIS}}", "page": 3, "type": "text", "required": true},
+    {"slot": "{{PAGE4_OTHER_FACTOR_TABLE}}", "page": 4, "type": "table", "required": true},
+    {"slot": "{{PAGE4_FLOW_GRAPHIC}}", "page": 4, "type": "image", "required": true},
+    {"slot": "{{PAGE4_ANALYSIS}}", "page": 4, "type": "text", "required": true},
+    {"slot": "{{PAGE5_ISSUES}}", "page": 5, "type": "issues", "required": true},
+    {"slot": "{{PAGE5_CONCLUSION}}", "page": 5, "type": "text", "required": true},
+    {"slot": "{{PAGE5_DISCLAIMER}}", "page": 5, "type": "text", "required": true}
+  ],
+  "rules": {
+    "slot_names_unique": true,
+    "preserve_header_footer": true,
+    "preserve_native_styles": true,
+    "write_new_output_file": true,
+    "missing_graphic_behavior": "leave_explicit_pending_asset",
+    "missing_numeric_value_behavior": "확인 필요"
+  }
+}

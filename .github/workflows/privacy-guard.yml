@@ -1,0 +1,24 @@
+name: privacy-guard
+
+# Runs the privacy boundary guard on every pull request and on pushes to main.
+# No path filter: the guard scans all tracked files, so any change must be
+# checked. The guard uses only Node built-ins + `git ls-files`, so no
+# dependency install is required.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node tests/privacy_purge_guard.test.js

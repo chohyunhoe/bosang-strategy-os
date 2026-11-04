@@ -1,0 +1,846 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>보상전략 OS 검토 보조 프로토타입</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f5f7fb;
+        --card: #ffffff;
+        --ink: #172033;
+        --muted: #667085;
+        --line: #d7dde8;
+        --primary: #1d4ed8;
+        --review: #b45309;
+        --ok: #047857;
+      }
+
+      * { box-sizing: border-box; }
+
+      html {
+        width: 100%;
+        overflow-x: hidden;
+      }
+
+      body {
+        width: 100%;
+        min-width: 0;
+        margin: 0;
+        overflow-x: hidden;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        line-height: 1.5;
+      }
+
+      header {
+        width: 100%;
+        min-width: 100%;
+        background: linear-gradient(135deg, #173a7a, #1d4ed8);
+        color: white;
+        padding: 40px max(24px, calc((100% - 1120px) / 2));
+      }
+
+      main {
+        width: min(1120px, calc(100% - 32px));
+        max-width: 1120px;
+        margin: 24px auto 56px;
+        padding-bottom: 0;
+        display: grid;
+        gap: 20px;
+      }
+
+      h1, h2, h3 { margin: 0; }
+      h1 { font-size: clamp(28px, 4vw, 44px); }
+      h2 { font-size: 22px; }
+      h3 { font-size: 18px; }
+      p { margin: 0; }
+
+      .subtitle { max-width: 760px; margin-top: 12px; opacity: 0.9; }
+      .card {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        box-shadow: 0 10px 24px rgb(15 23 42 / 7%);
+        padding: 22px;
+      }
+
+      .status-card {
+        display: grid;
+        gap: 12px;
+      }
+      .status-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .table-scroll {
+        width: 100%;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        border-radius: 12px;
+      }
+      .table-scroll table {
+        min-width: 760px;
+      }
+      .grid { display: grid; gap: 14px; }
+      .grid.two { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+      .grid.three { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+
+      .meta, .muted { color: var(--muted); }
+      .pill-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+      .pill, .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        border-radius: 999px;
+        padding: 4px 10px;
+        font-size: 13px;
+        font-weight: 700;
+        background: #eef2ff;
+        color: #1e3a8a;
+      }
+      .badge.ok { background: #ecfdf5; color: var(--ok); }
+      .badge.review { background: #fffbeb; color: var(--review); border: 1px solid #fcd34d; }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        overflow: hidden;
+        border-radius: 12px;
+        font-size: 14px;
+      }
+      th, td {
+        min-width: 92px;
+        border-bottom: 1px solid var(--line);
+        padding: 12px 10px;
+        text-align: left;
+        vertical-align: top;
+        word-break: keep-all;
+        overflow-wrap: normal;
+      }
+      th {
+        background: #f8fafc;
+        color: #334155;
+        font-size: 13px;
+        white-space: nowrap;
+      }
+      tr:last-child td { border-bottom: 0; }
+      .amount { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+      .section-head { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; margin-bottom: 14px; }
+      .warning { border-left: 5px solid var(--review); }
+      ul { margin: 8px 0 0; padding-left: 18px; }
+      .candidate { border: 1px solid var(--line); border-radius: 14px; padding: 14px; background: #fbfdff; }
+      .mobile-appraisal-list, .mobile-land-results-list, .audit-details-list { display: none; }
+      .mobile-appraisal-card, .mobile-land-result-card, .audit-entry {
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 14px;
+        background: #fbfdff;
+      }
+      .field-list {
+        display: grid;
+        gap: 8px;
+        margin-top: 10px;
+      }
+      .field-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+      }
+      .field-row span:first-child {
+        flex: 0 0 auto;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      .field-row span:last-child {
+        min-width: 0;
+        text-align: right;
+        word-break: keep-all;
+      }
+      details {
+        margin-top: 10px;
+      }
+      summary {
+        cursor: pointer;
+        color: var(--primary);
+        font-weight: 700;
+      }
+      .audit { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
+
+      @media (max-width: 640px) {
+        header {
+          padding: 28px 16px;
+        }
+        main {
+          width: min(100% - 20px, 1120px);
+          margin: 12px auto 32px;
+          padding-bottom: max(80px, env(safe-area-inset-bottom));
+          gap: 12px;
+        }
+        h1 { font-size: 26px; }
+        h2 { font-size: 19px; }
+        h3 { font-size: 16px; }
+        .subtitle { margin-top: 8px; }
+        .card {
+          border-radius: 14px;
+          padding: 15px;
+        }
+        .section-head {
+          display: grid;
+          gap: 10px;
+          margin-bottom: 10px;
+        }
+        .grid { gap: 10px; }
+        .pill-row, .status-list { gap: 6px; }
+        .pill, .badge {
+          padding: 5px 8px;
+          font-size: 12px;
+          line-height: 1.2;
+          white-space: nowrap;
+        }
+        .badge.review {
+          border-width: 2px;
+        }
+        th, td {
+          min-width: 96px;
+          padding: 10px 8px;
+          font-size: 13px;
+          word-break: keep-all;
+          white-space: nowrap;
+        }
+        .table-scroll table {
+          min-width: 720px;
+        }
+        .desktop-appraisal-table,
+        .desktop-land-results-table,
+        .desktop-audit-table {
+          display: none;
+        }
+        .mobile-appraisal-list,
+        .mobile-land-results-list,
+        .audit-details-list {
+          display: grid;
+          gap: 10px;
+          margin-top: 14px;
+        }
+        .field-row {
+          align-items: flex-start;
+        }
+        .field-row span:last-child {
+          overflow-wrap: anywhere;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>보상전략 OS 검토 보조 프로토타입</h1>
+      <p class="subtitle">익명시 샘플·예시지구 구조화 샘플을 기준으로 평가서 간 차이, 검토 필요 항목, 후보 전략, 감사추적 로그를 분리해 렌더링합니다.</p>
+    </header>
+    <main id="app" aria-live="polite">
+      <section class="card status-card">
+        <h2>데이터 로드 대기</h2>
+        <p class="muted">내장된 sample_case_gongju.json 데이터를 준비하는 중입니다.</p>
+      </section>
+    </main>
+
+    <script type="application/json" id="embedded-sample-case">
+{
+  "schema_version": "bosang-strategy-os.case.v1",
+  "case": {
+    "case_id": "GONGJU-SONGSEON-DONGHYEON-V0.1",
+    "case_name": "익명시 샘플·예시지구 보상 검토",
+    "jurisdiction": "익명도 익명시",
+    "project_name": "익명시 샘플·예시지구 도시개발사업",
+    "district_name": "샘플·예시지구",
+    "base_date": "2026-04-30",
+    "currency": "KRW",
+    "notice": "v0.1 시연용 구조화 샘플 데이터"
+  },
+  "subjects": [
+    {
+      "land_id": "GJ-SS-11-1",
+      "address": "익명도 익명시 샘플동 11-1",
+      "lot_number": "11-1",
+      "category": "전",
+      "area_sqm": 1112,
+      "road_condition": "세로(가)",
+      "use_zone": "자연녹지지역",
+      "district": "샘플·예시지구"
+    },
+    {
+      "land_id": "GJ-SS-11-4",
+      "address": "익명도 익명시 샘플동 11-4",
+      "lot_number": "11-4",
+      "category": "대",
+      "area_sqm": 356,
+      "road_condition": "소로한면",
+      "use_zone": "자연녹지지역",
+      "district": "샘플·예시지구"
+    },
+    {
+      "land_id": "GJ-SS-SAN3-1",
+      "address": "익명도 익명시 샘플동 산9-1",
+      "lot_number": "산9-1",
+      "category": "임야",
+      "area_sqm": 2480,
+      "road_condition": "세로(불)",
+      "use_zone": "자연녹지지역",
+      "district": "샘플·예시지구"
+    }
+  ],
+  "appraisals": [
+    {
+      "appraisal_id": "APP-JEIL-SONGSEON-001",
+      "firm_name": "제일",
+      "valuation_date": "2026-04-30",
+      "status": "CONFIRMED",
+      "source_document": "제일 감정평가서 요약 입력",
+      "land_values": [
+        {
+          "land_id": "GJ-SS-11-1",
+          "unit_price": 551357,
+          "area_sqm": 1112,
+          "amount": 516000112,
+          "method": "공시지가기준법",
+          "notes": "샘플동 11-1 표준지 및 개별요인 비교 입력값"
+        },
+        {
+          "land_id": "GJ-SS-11-4",
+          "unit_price": 562434,
+          "area_sqm": 356,
+          "amount": 505000035,
+          "method": "공시지가기준법",
+          "notes": "샘플동 11-4 지목 및 접근조건 입력값"
+        },
+        {
+          "land_id": "GJ-SS-SAN3-1",
+          "unit_price": 86500,
+          "area_sqm": 2480,
+          "amount": 502000014,
+          "method": "공시지가기준법",
+          "notes": "샘플동 산9-1 임야 조건 입력값"
+        }
+      ]
+    },
+    {
+      "appraisal_id": "APP-GARAM-SONGSEON-001",
+      "firm_name": "가람",
+      "valuation_date": "2026-04-30",
+      "status": "NEEDS_REVIEW",
+      "source_document": "가람 감정평가서 요약 입력",
+      "land_values": [
+        {
+          "land_id": "GJ-SS-11-1",
+          "unit_price": 557399,
+          "area_sqm": 1112,
+          "amount": 518000126,
+          "method": "공시지가기준법",
+          "notes": "거래사례 보정률 입력 근거 검토 필요"
+        },
+        {
+          "land_id": "GJ-SS-11-4",
+          "unit_price": 564448,
+          "area_sqm": 356,
+          "amount": 508000056,
+          "method": "공시지가기준법",
+          "notes": "대지 조건 보정 입력값 검토 필요"
+        },
+        {
+          "land_id": "GJ-SS-SAN3-1",
+          "unit_price": 84200,
+          "area_sqm": 2480,
+          "amount": 500000000,
+          "method": "공시지가기준법",
+          "notes": "임야 접근조건 보정 입력값 검토 필요"
+        }
+      ]
+    },
+    {
+      "appraisal_id": "APP-KYUNGIL-SONGSEON-001",
+      "firm_name": "경일",
+      "valuation_date": "2026-04-30",
+      "status": "ANCHOR_REVIEW_REQUIRED",
+      "source_document": "경일 감정평가서 요약 입력",
+      "land_values": [
+        {
+          "land_id": "GJ-SS-11-1",
+          "unit_price": 548336,
+          "area_sqm": 1112,
+          "amount": 515000105,
+          "method": "공시지가기준법",
+          "notes": "선정 표준지 비교 가능성 검토 필요"
+        },
+        {
+          "land_id": "GJ-SS-11-4",
+          "unit_price": 561427,
+          "area_sqm": 356,
+          "amount": 504000028,
+          "method": "공시지가기준법",
+          "notes": "개별요인 비교표 확인 필요"
+        },
+        {
+          "land_id": "GJ-SS-SAN3-1",
+          "unit_price": 87900,
+          "area_sqm": 2480,
+          "amount": 503000021,
+          "method": "공시지가기준법",
+          "notes": "임야 표준지 선정 근거 검토 필요"
+        }
+      ]
+    }
+  ],
+  "appraisal_totals": [
+    {
+      "firm_name": "제일",
+      "total_amount": 520000140,
+      "average_unit_price": 522154,
+      "status": "CONFIRMED"
+    },
+    {
+      "firm_name": "가람",
+      "total_amount": 523000161,
+      "average_unit_price": 526182,
+      "status": "NEEDS_REVIEW"
+    },
+    {
+      "firm_name": "경일",
+      "total_amount": 519000133,
+      "average_unit_price": 521147,
+      "status": "ANCHOR_REVIEW_REQUIRED"
+    }
+  ],
+  "land_appraisal_results": [
+    {
+      "land_id": "GJ-SS-11-1",
+      "review_average_amount": 517000119,
+      "review_average_unit_price": 552364,
+      "spread_percent": 5.54,
+      "decision_status": "HOLD",
+      "reference_notice": "평가법인 3개 금액의 단순 산술 평균 참고값이며 감정평가 결과 산정·추천값이 아닙니다.",
+      "rationale": "평가서 간 금액 차이와 표준지 비교 근거를 함께 대조해야 합니다."
+    },
+    {
+      "land_id": "GJ-SS-11-4",
+      "review_average_amount": 506000042,
+      "review_average_unit_price": 563441,
+      "spread_percent": 3.04,
+      "decision_status": "ROAD_TEMPLATE_REVIEW",
+      "reference_notice": "평가법인 3개 금액의 단순 산술 평균 참고값이며 감정평가 결과 산정·추천값이 아닙니다.",
+      "rationale": "접면도로 및 대지 조건 표현 서식을 원문 기준으로 확인해야 합니다."
+    },
+    {
+      "land_id": "GJ-SS-SAN3-1",
+      "review_average_amount": 501000007,
+      "review_average_unit_price": 86200,
+      "spread_percent": 4.29,
+      "decision_status": "OCR_REQUIRED",
+      "reference_notice": "평가법인 3개 금액의 단순 산술 평균 참고값이며 감정평가 결과 산정·추천값이 아닙니다.",
+      "rationale": "임야 관련 원문 표와 OCR 입력값의 일치 여부를 확인해야 합니다."
+    }
+  ],
+  "comparison_summary_by_land": [
+    {
+      "land_id": "GJ-SS-11-1",
+      "min_firm": "경일",
+      "min_amount": 515000105,
+      "max_firm": "가람",
+      "max_amount": 518000126,
+      "difference_amount": 50700049,
+      "difference_percent": 5.54,
+      "review_points": [
+        "가람 거래사례 보정률의 산정 근거",
+        "경일 선정 표준지와 샘플동 11-1의 비교 가능성"
+      ]
+    },
+    {
+      "land_id": "GJ-SS-11-4",
+      "min_firm": "경일",
+      "min_amount": 504000028,
+      "max_firm": "가람",
+      "max_amount": 508000056,
+      "difference_amount": 5070049,
+      "difference_percent": 3.04,
+      "review_points": [
+        "접면도로 조건 표현",
+        "대지 조건 보정률 입력값"
+      ]
+    },
+    {
+      "land_id": "GJ-SS-SAN3-1",
+      "min_firm": "가람",
+      "min_amount": 500000000,
+      "max_firm": "경일",
+      "max_amount": 503000021,
+      "difference_amount": 5100070,
+      "difference_percent": 4.29,
+      "review_points": [
+        "임야 표준지 선정 근거",
+        "OCR 입력값과 평가서 원문 수치 대조"
+      ]
+    }
+  ],
+  "gemini_candidates": [
+    {
+      "candidate_id": "CAND-001",
+      "land_id": "GJ-SS-11-1",
+      "title": "표준지 비교 근거 확인",
+      "summary": "샘플동 11-1은 평가법인 간 차이를 설명하는 표준지 비교표와 보정률 근거를 원문으로 확인하는 검토 후보입니다.",
+      "confidence": 0.72
+    },
+    {
+      "candidate_id": "CAND-002",
+      "land_id": "GJ-SS-SAN3-1",
+      "title": "임야 OCR 입력값 대조",
+      "summary": "샘플동 산9-1은 원문 표의 임야 단가·면적·금액과 구조화 입력값을 대조하는 검토 후보입니다.",
+      "confidence": 0.68
+    }
+  ],
+  "gemini_imports": [
+    {
+      "import_id": "IMP-20260501-001",
+      "source": "Gemini draft",
+      "imported_at": "2026-05-01T09:30:00Z",
+      "imported_by": "reviewer@example.com",
+      "target_section": "candidate_generation",
+      "hash": "sha256:sample-candidate-import"
+    },
+    {
+      "import_id": "IMP-20260502-001",
+      "source": "Gemini checklist",
+      "imported_at": "2026-05-02T11:10:00Z",
+      "imported_by": "reviewer@example.com",
+      "target_section": "audit_checklist",
+      "hash": "sha256:sample-audit-import"
+    }
+  ]
+}
+
+    </script>
+
+    <script>
+      const REVIEW_STATUSES = new Set([
+        "HOLD",
+        "NEEDS_REVIEW",
+        "ANCHOR_REVIEW_REQUIRED",
+        "ROAD_TEMPLATE_REVIEW",
+        "OCR_REQUIRED"
+      ]);
+
+      const NUM = new Intl.NumberFormat("ko-KR");
+
+      const escapeHtml = (value) => String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+
+      const number = (value) => NUM.format(value ?? 0);
+      const amount = (value) => `${number(value)}원`;
+
+      function statusBadge(status) {
+        if (REVIEW_STATUSES.has(status)) {
+          return `<span class="badge review" title="원본 상태: ${escapeHtml(status)}">검수 필요</span>`;
+        }
+        return `<span class="badge ok">${escapeHtml(status || "확인")}</span>`;
+      }
+
+      function subjectMap(subjects) {
+        return Object.fromEntries((subjects || []).map((subject) => [subject.land_id, subject]));
+      }
+
+      function collectReviewItems(data) {
+        const items = [];
+        for (const appraisal of data.appraisals || []) {
+          if (REVIEW_STATUSES.has(appraisal.status)) {
+            items.push({ status: appraisal.status, label: `평가법인 ${appraisal.firm_name}`, detail: appraisal.source_document || appraisal.appraisal_id });
+          }
+        }
+        for (const total of data.appraisal_totals || []) {
+          if (REVIEW_STATUSES.has(total.status)) {
+            items.push({ status: total.status, label: `합계 ${total.firm_name}`, detail: `총액 ${amount(total.total_amount)}` });
+          }
+        }
+        for (const result of data.land_appraisal_results || []) {
+          if (REVIEW_STATUSES.has(result.decision_status)) {
+            items.push({ status: result.decision_status, label: `토지 ${result.land_id}`, detail: result.rationale });
+          }
+        }
+        return items;
+      }
+
+      function renderReviewSummary(data) {
+        const items = collectReviewItems(data);
+        const counts = [...REVIEW_STATUSES].map((status) => ({
+          status,
+          count: items.filter((item) => item.status === status).length
+        })).filter((entry) => entry.count > 0);
+        return `
+          <section class="card" data-section="review-summary">
+            <div class="section-head">
+              <div>
+                <h2>검수 필요 항목 요약</h2>
+                <p class="muted">검수 상태가 있는 평가서·합계·토지별 검토 항목을 자동 집계합니다.</p>
+              </div>
+              <span class="badge review">${number(items.length)}건</span>
+            </div>
+            <div class="status-list">
+              ${counts.map((entry) => `<span class="badge review">${escapeHtml(entry.status)} ${number(entry.count)}건</span>`).join("")}
+            </div>
+            <ul>${items.map((item) => `<li><strong>${escapeHtml(item.label)}</strong> · ${escapeHtml(item.status)}<br><span class="muted">${escapeHtml(item.detail)}</span></li>`).join("")}</ul>
+          </section>`;
+      }
+
+      function renderLoadBanner(data) {
+        return `
+          <section class="card status-card" data-section="load-status">
+            <h2>데이터 로드 상태</h2>
+            <div class="status-list">
+              <span class="badge ok">내장 sample_case_gongju.json 로드 성공</span>
+              <span class="badge review">본 화면은 감정평가 결과를 산정·추천·대체하지 않습니다.</span>
+              <span class="pill">평가서 간 차이를 구조화하여 검토 필요 항목을 보여주는 보조도구입니다.</span>
+              <span class="pill">최종 판단은 감정평가서 원문, 현장자료, 전문가 검토를 통해 이루어져야 합니다.</span>
+              <span class="pill">데이터 출처: sample_case_gongju.json · ${escapeHtml(data.case?.notice || "샘플 데이터")}</span>
+            </div>
+          </section>`;
+      }
+
+      function renderCaseSummary(data) {
+        const c = data.case;
+        const subjects = data.subjects || [];
+        return `
+          <section class="card warning">
+            <div class="section-head">
+              <div>
+                <h2>${escapeHtml(c.case_name)}</h2>
+                <p class="meta">${escapeHtml(c.project_name)} · ${escapeHtml(c.jurisdiction)} · 기준일 ${escapeHtml(c.base_date)}</p>
+              </div>
+              <span class="pill">${escapeHtml(data.schema_version)}</span>
+            </div>
+            <p>본 화면은 감정평가 결과를 산정·추천·대체하지 않습니다. 평가서 간 차이를 구조화하여 검토 필요 항목을 보여주는 보조도구이며, 최종 판단은 감정평가서 원문, 현장자료, 전문가 검토를 통해 이루어져야 합니다.</p>
+            <div class="pill-row">
+              ${subjects.map((subject) => `<span class="pill">${escapeHtml(subject.land_id)} · ${escapeHtml(subject.category)} · ${number(subject.area_sqm)}㎡</span>`).join("")}
+            </div>
+          </section>`;
+      }
+
+      function renderAppraisals(data) {
+        const appraisals = data.appraisals || [];
+        const rows = appraisals.flatMap((appraisal) => (appraisal.land_values || []).map((landValue) => `
+          <tr>
+            <td>${escapeHtml(appraisal.firm_name)}</td>
+            <td>${escapeHtml(landValue.land_id)}</td>
+            <td class="amount">${amount(landValue.unit_price)}</td>
+            <td class="amount">${amount(landValue.amount)}</td>
+            <td>${escapeHtml(landValue.method)}</td>
+            <td>${escapeHtml(landValue.notes)}</td>
+            <td>${statusBadge(appraisal.status)}</td>
+          </tr>`)).join("");
+        const cards = appraisals.flatMap((appraisal) => (appraisal.land_values || []).map((landValue) => `
+          <article class="mobile-appraisal-card">
+            <div class="section-head">
+              <div>
+                <h3>${escapeHtml(appraisal.firm_name)}</h3>
+                <p class="muted">${escapeHtml(landValue.land_id)}</p>
+              </div>
+              ${statusBadge(appraisal.status)}
+            </div>
+            <div class="field-list">
+              <div class="field-row"><span>단가</span><strong>${amount(landValue.unit_price)}</strong></div>
+              <div class="field-row"><span>평가액</span><strong>${amount(landValue.amount)}</strong></div>
+              <div class="field-row"><span>비고</span><span>${escapeHtml(landValue.notes)}</span></div>
+            </div>
+            <details>
+              <summary>방식/세부메모</summary>
+              <div class="field-list">
+                <div class="field-row"><span>방식</span><span>${escapeHtml(landValue.method)}</span></div>
+                <div class="field-row"><span>세부메모</span><span>${escapeHtml(appraisal.source_document || appraisal.appraisal_id)}</span></div>
+              </div>
+            </details>
+          </article>`)).join("");
+        return `
+          <section class="card">
+            <div class="section-head">
+              <div>
+                <h2>평가법인별 감정평가 결과</h2>
+                <p class="muted">appraisals 배열의 법인명, 토지별 평가액, 평가 상태를 렌더링합니다.</p>
+              </div>
+            </div>
+            <div class="table-scroll desktop-appraisal-table" role="region" aria-label="평가법인별 감정평가 결과 표" tabindex="0">
+              <table>
+                <thead><tr><th>평가법인</th><th>토지 ID</th><th class="amount">단가</th><th class="amount">평가액</th><th>방식</th><th>비고</th><th>상태</th></tr></thead>
+                <tbody>${rows}</tbody>
+              </table>
+            </div>
+            <div class="mobile-appraisal-list" aria-label="평가법인별 감정평가 결과 카드 목록">
+              ${cards}
+            </div>
+          </section>`;
+      }
+
+      function renderTotals(data) {
+        const totals = data.appraisal_totals || [];
+        return `
+          <section class="card">
+            <h2>평가법인별 합계</h2>
+            <div class="grid three" style="margin-top: 14px;">
+              ${totals.map((total) => `
+                <article class="candidate">
+                  <h3>${escapeHtml(total.firm_name)}</h3>
+                  <p class="amount" style="font-size: 22px; margin-top: 8px;">${amount(total.total_amount)}</p>
+                  <p class="muted">평균 단가 ${amount(total.average_unit_price)}</p>
+                  <p style="margin-top: 10px;">${statusBadge(total.status)}</p>
+                </article>`).join("")}
+            </div>
+          </section>`;
+      }
+
+      function renderLandResults(data) {
+        const subjects = subjectMap(data.subjects);
+        const results = data.land_appraisal_results || [];
+        const cards = results.map((result) => `
+          <article class="mobile-land-result-card">
+            <div class="section-head">
+              <div>
+                <h3>${escapeHtml(result.land_id)}</h3>
+                <p class="muted">${escapeHtml(subjects[result.land_id]?.address)}</p>
+              </div>
+              ${statusBadge(result.decision_status)}
+            </div>
+            <div class="field-list">
+              <div class="field-row"><span>검토용 산술 평균 단가</span><strong>${amount(result.review_average_unit_price)}</strong></div>
+              <div class="field-row"><span>검토용 산술 평균 금액</span><strong>${amount(result.review_average_amount)}</strong></div>
+              <div class="field-row"><span>편차</span><span>${escapeHtml(result.spread_percent)}%</span></div>
+            </div>
+            <details>
+              <summary>산술 참고값 고지 및 근거</summary>
+              <p class="muted" style="margin-top: 8px;">${escapeHtml(result.reference_notice)}</p>
+              <p style="margin-top: 6px;">${escapeHtml(result.rationale)}</p>
+            </details>
+          </article>`).join("");
+        return `
+          <section class="card">
+            <h2>토지별 검토 결과</h2>
+            <p class="muted" style="margin-top: 8px;">평가법인 3개 금액의 단순 산술 평균 참고값이며 감정평가 결과 산정·추천값이 아닙니다.</p>
+            <div class="table-scroll desktop-land-results-table" role="region" aria-label="토지별 검토 결과 표" tabindex="0" style="margin-top: 14px;">
+              <table>
+                <thead><tr><th>토지</th><th class="amount">검토용 산술 평균 단가</th><th class="amount">검토용 산술 평균 금액</th><th>편차</th><th>판정</th><th>산술 참고값 고지 및 근거</th></tr></thead>
+                <tbody>
+                  ${results.map((result) => `
+                    <tr>
+                      <td><strong>${escapeHtml(result.land_id)}</strong><br><span class="muted">${escapeHtml(subjects[result.land_id]?.address)}</span></td>
+                      <td class="amount">${amount(result.review_average_unit_price)}</td>
+                      <td class="amount">${amount(result.review_average_amount)}</td>
+                      <td>${escapeHtml(result.spread_percent)}%</td>
+                      <td>${statusBadge(result.decision_status)}</td>
+                      <td><span class="muted">${escapeHtml(result.reference_notice)}</span><br>${escapeHtml(result.rationale)}</td>
+                    </tr>`).join("")}
+                </tbody>
+              </table>
+            </div>
+            <div class="mobile-land-results-list" aria-label="토지별 검토 결과 카드 목록">
+              ${cards}
+            </div>
+          </section>`;
+      }
+
+      function renderComparison(data) {
+        const summaries = data.comparison_summary_by_land || [];
+        return `
+          <section class="card">
+            <h2>토지별 비교 요약</h2>
+            <div class="grid two" style="margin-top: 14px;">
+              ${summaries.map((summary) => `
+                <article class="candidate">
+                  <h3>${escapeHtml(summary.land_id)}</h3>
+                  <p class="muted">최저 ${escapeHtml(summary.min_firm)} ${amount(summary.min_amount)} · 최고 ${escapeHtml(summary.max_firm)} ${amount(summary.max_amount)}</p>
+                  <p style="margin-top: 8px;">차이 ${amount(summary.difference_amount)} (${escapeHtml(summary.difference_percent)}%)</p>
+                  <ul>${(summary.review_points || []).map((point) => `<li>${escapeHtml(point)}</li>`).join("")}</ul>
+                </article>`).join("")}
+            </div>
+          </section>`;
+      }
+
+      function renderGeminiCandidates(data) {
+        const candidates = data.gemini_candidates || [];
+        return `
+          <section class="card">
+            <h2>AI 구조화 검토 후보</h2>
+            <p class="muted">이 섹션에서만 gemini_candidates를 사용하며, 감정평가 결과를 추천하거나 확정하지 않습니다.</p>
+            <div class="grid two" style="margin-top: 14px;">
+              ${candidates.map((candidate) => `
+                <article class="candidate">
+                  <h3>${escapeHtml(candidate.title)}</h3>
+                  <p class="muted">${escapeHtml(candidate.candidate_id)} · ${escapeHtml(candidate.land_id)} · 구조화 신뢰도 ${Math.round((candidate.confidence || 0) * 100)}%</p>
+                  <p style="margin-top: 8px;">${escapeHtml(candidate.summary)}</p>
+                </article>`).join("")}
+            </div>
+          </section>`;
+      }
+
+      function renderAuditLog(data) {
+        const imports = data.gemini_imports || [];
+        return `
+          <section class="card">
+            <h2>감사추적 로그</h2>
+            <p class="muted">이 섹션에서만 gemini_imports를 사용합니다.</p>
+            <div class="table-scroll desktop-audit-table" role="region" aria-label="감사추적 로그 표" tabindex="0" style="margin-top: 14px;">
+              <table class="audit">
+                <thead><tr><th>Import ID</th><th>Source</th><th>Imported at</th><th>Imported by</th><th>Target</th><th>Hash</th></tr></thead>
+                <tbody>
+                  ${imports.map((entry) => `
+                    <tr>
+                      <td>${escapeHtml(entry.import_id)}</td>
+                      <td>${escapeHtml(entry.source)}</td>
+                      <td>${escapeHtml(entry.imported_at)}</td>
+                      <td>${escapeHtml(entry.imported_by)}</td>
+                      <td>${escapeHtml(entry.target_section)}</td>
+                      <td>${escapeHtml(entry.hash)}</td>
+                    </tr>`).join("")}
+                </tbody>
+              </table>
+            </div>
+            <div class="audit-details-list">
+              ${imports.map((entry) => `
+                <details class="audit-entry">
+                  <summary>${escapeHtml(entry.import_id)} · ${escapeHtml(entry.source)} · ${escapeHtml(entry.imported_at)}</summary>
+                  <div class="field-list audit">
+                    <div class="field-row"><span>hash</span><span>${escapeHtml(entry.hash)}</span></div>
+                    <div class="field-row"><span>imported_by</span><span>${escapeHtml(entry.imported_by)}</span></div>
+                    <div class="field-row"><span>target_section</span><span>${escapeHtml(entry.target_section)}</span></div>
+                  </div>
+                </details>`).join("")}
+            </div>
+          </section>`;
+      }
+
+      function render(data) {
+        document.querySelector("#app").innerHTML = [
+          renderLoadBanner(data),
+          renderReviewSummary(data),
+          renderCaseSummary(data),
+          renderAppraisals(data),
+          renderTotals(data),
+          renderLandResults(data),
+          renderComparison(data),
+          renderGeminiCandidates(data),
+          renderAuditLog(data)
+        ].join("");
+      }
+
+      async function boot() {
+        const embedded = document.querySelector("#embedded-sample-case");
+        if (!embedded) throw new Error("내장 샘플 데이터를 찾지 못했습니다.");
+        render(JSON.parse(embedded.textContent));
+      }
+
+      boot().catch((error) => {
+        document.querySelector("#app").innerHTML = `<section class="card warning"><h2>로드 실패</h2><p>${escapeHtml(error.message)}</p></section>`;
+      });
+    </script>
+  </body>
+</html>

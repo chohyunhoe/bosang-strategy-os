@@ -1,0 +1,39 @@
+{
+  "meta": {
+    "generated_for": "killerkit_v025_review_ui",
+    "parser_stage": "skeleton_only",
+    "schema_reference": "reference/sample_case_001_v021_full.json",
+    "notice": "본 JSON은 검토 보조용 구조화 데이터이며 감정평가 결과 산정 또는 법률판단 확정값이 아닙니다."
+  },
+  "case": {
+    "review_status_code": "NEEDS_REVIEW",
+    "case_id": "",
+    "case_name": "",
+    "project_name": "",
+    "project_owner": "",
+    "appraisal_purpose": "",
+    "price_date": ""
+  },
+  "owners": [],
+  "appraisals": [],
+  "lands": [],
+  "land_characteristics": [],
+  "land_appraisal_results": [],
+  "appraisal_totals": [],
+  "standard_lands": [],
+  "comp_cases": [],
+  "subject_to_standard_factor_comparisons": [],
+  "standard_to_comp_case_factor_comparisons": [],
+  "other_factor_reviews": [],
+  "comparison_summary_by_land": [],
+  "issue_candidates": [],
+  "draft_sentences": [],
+  "risk_warnings": [],
+  "document_uploads": [],
+  "public_land_characteristics": [],
+  "public_land_data_enrichment": {},
+  "land_characteristic_crosscheck": [],
+  "obstacle_summary_by_appraisal": [],
+  "obstacle_appraisal_results_sample": [],
+  "ocr_review_items": []
+}

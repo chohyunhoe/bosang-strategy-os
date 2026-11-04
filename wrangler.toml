@@ -1,0 +1,14 @@
+name = "bosang-strategy-os-mobile"
+compatibility_date = "2026-08-21"
+send_metrics = false
+
+[assets]
+directory = "./dist/product-v2-1-release"
+
+# Product v2.1 production bundle only.
+# Build: npm ci && npm run release:build
+# Local-only capabilities (Output/Public Data/QGIS/VWorld bridges), case data,
+# credentials, local paths, repository sources, and generated case outputs are
+# never included in the Cloudflare static bundle.
+# Rollback baseline: branch rollback/pre-v2.1-20260822
+# deploy-marker: v2.1-final-hotfix-20260822T1430+0900
