@@ -16,3 +16,4 @@ main .case-registry{margin:28px 0 0;padding:20px 24px}main .case-registry h2{fon
 .start-grid{grid-template-areas:'upload guide' 'registry registry';gap:24px 40px}.start-grid>.upload-card{grid-area:upload}.start-grid>.start-guide{grid-area:guide}.start-grid>[data-registry-slot]{grid-area:registry;min-width:0}.start-grid .case-registry{margin-top:0}.case-registry{scroll-margin-top:100px}.source-note,.case-registry .case-registry-save-note,.progress{font-size:12px}.technical-note{font-size:12px}.workflow-step small{font-size:12px}button:disabled{cursor:not-allowed}.upload:has(input:disabled){cursor:wait}
 @media(max-width:900px){.start-grid{grid-template-areas:'upload' 'registry' 'guide';gap:20px}.case-registry{scroll-margin-top:140px}.topbar .review-actions>*{min-height:40px}}
 .workspace-heading h1,.next-task h2,.start-guide h2{word-break:keep-all;overflow-wrap:anywhere}
+.processing-panel{margin-bottom:18px;border-left:3px solid var(--accent);background:#fcf9fa}

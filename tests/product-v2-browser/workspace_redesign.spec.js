@@ -63,6 +63,11 @@ test('자료와 긴 사건명이 있어도 목록 직접열기·표·기능이 �
       standard_lands:[],comp_cases:[],land_appraisal_results:[],subject_to_standard_factor_comparisons:[],subject_factor_total_candidates:[],other_factor_reviews:[],obstacle_summary_by_appraisal:[],obstacle_appraisal_results_sample:[]}
   }));
   await expect(page.locator('.next-task')).toBeVisible();
+  await page.evaluate(()=>window.BSOProductV2.store.setStatus('PROCESSING'));
+  await expect(page.locator('[data-progress]')).toBeVisible();
+  await expect(page.locator('.status-pill')).toHaveAttribute('data-status','PROCESSING');
+  await expect(page.locator('[data-work-route]').first()).toBeDisabled();
+  await page.evaluate(()=>window.BSOProductV2.store.setStatus('PARSE_HOLD'));
   await page.locator('[data-case-registry-top]').click();
   await expect(page.locator('.registry-list')).toHaveAttribute('open','');
   await expect(page.locator('[data-case-remove]')).toBeVisible();
