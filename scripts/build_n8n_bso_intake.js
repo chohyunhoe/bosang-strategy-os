@@ -1,7 +1,7 @@
 'use strict';
 const fs = require('node:fs');
 const { randomUUID } = require('node:crypto');
-const { validateBsoIntake, planBsoIntake, restoreBsoQueueContext } = require('../integrations/n8n/lk-bso-intake.cjs');
+const { validateBsoIntake, planBsoIntake, restoreBsoQueueContext, summarizeBsoIntake } = require('../integrations/n8n/lk-bso-intake.cjs');
 const EXTRA_COLUMNS = ['bso_context_json', 'bso_receipt_json', 'intake_source_file_id', 'intake_execution_id'];
 
 function patchDispatcher(source) {
@@ -57,7 +57,7 @@ function buildIntake(source, folderId) {
     append.parameters.columns.value[field] = '={{ $json.' + field + ' ?? "" }}';
     append.parameters.columns.schema.push({ id: field, displayName: field, required: false, defaultMatch: false, display: true, type: 'string', canBeUsedToMatch: false });
   }
-  code('Summarize BSO Intake', "const p=$('Plan BSO Intake').first(0).json,acks=$input.all().map(x=>x.json);const confirmed=p.rows.filter(r=>acks.some(a=>a.job_id===r.job_id&&a.input_sha256===r.input_sha256&&a.status==='PENDING_APPROVAL')).length;return [{json:{status:confirmed===p.rows.length?'STAGED':'PARTIAL_WRITE_REQUIRES_REVIEW',confirmed,skipped:p.skipped,blocked:p.blocked,events:p.events,external_model_calls:0,execution_id:String($execution.id)}}];");
+  code('Summarize BSO Intake', summarizeBsoIntake.toString() + "\nreturn [{json:summarizeBsoIntake($('Plan BSO Intake').first(0).json,$input.all().map(x=>x.json),$execution.id)}];");
   const release = copy('Release LK Dispatcher Mutex', 'Release Intake Mutex');
   code('BSO Intake Receipt', "const released=$input.all().some(x=>x.json.id===1&&x.json.state==='FREE'&&x.json.owner==='NONE');return [{json:{...$('Summarize BSO Intake').first(0).json,mutex_released:released,...(!released?{status:'BLOCKED_MUTEX_RELEASE_FAILED'}:{})}}];");
   code('Intake Busy Skipped', "return [{json:{status:'BUSY_SKIPPED',external_model_calls:0}}];");

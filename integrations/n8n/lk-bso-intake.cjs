@@ -52,4 +52,12 @@ function restoreBsoQueueContext(job, sha256) {
   return { ...job, bso_context: c };
 }
 
-module.exports = { validateBsoIntake, planBsoIntake, restoreBsoQueueContext };
+function summarizeBsoIntake(plan, acknowledgments, executionId) {
+  const confirmed = plan.rows.filter(r => acknowledgments.some(a => a.job_id === r.job_id && a.input_sha256 === r.input_sha256 && a.status === 'PENDING_APPROVAL')).length;
+  const status = confirmed !== plan.rows.length ? 'PARTIAL_WRITE_REQUIRES_REVIEW'
+    : plan.blocked > 0 ? (confirmed > 0 ? 'PARTIAL_INPUT_BLOCKED' : 'BLOCKED_INPUTS')
+      : confirmed > 0 ? 'STAGED' : 'NO_NEW_JOBS';
+  return { status, confirmed, skipped: plan.skipped, blocked: plan.blocked, events: plan.events, external_model_calls: 0, execution_id: String(executionId) };
+}
+
+module.exports = { validateBsoIntake, planBsoIntake, restoreBsoQueueContext, summarizeBsoIntake };

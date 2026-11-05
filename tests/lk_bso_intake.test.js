@@ -2,7 +2,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { createHash } = require('node:crypto');
-const { validateBsoIntake, planBsoIntake, restoreBsoQueueContext } = require('../integrations/n8n/lk-bso-intake.cjs');
+const { validateBsoIntake, planBsoIntake, restoreBsoQueueContext, summarizeBsoIntake } = require('../integrations/n8n/lk-bso-intake.cjs');
 const sha = s => createHash('sha256').update(s).digest('hex');
 const fixture = () => ({ schema_version: 'lk-bso-job/1.0', job_id: 'BSO_intake_test', status: 'READY', attempts: 0, data_class: 'SYNTHETIC', prompt: 'Synthetic queue intake. Do not call models.', input_sha256: sha('Synthetic queue intake. Do not call models.'), bso_context: { schema_version: 'lk-bso-job/1.0', document_id: 'WORK_DOC_1', revision: 1, artifact_sha256: sha('synthetic artifact') } });
 test('intake stages without enabling providers and restores document context', () => {
@@ -32,4 +32,14 @@ test('duplicate batch IDs produce only one insert; corrupt queue fails closed', 
   assert.throws(() => restoreBsoQueueContext({ job_id: 'BSO_missing' }), /CONTEXT_REQUIRED/);
   assert.throws(() => restoreBsoQueueContext({ bso_context_json: '{}' }), /CONTEXT_INVALID/);
   assert.throws(() => validateBsoIntake({ ...fixture(), attempts: 1 }, sha), /INTAKE_STATE/);
+});
+test('receipt distinguishes blocked inputs, duplicates and unconfirmed writes', () => {
+  const plan = planBsoIntake([{ job: fixture() }], [], sha, '1', 'now');
+  assert.equal(summarizeBsoIntake(plan, plan.rows, '1').status, 'STAGED');
+  assert.equal(summarizeBsoIntake(plan, [], '1').status, 'PARTIAL_WRITE_REQUIRES_REVIEW');
+  const duplicate = planBsoIntake([{ job: fixture() }], plan.rows, sha, '2', 'later');
+  assert.equal(summarizeBsoIntake(duplicate, [], '2').status, 'NO_NEW_JOBS');
+  const blocked = planBsoIntake([{ job: { ...fixture(), prompt: 'tamper' } }], [], sha, '3', 'later');
+  assert.equal(summarizeBsoIntake(blocked, [], '3').status, 'BLOCKED_INPUTS');
+  assert.equal(summarizeBsoIntake({ ...plan, blocked: 1 }, plan.rows, '4').status, 'PARTIAL_INPUT_BLOCKED');
 });
