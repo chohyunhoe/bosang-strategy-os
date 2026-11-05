@@ -48,6 +48,8 @@ const files = [
   ['browser/vendor/tesseract/core/tesseract-core-simd-lstm.wasm.js', 'vendor/tesseract/core/tesseract-core-simd-lstm.wasm.js'],
   ['browser/vendor/tesseract/tessdata/kor.traineddata.gz', 'vendor/tesseract/tessdata/kor.traineddata.gz'],
   ['browser/vendor/tesseract/tessdata/eng.traineddata.gz', 'vendor/tesseract/tessdata/eng.traineddata.gz'],
+  ['browser/vendor/tesseract/tessdata/eng_fast.traineddata.gz', 'vendor/tesseract/tessdata/eng_fast.traineddata.gz'],
+  ['browser/vendor/tesseract/tessdata/NOTICE.txt', 'vendor/tesseract/tessdata/NOTICE.txt'],
 ];
 
 fs.rmSync(out, { recursive: true, force: true });

@@ -131,6 +131,7 @@ export async function recognizeRuledSummaries(image,readCell,onProgress=()=>{}){
         alternatives.area=areaReads;alternatives.unit_price=unitReads;alternatives.amount=amountReads;
         let choices=new Map();for(const a of areaReads)for(const u of unitReads)for(const m of amountReads){const aa=readAreaShare(a),uu=readStrictNumber(u,true),mm=readStrictNumber(m,true);if(arithmeticMatches(aa,uu,mm))choices.set(JSON.stringify([aa,uu,mm]),{a,u,m,aa,uu,mm});}
         if(choices.size===0){
+          areaReads.push(await read(band.cells[n-3],'area-edge'));unitReads.push(await read(band.cells[n-2],'number-edge'));amountReads.push(await read(band.cells[n-1],'number-edge'));
           for(const mode of [6,8]){areaReads.push(await read(band.cells[n-3],'area-pass'+mode));unitReads.push(await read(band.cells[n-2],'number-pass'+mode));amountReads.push(await read(band.cells[n-1],'number-pass'+mode));}
           for(const a of areaReads)for(const u of unitReads)for(const m of amountReads){const aa=readAreaShare(a),uu=readStrictNumber(u,true),mm=readStrictNumber(m,true);if(arithmeticMatches(aa,uu,mm))choices.set(JSON.stringify([aa,uu,mm]),{a,u,m,aa,uu,mm});}
         }
@@ -148,7 +149,7 @@ export async function recognizeRuledSummaries(image,readCell,onProgress=()=>{}){
 export function renderCellForOcr(region,scale=4){
   const base=document.createElement('canvas');base.width=region.width;base.height=region.height;const ctx=base.getContext('2d');if(!ctx)throw new Error('CELL_CANVAS_UNAVAILABLE');
   const image=ctx.createImageData(region.width,region.height);for(let i=0;i<region.pixels.length;i++){const v=region.pixels[i];image.data[i*4]=v;image.data[i*4+1]=v;image.data[i*4+2]=v;image.data[i*4+3]=255;}ctx.putImageData(image,0,0);
-  const result=document.createElement('canvas');result.width=region.width*scale+40;result.height=region.height*scale+40;const target=result.getContext('2d');if(!target)throw new Error('CELL_CANVAS_UNAVAILABLE');target.fillStyle='white';target.fillRect(0,0,result.width,result.height);target.drawImage(base,20,20,region.width*scale,region.height*scale);return result;
+  const result=document.createElement('canvas');result.width=region.width*scale+40;result.height=region.height*scale+40;const target=result.getContext('2d');if(!target)throw new Error('CELL_CANVAS_UNAVAILABLE');target.imageSmoothingEnabled=true;target.imageSmoothingQuality='high';target.fillStyle='white';target.fillRect(0,0,result.width,result.height);target.drawImage(base,20,20,region.width*scale,region.height*scale);return result;
 }
 export async function recognizeCanvasSummaries(canvas,worker,onProgress=()=>{}){
   const ctx=canvas.getContext('2d',{willReadFrequently:true});if(!ctx||typeof ctx.getImageData!=='function')return [];
@@ -158,13 +159,13 @@ export async function recognizeCanvasSummaries(canvas,worker,onProgress=()=>{}){
   const selectLanguage=async next=>{if(language!==next&&worker.reinitialize){await worker.reinitialize(next);language=next;}};
   try{return await recognizeRuledSummaries(image,async(box,mode)=>{
     const header=mode.startsWith('header:'),role=header?mode.slice(7):'';
-    const pass=/-pass(\d+)$/.exec(mode),small=mode.endsWith('-small'),binary=mode.endsWith('-binary'),baseMode=mode.replace(/-(?:pass\d+|small|binary)$/,'');
+    const pass=/-pass(\d+)$/.exec(mode),small=mode.endsWith('-small'),binary=mode.endsWith('-binary'),edge=mode.endsWith('-edge'),baseMode=mode.replace(/-(?:pass\d+|small|binary|edge)$/,'');
     const numeric=['number','area','lot'].includes(baseMode);
-    await selectLanguage(numeric?'eng':'kor');
+    await selectLanguage(numeric?'eng_fast':'kor');
     const whitelist={number:'0123456789,.',area:'0123456789,./xX×*',lot:'0123456789-',category:''}[baseMode]||'';
     await worker.setParameters?.({tessedit_pageseg_mode:header?'6':pass?pass[1]:'7',tessedit_char_whitelist:whitelist});
-    const run=async region=>String((await worker.recognize(renderCellForOcr(region,small||binary?2:4),{},{text:true,blocks:false}))?.data?.text||'').trim();
-    let text='';for(const region of prepareCellImages(image,box,{splitLines:baseMode==='address'||binary,binary,inset:pass||small||binary||baseMode==='address'?1:3,cleanLines:Boolean(pass)||small||binary}))text+=await run(region)+'\n';
+    const run=async region=>String((await worker.recognize(renderCellForOcr(region,small||binary||edge?2:4),{},{text:true,blocks:false}))?.data?.text||'').trim();
+    let text='';for(const region of prepareCellImages(image,box,{splitLines:baseMode==='address'||binary,binary,inset:edge?0:pass||small||binary||baseMode==='address'?1:3,cleanLines:Boolean(pass)||small||binary||edge}))text+=await run(region)+'\n';
     if(header&&!matchesHeader(text,role)){await worker.setParameters?.({tessedit_pageseg_mode:'7',tessedit_char_whitelist:''});for(const region of prepareCellImages(image,box,{splitLines:true}))text+=await run(region)+'\n';}
     return text;
   },onProgress);}finally{await selectLanguage('kor+eng');await worker.setParameters?.({tessedit_pageseg_mode:'3',tessedit_char_whitelist:''});}
