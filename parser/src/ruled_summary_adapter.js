@@ -17,7 +17,7 @@ function applyRuledSummary(base,pages,context={}){
       const area=areaShare(raw.area),unit=number(raw.unit_price,true),amount=number(raw.amount,true);
       const valid=/^[가-힣·]{2,20}$/.test(company)&&/^(?:산)?\d{1,5}(?:-\d{1,5})?$/.test(lot)&&/(?:시|군|구|읍|면|동|리)/.test(address)&&area&&/^(?:전|답|대|임야|도로|잡종지|공장용지|과수원|목장용지|학교용지|주차장|창고용지|하천|구거|유지|제방|철도용지|묘지|공원|체육용지|종교용지|사적지|광천지|염전|주유소용지)$/.test(category);
       const bbox=row.bbox;const bounds=bbox&&['left','top','right','bottom'].every(k=>Number.isFinite(bbox[k]))&&bbox.left>=0&&bbox.top>=0&&bbox.right>bbox.left&&bbox.bottom>bbox.top&&bbox.right<=page.image_width&&bbox.bottom<=page.image_height;
-      if(!valid||!bounds||!Number.isInteger(page.page_no)||page.page_no<1){rejected.push({page_no:page.page_no,row:index+1,reason:!bounds?'INVALID_SOURCE_BOUNDS':'INCOMPLETE_IDENTITY'});continue;}
+      if(!valid||!bounds||!Number.isInteger(page.page_no)||page.page_no<1){rejected.push({page_no:page.page_no,row:index+1,reason:!bounds?'INVALID_SOURCE_BOUNDS':'INCOMPLETE_IDENTITY',raw:{...raw},bbox:bounds?{...bbox}:null});continue;}
       const match=Number.isSafeInteger(unit)&&unit>0&&Number.isSafeInteger(amount)&&amount>0&&Math.abs(area.area*area.numerator/area.denominator*unit-amount)<=1;
       candidates.push({company,lot,address,category,area,unit,amount,match,page:page.page_no,index,bbox:{...bbox},raw});
     }

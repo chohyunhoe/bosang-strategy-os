@@ -36,5 +36,15 @@ const {applyRuledSummary,number,areaShare}=require('../src/ruled_summary_adapter
  const {CaseStore}=await import(pathToFileURL(path.resolve(__dirname,'../../browser/product-v2/case-store.js')).href);
  const store=new CaseStore();parsed=applyRuledSummary(base,[...pages,other],{appraisalId:'APP_SYNTHETIC'});store.ingestDocument({fileMeta:{name:'synthetic.pdf',size:1},pageModel:[],parsed});
  equal(store.state.sourceDocuments.length,1);equal(store.state.appraisals.length,2);equal(new Set(store.state.appraisalResults.map(r=>r.appraisal_id)).size,2);equal(store.state.appraisalResults.length,4,'one PDF containing two firms must not create missing cross-product rows');equal(store.state.documentSanity.length,2);equal(store.state.lands.every(r=>r.source_appraisal_ids.length===2),true);
+
+ const parse=require('../src/appraisal_pages_parser').parseAppraisalPages;
+ const integrated=parse(pages,{appraisalId:'APP_INTEGRATION',fileName:'synthetic.pdf'});
+ equal(integrated.land_appraisal_results.length,2,'the actual page parser must consume grid evidence');
+ const emptyCanvas={width:900,height:500,getContext:()=>({getImageData:()=>({data:new Uint8Array(900*500*4).fill(255)})})};
+ let touched=false;equal(await engine.recognizeCanvasSummaries(emptyCanvas,{setParameters:async()=>{touched=true;}}),[]);equal(touched,false,'pages without a supported grid must not change worker segmentation');
+ const previousDocument=globalThis.document;const params=[],languages=[];const errorImage=image();for(let c=0;c<3;c++)errorImage.data[(80*900+80)*4+c]=0;
+ globalThis.document={createElement:()=>({getContext:()=>({createImageData:(w,h)=>({data:new Uint8Array(w*h*4)}),putImageData(){},fillRect(){},drawImage(){}})})};
+ try{await assert.rejects(engine.recognizeCanvasSummaries({width:900,height:500,getContext:()=>({getImageData:()=>({data:errorImage.data})})},{reinitialize:async lang=>languages.push(lang),setParameters:async p=>params.push(p),recognize:async()=>{throw new Error('CELL_FAILURE');}}),/CELL_FAILURE/);checks++;equal(languages.at(-1),'kor+eng');equal(params.at(-1),{tessedit_pageseg_mode:'3',tessedit_char_whitelist:''},'worker defaults must restore after OCR failure');}finally{if(previousDocument===undefined)delete globalThis.document;else globalThis.document=previousDocument;}
+ const rejectedStore=new CaseStore();rejectedStore.ingestDocument({fileMeta:{name:'synthetic.pdf'},pageModel:[],parsed:applyRuledSummary(base,bad)});equal(rejectedStore.state.sourceDocuments[0].recognition_report.unresolved.length,2,'rejected cell evidence must survive in the case backup');
  console.log(`Ruled summary recognition regressions: ${checks} passed.`);
 })().catch(error=>{console.error(error);process.exitCode=1;});

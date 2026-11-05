@@ -263,9 +263,9 @@ export class CaseStore {
         // 문서 단위로 먼저 승격 여부를 본다. 한 문서가 PARSE_HOLD 여도 다른 문서가 READY 라는
     // 이유로 배치 전체를 READY 로 덮어쓰지 않는다.
     const sanity=evaluateDocumentSanity(parsed);
-    this.state.sourceDocuments.push({document_id:documentId,appraisal_id:appraisalId,...(multiple?{appraisal_ids:incomingIds}:{}),file_name:fileName,file_size:Number(fileMeta?.size)||0,page_count:arr(pageModel).length,parse_status:text(parsed?.meta?.parse_status)||'TEXT_PARSED',page_model_retained:false,sanity_status:sanity.status,hold_codes:sanity.hold_codes});
+    this.state.sourceDocuments.push({document_id:documentId,appraisal_id:appraisalId,...(multiple?{appraisal_ids:incomingIds}:{}),file_name:fileName,file_size:Number(fileMeta?.size)||0,page_count:arr(pageModel).length,parse_status:text(parsed?.meta?.parse_status)||'TEXT_PARSED',page_model_retained:false,sanity_status:sanity.status,hold_codes:sanity.hold_codes,...(parsed.meta?.recognition_method?{recognition_report:{method:parsed.meta.recognition_method,rows:parsed.meta.recognition_rows,arithmetic_checked_rows:parsed.meta.recognition_checked_rows,unresolved:clone(arr(parsed.meta.recognition_unresolved))}}:{})});
     for(const id of multiple?incomingIds:[appraisalId]){
-      const scopedParsed=multiple?{...parsed,appraisals:arr(parsed.appraisals).filter(row=>row.appraisal_id===id),land_appraisal_results:arr(parsed.land_appraisal_results).filter(row=>row.appraisal_id===id)}:parsed;
+      const scopedParsed=multiple?{...parsed,appraisals:arr(parsed.appraisals).filter(row=>row.appraisal_id===id),lands:arr(parsed.lands).filter(row=>landSources(row).includes(id)),land_appraisal_results:arr(parsed.land_appraisal_results).filter(row=>row.appraisal_id===id)}:parsed;
       const checked=multiple?evaluateDocumentSanity(scopedParsed):sanity;
       this.state.documentSanity.push({document_id:documentId,appraisal_id:id,file_name:fileName,status:checked.status,hold_codes:checked.hold_codes,holds:checked.holds});
     }

@@ -118,12 +118,16 @@ export async function recognizeRuledSummaries(image,readCell,onProgress=()=>{}){
       if(lotReadings[0]!==lotReadings[1])for(const mode of ['lot-pass6','lot-pass8'])lotReadings.push((await read(band.cells[2],mode)).replace(/\s/g,''));
       const koreanLot=(await read(band.cells[2],'lot-korean')).replace(/\s/g,'');
       if(/산/.test(koreanLot))for(let i=0;i<lotReadings.length;i++)if(/^\d/.test(lotReadings[i]))lotReadings[i]='산'+lotReadings[i];
+      if(/^(?:산)?\d{1,5}(?:-\d{1,5})?$/.test(koreanLot)&&!lotReadings.some(v=>v.replace(/-/g,'')===koreanLot.replace(/-/g,'')))lotReadings.push(koreanLot);
       const alternatives={lot:lotReadings,lot_korean:[koreanLot]};
       const votes=[...new Set(lotReadings)].filter(v=>/^(?:산)?\d{1,5}(?:-\d{1,5})?$/.test(v)).map(v=>({v,n:lotReadings.filter(s=>s===v).length})).sort((a,b)=>b.n-a.n);const lot=votes.length===1&&votes[0].n>=2?votes[0].v:'';raw.lot=lot;
-      const category=await read(band.cells[3],'category-pass10');if(!raw.land_category.trim())raw.land_category=category;
+      const categories=[raw.land_category,await read(band.cells[3],'category-pass10'),await read(band.cells[3],'category-binary')].map(v=>v.replace(/\s/g,''));
+      alternatives.land_category=categories;
+      const validCategories=[...new Set(categories.filter(v=>/^(?:전|답|대|임야|도로|잡종지|공장용지|과수원|목장용지|학교용지|주차장|창고용지|하천|구거|유지|제방|철도용지|묘지|공원|체육용지|종교용지|사적지|광천지|염전|주유소용지)$/.test(v)))];
+      raw.land_category=validCategories.length===1?validCategories[0]:'';
       let area=readAreaShare(raw.area),unit=readStrictNumber(raw.unit_price,true),amount=readStrictNumber(raw.amount,true);
       if(!arithmeticMatches(area,unit,amount)){
-        const areaReads=[raw.area,await read(band.cells[n-3],'area-pass7')],unitReads=[raw.unit_price,await read(band.cells[n-2],'number-pass7')],amountReads=[raw.amount,await read(band.cells[n-1],'number-pass7')];
+        const areaReads=[raw.area,await read(band.cells[n-3],'area-small')],unitReads=[raw.unit_price,await read(band.cells[n-2],'number-small')],amountReads=[raw.amount,await read(band.cells[n-1],'number-small')];
         alternatives.area=areaReads;alternatives.unit_price=unitReads;alternatives.amount=amountReads;
         let choices=new Map();for(const a of areaReads)for(const u of unitReads)for(const m of amountReads){const aa=readAreaShare(a),uu=readStrictNumber(u,true),mm=readStrictNumber(m,true);if(arithmeticMatches(aa,uu,mm))choices.set(JSON.stringify([aa,uu,mm]),{a,u,m,aa,uu,mm});}
         if(choices.size===0){
@@ -141,25 +145,26 @@ export async function recognizeRuledSummaries(image,readCell,onProgress=()=>{}){
   return output;
 }
 
-export function renderCellForOcr(region){
+export function renderCellForOcr(region,scale=4){
   const base=document.createElement('canvas');base.width=region.width;base.height=region.height;const ctx=base.getContext('2d');if(!ctx)throw new Error('CELL_CANVAS_UNAVAILABLE');
   const image=ctx.createImageData(region.width,region.height);for(let i=0;i<region.pixels.length;i++){const v=region.pixels[i];image.data[i*4]=v;image.data[i*4+1]=v;image.data[i*4+2]=v;image.data[i*4+3]=255;}ctx.putImageData(image,0,0);
-  const result=document.createElement('canvas');result.width=region.width*4+40;result.height=region.height*4+40;const target=result.getContext('2d');if(!target)throw new Error('CELL_CANVAS_UNAVAILABLE');target.fillStyle='white';target.fillRect(0,0,result.width,result.height);target.drawImage(base,20,20,region.width*4,region.height*4);return result;
+  const result=document.createElement('canvas');result.width=region.width*scale+40;result.height=region.height*scale+40;const target=result.getContext('2d');if(!target)throw new Error('CELL_CANVAS_UNAVAILABLE');target.fillStyle='white';target.fillRect(0,0,result.width,result.height);target.drawImage(base,20,20,region.width*scale,region.height*scale);return result;
 }
 export async function recognizeCanvasSummaries(canvas,worker,onProgress=()=>{}){
   const ctx=canvas.getContext('2d',{willReadFrequently:true});if(!ctx||typeof ctx.getImageData!=='function')return [];
   const image={width:canvas.width,height:canvas.height,data:ctx.getImageData(0,0,canvas.width,canvas.height).data};
+  if(!summaryTablePlans(detectRuledTables(image)).length)return [];
   let language='kor+eng';
   const selectLanguage=async next=>{if(language!==next&&worker.reinitialize){await worker.reinitialize(next);language=next;}};
   try{return await recognizeRuledSummaries(image,async(box,mode)=>{
     const header=mode.startsWith('header:'),role=header?mode.slice(7):'';
-    const pass=/-pass(\d+)$/.exec(mode),baseMode=mode.replace(/-pass\d+$/,'');
+    const pass=/-pass(\d+)$/.exec(mode),small=mode.endsWith('-small'),binary=mode.endsWith('-binary'),baseMode=mode.replace(/-(?:pass\d+|small|binary)$/,'');
     const numeric=['number','area','lot'].includes(baseMode);
     await selectLanguage(numeric?'eng':'kor');
     const whitelist={number:'0123456789,.',area:'0123456789,./xX×*',lot:'0123456789-',category:''}[baseMode]||'';
     await worker.setParameters?.({tessedit_pageseg_mode:header?'6':pass?pass[1]:'7',tessedit_char_whitelist:whitelist});
-    const run=async region=>String((await worker.recognize(renderCellForOcr(region),{},{text:true,blocks:false}))?.data?.text||'').trim();
-    let text='';for(const region of prepareCellImages(image,box,{splitLines:baseMode==='address',inset:pass||baseMode==='address'?1:3,cleanLines:Boolean(pass)}))text+=await run(region)+'\n';
+    const run=async region=>String((await worker.recognize(renderCellForOcr(region,small||binary?2:4),{},{text:true,blocks:false}))?.data?.text||'').trim();
+    let text='';for(const region of prepareCellImages(image,box,{splitLines:baseMode==='address'||binary,binary,inset:pass||small||binary||baseMode==='address'?1:3,cleanLines:Boolean(pass)||small||binary}))text+=await run(region)+'\n';
     if(header&&!matchesHeader(text,role)){await worker.setParameters?.({tessedit_pageseg_mode:'7',tessedit_char_whitelist:''});for(const region of prepareCellImages(image,box,{splitLines:true}))text+=await run(region)+'\n';}
     return text;
   },onProgress);}finally{await selectLanguage('kor+eng');await worker.setParameters?.({tessedit_pageseg_mode:'3',tessedit_char_whitelist:''});}
