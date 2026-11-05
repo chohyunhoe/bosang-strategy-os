@@ -18,9 +18,9 @@ test.describe('local supplied multi-PDF smoke',()=>{
     page.on('console',(message)=>{if(message.type()==='error')console.log(`[BSO console error] ${message.text()}`);});
     await page.goto('/');
     await page.locator('[data-upload]').first().setInputFiles(pdfPaths);
-    await expect(page.locator('.status-pill')).toHaveText('PROCESSING',{timeout:10_000});
+    await expect(page.locator('.status-pill')).toHaveAttribute('data-status','PROCESSING',{timeout:10_000});
     await expect(page.locator('button[data-route="map"]:visible').first()).toBeDisabled();
-    await expect(page.locator('.status-pill')).not.toHaveText('PROCESSING',{timeout:540_000});
+    await expect(page.locator('.status-pill')).not.toHaveAttribute('data-status','PROCESSING',{timeout:540_000});
     console.log('[BSO real PDF] READY reached');
 
     const result=await page.evaluate(()=>{
@@ -72,3 +72,4 @@ test.describe('local supplied multi-PDF smoke',()=>{
     console.log('[BSO real PDF] assertions completed');
   });
 });
+

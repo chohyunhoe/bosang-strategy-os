@@ -33,7 +33,7 @@ test.describe('local real appraisal acceptance', () => {
     test.setTimeout(180_000);
     await page.goto('/');
     await page.locator('[data-upload]').first().setInputFiles(pdfPath);
-    await expect(page.locator('.status-pill')).toHaveText('READY', { timeout: 150_000 });
+    await expect(page.locator('.status-pill')).toHaveAttribute('data-status','READY', { timeout: 150_000 });
 
     const state = await page.evaluate(() => window.BSOProductV2.store.snapshot());
     const exp = config();
@@ -100,3 +100,4 @@ test.describe('local real appraisal acceptance', () => {
     await expect(page.locator('body')).not.toContainText('mobile-review-router');
   });
 });
+

@@ -12,6 +12,8 @@ test('PDF 배치 중에는 중간 문서 병합이 READY를 만들거나 지도 
   expect(status).toBe('PROCESSING');
   await expect(page.locator('[data-vworld-api-start]')).toBeDisabled();
   await expect(page.locator('[data-vworld-api-start]')).toContainText('PDF 처리 완료 대기');
+  // 초기화는 사건 화면으로 이동했지만 처리 중 잠금은 동일하게 유지한다.
+  await page.evaluate(()=>window.BSOProductV2.store.setRoute('case'));
   await expect(page.locator('button[data-reset-case]')).toBeDisabled();
 });
 
@@ -58,3 +60,4 @@ test('지도 인셋 로딩 실패와 재시도 결과가 수행 로그에 남는
   expect(event.details.failure_count).toBeGreaterThan(0);
   expect(JSON.stringify(result.report)).not.toContain('0000000000000000000');
 });
+

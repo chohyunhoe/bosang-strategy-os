@@ -94,10 +94,11 @@ export function installReviewWorkbench(store) {
   }
 
   function normalizeIndex(items) { if (!items.length) { local.index = 0; return; } if (local.index < 0) local.index = 0; if (local.index >= items.length) local.index = items.length - 1; }
-  function open(index = 0) { local.index = Math.max(0, Number(index) || 0); local.notice = ''; local.open = true;recordDiagnosticEvent('REVIEW_WORKBENCH_OPENED',{review_pending:pending().length,index:local.index+1});render(); }
+  function open(index = 0) { if(store.state.status==='PROCESSING')return; local.index = Math.max(0, Number(index) || 0); local.notice = ''; local.open = true;recordDiagnosticEvent('REVIEW_WORKBENCH_OPENED',{review_pending:pending().length,index:local.index+1});render(); }
   function close() { local.open = false; render(); }
 
   function confirmCurrent() {
+    if(store.state.status==='PROCESSING')return;
     const items = pending(); normalizeIndex(items); const item = items[local.index]; if (!item) return;
     const result = store.decide(item.review_id, 'CONFIRMED');
     if (result && result.ok === false) { recordDiagnosticEvent('REVIEW_DECISION',{status:'BLOCKED',confirmable:false});local.notice = result.reason || item.blocked_reason || '현재 항목은 검수완료할 수 없습니다.'; render(); return; }
@@ -106,6 +107,7 @@ export function installReviewWorkbench(store) {
     const next = pending(); if (!next.length) local.index = 0; else if (local.index >= next.length) local.index = next.length - 1; render();
   }
   function holdCurrent() {
+    if(store.state.status==='PROCESSING')return;
     const items = pending(); normalizeIndex(items); const item = items[local.index]; if (!item) return;
     store.decide(item.review_id, 'HOLD');recordDiagnosticEvent('REVIEW_DECISION',{status:'HOLD'});const nextItems = pending(); if (nextItems.length) local.index = (local.index + 1) % nextItems.length; render();
   }
@@ -115,7 +117,7 @@ export function installReviewWorkbench(store) {
   function renderLauncher() {
     ensureStyle(); document.querySelector('[data-review-workbench-launch]')?.remove(); if (store.state.status === 'EMPTY') return;
     const actions = document.querySelector('.topbar .review-actions'); if (!actions) return;
-    const count = pending().length; const button = document.createElement('button'); button.type = 'button'; button.className = `review-workbench-launch${count ? '' : ' complete'}`; button.dataset.reviewWorkbenchLaunch = '1'; button.dataset.reviewState = count ? 'pending' : 'complete'; button.textContent = count ? `전체 검수 ${count}` : '검수 완료 ✓'; button.addEventListener('click', () => open(0)); actions.prepend(button);
+    const count = pending().length; const button = document.createElement('button'); button.type = 'button'; button.className = `review-workbench-launch${count ? '' : ' complete'}`; button.dataset.reviewWorkbenchLaunch = '1'; button.disabled=store.state.status==='PROCESSING'; button.dataset.reviewState = count ? 'pending' : 'complete'; button.textContent = count ? `전체 검수 ${count}` : '검수 완료 ✓'; button.addEventListener('click', () => open(0)); actions.prepend(button);
   }
 
   function renderOverlay() {
@@ -142,7 +144,7 @@ export function installReviewWorkbench(store) {
     overlay.addEventListener('click', (event) => { if (event.target === overlay) close(); });
   }
 
-  function render() { renderLauncher(); renderOverlay(); }
+  function render() { if(store.state.status==='PROCESSING')local.open=false; renderLauncher(); renderOverlay(); }
   store.subscribe(render); render();
   return { open, close, next:nextCurrent, state:local, pending };
 }

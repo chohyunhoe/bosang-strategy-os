@@ -35,11 +35,12 @@ async function injectCase(page) {
 
 test('초기 홈은 빈 화면이 아니고 평가서 등록 경로가 보인다', async ({ page }) => {
   await page.goto('/');
-  await expect(page.locator('h1')).toContainText('보상전략 OS');
+  await expect(page.locator('.brand')).toContainText('보상전략 OS');
+  await expect(page.locator('h1')).toContainText('원본을 검토자료로');
   await expect(page.locator('[data-upload]').first()).toHaveCount(1);
   await expect(page.locator('main')).toContainText('감정평가서 PDF');
   await expect(page.locator('main')).not.toHaveText('');
-  await expect(page.locator('main')).toContainText('실행보드');
+  await expect(page.locator('main')).toContainText('검토 흐름');
 });
 
 test('같은 CaseStore로 6개 기능과 단일 검토큐를 렌더한다', async ({ page }) => {
@@ -117,7 +118,8 @@ test('공적자료 완전성은 provider 연결 여부와 분리되고 불일치
     store.setRoute('home');
   });
   await expect(page.locator('main')).toContainText('자료·데이터');
-  await expect(page.locator('main')).toContainText('공적자료 대조 완료');
+  await expect(page.locator('.workflow-step').filter({hasText:'자료·데이터'})).toHaveClass(/connected/);
+  await expect(page.locator('.workflow-step').filter({hasText:'자료·데이터'})).toContainText('자료 연결');
   const issues = await page.evaluate(() => window.BSOProductV2.store.state.issueCandidates);
   expect(issues.some((item) => item.issue_code === 'PUBLIC_LAND_CATEGORY_MISMATCH')).toBeTruthy();
 });
@@ -156,3 +158,4 @@ test('모바일에서도 기능이 축소되지 않고 같은 데이터가 보�
   await expect(page.locator('.inspector')).toBeVisible();
   await expect(page.locator('.inspector [data-key="pnu"]')).toBeVisible();
 });
+

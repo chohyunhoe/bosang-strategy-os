@@ -9,8 +9,8 @@ test('실제 Acceptance A PDF의 원장·합계와 법인명 미식별 보류를
   test.setTimeout(180_000);
   await page.goto('/');
   await page.locator('[data-upload]').first().setInputFiles(pdf);
-  await expect(page.locator('.status-pill')).not.toHaveText('EMPTY');
-  await expect(page.locator('.status-pill')).not.toHaveText('PROCESSING',{timeout:150_000});
+  await expect(page.locator('.status-pill')).not.toHaveAttribute('data-status','EMPTY');
+  await expect(page.locator('.status-pill')).not.toHaveAttribute('data-status','PROCESSING',{timeout:150_000});
   const summary=await page.evaluate(()=>{
     const {store}=window.BSOProductV2;const s=store.state;
     return {status:s.status,lands:s.lands.length,standards:s.standardLands.length,cases:s.transactionCases.length,results:s.appraisalResults.length,obstacles:s.obstacleRows.length,landSum:s.appraisalResults.reduce((sum,row)=>sum+Number(row.amount||0),0),obstacleSum:s.obstacleRows.reduce((sum,row)=>sum+Number(row.amount||0),0),holds:s.documentSanity.flatMap(row=>row.hold_codes),auto:s.appraisals.some(row=>row.auto_confirmed===true),mapAllowed:store.mapEligibility().allowed};
@@ -23,3 +23,4 @@ test('실제 Acceptance A PDF의 원장·합계와 법인명 미식별 보류를
   await expect(page.locator('main')).toContainText('추출 보류 사유');
   await expect(page.locator('[data-inspect-collection="appraisals"]')).toBeVisible();
 });
+

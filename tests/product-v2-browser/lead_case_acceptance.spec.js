@@ -25,7 +25,7 @@ test.describe('lead case browser acceptance', () => {
     test.setTimeout(900_000);
     await page.goto('/');
     await page.locator('[data-upload]').first().setInputFiles(pdfs);
-    await expect(page.locator('.status-pill')).not.toHaveText('PROCESSING', { timeout: 840_000 });
+    await expect(page.locator('.status-pill')).not.toHaveAttribute('data-status','PROCESSING', { timeout: 840_000 });
 
     const snapshot = await page.evaluate((particles) => {
       const store = window.BSOProductV2.store;
@@ -124,3 +124,4 @@ test.describe('lead case browser acceptance', () => {
     }
   });
 });
+

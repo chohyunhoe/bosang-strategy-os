@@ -97,7 +97,7 @@ test('누락 평가행은 4필지/4상태행으로 보존되고 실제 blocker�
   expect(state.group.blocked_reason).toContain('평가결과 누락 1필지');
   expect(state.result.ok).toBe(false);
 
-  await expect(page.locator('.card').filter({hasText:'실행보드'}).first()).toContainText('평가결과 누락 1필지 확인');
+  await expect(page.locator('.next-task')).toContainText('평가결과 누락 1필지 확인');
   await page.evaluate(() => window.BSOProductV2.store.setRoute('valuation'));
   await expect(page.locator('main')).toContainText('평가결과 누락 1필지');
   await expect(page.locator('main')).toContainText('평가행 누락');
@@ -185,3 +185,4 @@ test('모바일 전체검수도 동일 reviewQueue와 값·근거·수정·액�
   expect(box.width).toBeGreaterThan(360);
   expect(box.height).toBeGreaterThan(760);
 });
+
