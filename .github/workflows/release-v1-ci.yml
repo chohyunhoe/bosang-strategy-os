@@ -10,6 +10,7 @@ on:
       - 'brief_output/**'
       - 'RUN_BSO.cmd'
       - 'SETUP_BSO_OUTPUT.cmd'
+      - 'SETUP_BSO_SHORTCUTS.cmd'
       - 'playwright.release-v1.config.js'
       - 'package*.json'
       - '.github/workflows/release-v1-ci.yml'
@@ -21,6 +22,9 @@ jobs:
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
+      - name: Desktop and Start menu shortcuts
+        shell: powershell
+        run: ./tests/windows_shortcuts.test.ps1
       - uses: actions/setup-node@v4
         with:
           node-version: 24
