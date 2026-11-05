@@ -65,6 +65,9 @@ function parseCalculationRowText(text) {
   const otherFactor = trailing[trailing.length - 3];
   const individualFactorTotal = trailing[trailing.length - 4];
   const regionalFactor = trailing[0];
+  // Long explanatory cells interleaved by OCR destroy the positional meaning
+  // of the two factor columns. Preserve the directly read price pair only.
+  const factorColumnsAmbiguous = (tokens.slice(anchorIndex+1,-2).join(' ').match(/[가-힣]/g)||[]).length>=20;
 
   if (!(appliedUnitPrice >= 100 && calculatedUnitPrice >= 100)) return null;
   if (!isFactor(individualFactorTotal)) return null;
@@ -77,8 +80,9 @@ function parseCalculationRowText(text) {
     official_price: parseNumber(tokens[anchorIndex - 1]),
     time_correction: parseNumber(tokens[anchorIndex]),
     regional_factor: regionalFactor,
-    individual_factor_total: individualFactorTotal,
-    other_factor: otherFactor,
+    individual_factor_total: factorColumnsAmbiguous ? null : individualFactorTotal,
+    other_factor: factorColumnsAmbiguous ? null : otherFactor,
+    ...(factorColumnsAmbiguous ? {factor_columns_ambiguous:true} : {}),
     calculated_unit_price: calculatedUnitPrice,
     unit_price: appliedUnitPrice,
   };
@@ -171,7 +175,7 @@ function attachLandPriceCalculations(lines, appraisalResults, context = {}) {
       source_refs: sourceRefs,
       missing_fields: missingFields,
       confidence_level: sourceRefs.length === 0 ? 'LOW' : (missingFields.length === 0 ? 'HIGH' : 'MEDIUM'),
-      parser_notes: `${enriched.parser_notes || ''} 토지가격 산출표의 일련번호로 표준지기호·공시지가·시점수정·지역요인·개별요인 누계·그 밖의 요인·산출단가·적용단가 기재값을 연결했습니다. 단가를 새로 계산하지 않았으며 수동 검수 필요.`.trim(),
+      parser_notes: `${enriched.parser_notes || ''}${row.parsed.factor_columns_ambiguous ? ' OCR 설명 셀이 섞여 개별요인·그 밖의 요인 열은 연결하지 않았습니다. 원문 검수 필요.' : ''} 토지가격 산출표의 일련번호로 표준지기호·공시지가·시점수정·지역요인·개별요인 누계·그 밖의 요인·산출단가·적용단가 기재값을 연결했습니다. 단가를 새로 계산하지 않았으며 수동 검수 필요.`.trim(),
     };
   });
 }

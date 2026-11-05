@@ -21,8 +21,24 @@ function parcelIdentity(value) {
   const lot = normalized.match(/(?:^|\s)((?:산)?\d{1,5}(?:-\d{1,5})?)(?:번지)?\s*$/);
   if (!lot) return normalized;
   const prefix = normalized.slice(0, lot.index).trim().split(/\s+/).filter(Boolean);
-  const legalDong = [...prefix].reverse().find((token) => /(?:동|리|읍|면)$/.test(token)) || prefix.at(-1) || '';
-  return `${legalDong}|${lot[1]}`;
+  return `${prefix.join(' ')}|${lot[1]}`;
+}
+
+function compatibleParcelLocation(left, right) {
+  // A shared dong/ri name is not a unique location. Preserve explicit higher
+  // jurisdictions and PNU disagreements instead of linking unrelated land rows.
+  if (validPnu(left?.pnu) && validPnu(right?.pnu) && text(left.pnu) !== text(right.pnu)) return false;
+  const b = parcelIdentity(right?.parcel_address).split('|');
+  const addresses = [left?.parcel_address, ...arr(left?.parcel_address_variants)].filter(text);
+  return addresses.length > 0 && addresses.every(address=>{
+    const a = parcelIdentity(address).split('|');
+    if (a.length !== 2 || b.length !== 2 || a[1] !== b[1] || !a[0] || !b[0]) return false;
+    return a[0] === b[0] || a[0].endsWith(' ' + b[0]) || b[0].endsWith(' ' + a[0]);
+  });
+}
+function compatibleLandEvidence(left, right) {
+  return compatibleParcelLocation(left,right) && numberKey(left?.area)===numberKey(right?.area)
+    && (categoryKey(left?.land_category)===categoryKey(right?.land_category) || !categoryKey(left?.land_category) || !categoryKey(right?.land_category));
 }
 
 const PARSE_HOLD_STATUS = 'PARSE_HOLD';
@@ -37,7 +53,6 @@ function evaluateDocumentSanity(parsed) {
   const result = gate(parsed) || {};
   return { status: result.status || PARSE_HOLD_STATUS, hold_codes: arr(result.hold_codes), holds: arr(result.holds) };
 }
-function landKey(row) { return [parcelIdentity(row?.parcel_address), categoryKey(row?.land_category), numberKey(row?.area)].join('|'); }
 function clone(value) { return value == null ? value : JSON.parse(JSON.stringify(value)); }
 function nonEmptyObject(source) { const out = {}; Object.entries(source || {}).forEach(([key, value]) => { if (value !== null && value !== undefined && value !== '') out[key] = clone(value); }); return out; }
 function recordStatus(row) { return text(row && (row.review_status_code || row.extraction_status || row.parse_status)).toUpperCase(); }
@@ -182,6 +197,22 @@ const COLLECTION_META = [
   ['issueCandidates','쟁점 후보','outputs','쟁점·결과물','기계적으로 탐지된 불일치·누락·큰 계수차를 전문가가 검토합니다.'],
 ];
 
+function reviewGroupContent(state, key) {
+  // These companion rows are covered by the same manual review in the output.
+  const extra = key === 'subjectFactorTotals' ? state.subjectFactorDetails : key === 'obstacleRows' ? state.obstacleSummaries : null;
+  return JSON.stringify([state[key], extra]);
+}
+function confirmedGroupContents(state) {
+  return new Map(['caseInfo', ...COLLECTION_META.map(([key])=>key)]
+    .filter((key)=>state.reviewDecisions[`GROUP:${key}`]?.status==='CONFIRMED')
+    .map((key)=>[key,reviewGroupContent(state,key)]));
+}
+function invalidateChangedGroups(state, before) {
+  for(const [key,content] of before) {
+    if(content!==reviewGroupContent(state,key))delete state.reviewDecisions[`GROUP:${key}`];
+  }
+}
+
 export function validateCaseSnapshot(snapshot) {
   if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) throw new Error('사건 백업 형식이 올바르지 않습니다.');
   const base = freshState();
@@ -220,6 +251,7 @@ export class CaseStore {
   setPublicData(rows,enrichment=[]){this.state.publicLandCharacteristics=arr(rows).map(clone);this.state.publicEnrichment=arr(enrichment).map(clone);this.rebuildIssues();this.rebuildReviewQueue();this.emit();}
 
   ingestDocument({fileMeta,pageModel,parsed}){
+    const previousGroups = confirmedGroupContents(this.state);
     const documentIndex=this.state.sourceDocuments.length+1;
     const appraisalId=text(parsed?.appraisals?.[0]?.appraisal_id)||`APP_${String(documentIndex).padStart(3,'0')}`;
     const documentId=`DOC_${String(documentIndex).padStart(3,'0')}`;
@@ -239,24 +271,28 @@ export class CaseStore {
     const scoped=(source)=>({...clone(source),appraisal_id:appraisalId,appraisal_company:text(source?.appraisal_company)||appraisalCompany});
 
     const landIdMap=new Map();const incomingCanonicalLands=[];
-    const existingLandsByKey=new Map(this.state.lands.map((row)=>[landKey(row),row]));
-    arr(parsed.lands).forEach((source)=>{
-      const key=landKey(source);
-      let canonical=existingLandsByKey.get(key);
-      if(!canonical && Number(source.area)>0){
-        const compatible=this.state.lands.filter(row=>!arr(row.source_appraisal_ids).includes(appraisalId)&&parcelIdentity(row.parcel_address)===parcelIdentity(source.parcel_address)&&numberKey(row.area)===numberKey(source.area)&&(!categoryKey(row.land_category)||!categoryKey(source.land_category)));
-        if(compatible.length===1)canonical=compatible[0];
-      }
+    const incomingLands=arr(parsed.lands);
+    incomingLands.forEach((source)=>{
+      const compatible=this.state.lands.filter(row=>compatibleParcelLocation(row,source)
+        && numberKey(row.area)===numberKey(source.area)
+        && (categoryKey(row.land_category)===categoryKey(source.land_category)
+          || (Number(source.area)>0 && !arr(row.source_appraisal_ids).includes(appraisalId) && (!categoryKey(row.land_category)||!categoryKey(source.land_category))))
+        // Look ahead within this PDF too: the first full address must not claim
+        // an older abbreviated row when another incompatible full address fits it.
+        && !incomingLands.some(other=>other!==source && compatibleLandEvidence(row,other)!==compatibleLandEvidence(source,other)));
+      const samePnu=validPnu(source.pnu)?compatible.filter(row=>text(row.pnu)===text(source.pnu)):[];
+      const candidates=samePnu.length?samePnu:compatible;
+      let canonical=candidates.length===1?candidates[0]:null;
       if(!canonical){
         canonical={...clone(source),land_id:`LAND_${String(this.state.lands.length+1).padStart(3,'0')}`,source_appraisal_ids:[appraisalId],parcel_address_variants:[text(source.parcel_address)].filter(Boolean)};
-        this.state.lands.push(canonical);existingLandsByKey.set(key,canonical);
+        this.state.lands.push(canonical);
       } else {
         if(!categoryKey(canonical.land_category)&&categoryKey(source.land_category)){canonical.land_category=source.land_category;canonical.land_category_origin_appraisal_id=appraisalId;}
-        existingLandsByKey.set(key,canonical);
         canonical.source_refs=mergeSourceRefs(canonical.source_refs,source.source_refs);
         canonical.source_appraisal_ids=[...new Set([...arr(canonical.source_appraisal_ids),appraisalId])];
         canonical.parcel_address_variants=[...new Set([...arr(canonical.parcel_address_variants),text(source.parcel_address)].filter(Boolean))];
-        if(text(source.parcel_address) && (!text(canonical.parcel_address) || text(source.parcel_address).length < text(canonical.parcel_address).length)) canonical.parcel_address=text(source.parcel_address);
+        // Keep explicit location evidence even when the displayed address is abbreviated.
+        if(!validPnu(canonical.pnu) && validPnu(source.pnu)) canonical.pnu=text(source.pnu);
         if(!text(canonical.appraisal_use_status) && text(source.appraisal_use_status)) canonical.appraisal_use_status=text(source.appraisal_use_status);
       }
       if(source.land_id) landIdMap.set(source.land_id,canonical.land_id);
@@ -287,14 +323,29 @@ export class CaseStore {
     this.state.publicLandCharacteristics.push(...arr(parsed.public_land_characteristics).map(remapLand));
     this.state.publicLandDataEnrichment={...this.state.publicLandDataEnrichment,...nonEmptyObject(parsed.public_land_data_enrichment)};
     this.state.draftSentences.push(...arr(parsed.draft_sentences).map(clone));this.state.riskWarnings.push(...arr(parsed.risk_warnings).map(clone));
+    invalidateChangedGroups(this.state,previousGroups);
     const batchProcessing=this.state.status==='PROCESSING';this.state.status=batchProcessing?'PROCESSING':'READY';this.rebuildIssues();this.rebuildReviewQueue();this.emit();
   }
 
-  rebuildIssues(){const before=issueSignature(this.state.issueCandidates);const next=buildIssueCandidates(this.state);this.state.issueCandidates=next;if(before!==issueSignature(next))delete this.state.reviewDecisions['GROUP:issueCandidates'];}
+  rebuildIssues(){const before=issueSignature(this.state.issueCandidates);const next=buildIssueCandidates(this.state);this.state.issueCandidates=next;if(before!==issueSignature(next)&&this.state.reviewDecisions['GROUP:issueCandidates']?.status==='CONFIRMED')delete this.state.reviewDecisions['GROUP:issueCandidates'];}
   rebuildReviewQueue(){const decisions=this.state.reviewDecisions;const queue=[];if(hasCaseInfo(this.state.caseInfo)){const itemKey='GROUP:caseInfo';queue.push({review_id:itemKey,type:'GROUP',collection:'caseInfo',label:'사건 기본정보',route:'case',route_label:'사건',description:'사업명·사건명·평가목적·기준시점을 원문과 대조합니다.',row_count:1,exception_count:needsExceptionReview(this.state.caseInfo)?1:0,confirmable:true,status:decisions[itemKey]?.status||'NEEDS_REVIEW'});}COLLECTION_META.forEach(([key,label,route,routeLabel,description])=>{const rows=arr(this.state[key]);if(!rows.length)return;const itemKey=`GROUP:${key}`;const incompleteResults=key==='appraisalResults'?rows.filter((row)=>!appraisalResultComplete(row)):[];const invalidStandardLocations=key==='standardLands'?rows.filter(standardLandLocationReviewRequired):[];const confirmable=incompleteResults.length===0&&invalidStandardLocations.length===0;const missingLabels=incompleteResults.slice(0,3).map((row)=>text(row.parcel_address)||text(row.land_id)).filter(Boolean);const invalidLocationLabels=invalidStandardLocations.slice(0,3).map((row)=>text(row.standard_land_symbol)||text(row.standard_land_id)||'표준지').filter(Boolean);let blockedReason='';if(incompleteResults.length)blockedReason=`평가결과 누락 ${incompleteResults.length}필지${missingLabels.length?` (${missingLabels.join(', ')})`:''}. 적용단가와 평가금액을 원문에서 입력해야 완료할 수 있습니다.`;else if(invalidStandardLocations.length)blockedReason=`비교표준지 위치 확인 필요 ${invalidStandardLocations.length}건${invalidLocationLabels.length?` (${invalidLocationLabels.join(', ')})`:''}. 원문·수정에서 실제 소재지 또는 검증된 19자리 PNU를 입력해야 완료할 수 있습니다.`;queue.push({review_id:itemKey,type:'GROUP',collection:key,label,route,route_label:routeLabel,description:blockedReason||description,blocked_reason:blockedReason,confirmable,row_count:rows.length,exception_count:rows.filter(needsExceptionReview).length+invalidStandardLocations.length,status:confirmable?(decisions[itemKey]?.status||'NEEDS_REVIEW'):'NEEDS_REVIEW'});});this.state.obstacleSummaries.forEach((summary,index)=>{if(summary.total_crosscheck_status!=='MISMATCH')return;const itemKey=`EXCEPTION:obstacleSummary:${index}`;queue.unshift({review_id:itemKey,type:'EXCEPTION',collection:'obstacleSummaries',label:'지장물 합계 불일치',route:'obstacles',route_label:'지장물',description:'원문 기재 합계와 추출 행 합계가 다릅니다.',row_count:1,exception_count:1,confirmable:true,status:decisions[itemKey]?.status||'NEEDS_REVIEW'});});this.state.reviewQueue=queue;}
   decide(reviewId,status,note=''){const item=this.state.reviewQueue.find((row)=>row.review_id===reviewId);if(status==='CONFIRMED'&&item?.confirmable===false){return{ok:false,reason:item.blocked_reason||'필수값 누락으로 검수완료할 수 없습니다.'};}this.state.reviewDecisions[reviewId]={status,note,reviewed_at:new Date().toISOString()};this.rebuildReviewQueue();this.emit();return{ok:true};}
   updateCaseInfo(changes){this.state.caseInfo={...this.state.caseInfo,...clone(changes),review_status_code:'NEEDS_REVIEW',auto_confirmed:false,reviewed_at:null};delete this.state.reviewDecisions['GROUP:caseInfo'];this.rebuildIssues();this.rebuildReviewQueue();this.emit();return true;}
-  updateRecord(collection,matcher,changes){const rows=arr(this.state[collection]);const index=rows.findIndex(matcher);if(index<0)return false;const edited={...rows[index],...clone(changes),review_status_code:'NEEDS_REVIEW',auto_confirmed:false,reviewed_at:null};rows[index]=collection==='appraisalResults'?normalizeEditedAppraisalResult(edited):edited;delete this.state.reviewDecisions[`GROUP:${collection}`];if(collection==='appraisals' && Object.prototype.hasOwnProperty.call(changes,'appraisal_company'))this.updateCompanyIdentity(rows[index].appraisal_id);this.rebuildIssues();this.rebuildReviewQueue();this.emit();return true;}
+  updateRecord(collection,matcher,changes){
+    const previousGroups=confirmedGroupContents(this.state);
+    const rows=arr(this.state[collection]);const index=rows.findIndex(matcher);if(index<0)return false;
+    const original=rows[index];
+    const edited={...original,...clone(changes),review_status_code:'NEEDS_REVIEW',auto_confirmed:false,reviewed_at:null};
+    if(collection==='lands' && Object.prototype.hasOwnProperty.call(changes,'parcel_address') && text(changes.parcel_address)!==text(original.parcel_address)){
+      edited.parcel_address_history=[...new Set([...arr(original.parcel_address_history),...arr(original.parcel_address_variants),text(original.parcel_address)].filter(Boolean))];
+      edited.parcel_address_variants=[text(edited.parcel_address)].filter(Boolean);
+    }
+    rows[index]=collection==='appraisalResults'?normalizeEditedAppraisalResult(edited):edited;
+    delete this.state.reviewDecisions[`GROUP:${collection}`];
+    if(collection==='appraisals' && Object.prototype.hasOwnProperty.call(changes,'appraisal_company'))this.updateCompanyIdentity(rows[index].appraisal_id);
+    invalidateChangedGroups(this.state,previousGroups);this.rebuildIssues();this.rebuildReviewQueue();this.emit();return true;
+  }
+
   updateCompanyIdentity(appraisalId) {
     const company = text(this.state.appraisals.find((row) => row.appraisal_id === appraisalId)?.appraisal_company);
     const document = this.state.documentSanity.find((row) => row.appraisal_id === appraisalId);
@@ -378,4 +429,3 @@ export class CaseStore {
 
   stats(){return{documents:this.state.sourceDocuments.length,appraisals:this.state.appraisals.length,lands:this.state.lands.length,standards:this.state.standardLands.length,cases:this.state.transactionCases.length,appraisalResults:this.state.appraisalResults.length,otherFactors:this.state.otherFactors.length,obstacles:this.state.obstacleRows.length,reviewPending:this.state.reviewQueue.filter((item)=>item.status!=='CONFIRMED').length};}
 }
-

@@ -88,4 +88,3 @@ const releaseMeta = {
 };
 fs.writeFileSync(path.join(out, 'product-v2-manifest.json'), `${JSON.stringify(releaseMeta, null, 2)}\n`, 'utf8');
 console.log(`product v2.1 candidate built: ${out} (${manifest.length} runtime files)`);
-

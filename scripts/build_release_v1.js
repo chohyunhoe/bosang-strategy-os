@@ -5,7 +5,7 @@ const crypto = require('node:crypto');
 const { execFileSync } = require('node:child_process');
 const root = path.resolve(__dirname, '..');
 const output = path.join(root, 'dist', 'release-v1');
-const version = '1.0.0-rc.2';
+const version = '1.0.0-rc.4';
 execFileSync(process.execPath, [path.join(__dirname, 'build_product_v2_candidate.js')], { stdio:'inherit' });
 // Delete only this builder's fixed output directory.
 if (path.dirname(output) !== path.join(root, 'dist')) throw new Error('Invalid release output');

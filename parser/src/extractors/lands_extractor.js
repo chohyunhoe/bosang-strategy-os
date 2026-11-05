@@ -277,8 +277,19 @@ function subjectAddressAnchor(line) {
   const lotIndex = tokens.findIndex((token, index) => index > 0 && /^(?:산)?\d{1,5}(?:-\d{1,5})?$/.test(token));
   if (lotIndex < 2) return null;
   const parcelAddress = normalizeParcelAddress(tokens.slice(1, lotIndex + 1).join(' '));
-  if (!looksLikeParcelAddress(parcelAddress)) return null;
-  return { land_no: tokens[0], parcel_address: parcelAddress, page_no: line.page_no };
+  let address=parcelAddress;
+  const upperCellFragmented=tokens.slice(1,lotIndex).some(token=>/^(?:도|시|군|구)$/.test(token));
+  if (!looksLikeParcelAddress(address) || upperCellFragmented) {
+    const prefix=tokens.slice(1,lotIndex);
+    let dong=prefix.pop()||'';
+    if(/^(?:동|리|읍|면)$/.test(dong)){
+      while(prefix.length&&/^[가-힣]$/.test(prefix.at(-1))&&dong.length<8)dong=prefix.pop()+dong;
+    }
+    if(!/^[가-힣]{2,10}(?:동|리|읍|면)$/.test(dong))return null;
+    address=normalizeParcelAddress(dong+' '+tokens[lotIndex]);
+    if(!looksLikeParcelAddress(address))return null;
+  }
+  return { land_no: tokens[0], parcel_address: address, page_no: line.page_no, line };
 }
 
 function recoverRowWithAdjacentAnchor(text, line, anchors) {
@@ -290,12 +301,13 @@ function recoverRowWithAdjacentAnchor(text, line, anchors) {
   if (lotIndex < 1) return null;
   const matches = anchors.filter((anchor) => (
     anchor.land_no === landNo
+    && normalizeParcelAddress(anchor.parcel_address).split(' ').at(-1) === normalizeParcelAddress(tokens[lotIndex])
     && anchor.page_no !== line.page_no
     && Math.abs(anchor.page_no - line.page_no) <= 1
   ));
   const uniqueAddresses = [...new Set(matches.map((anchor) => anchor.parcel_address))];
   if (uniqueAddresses.length !== 1) return null;
-  return [landNo, uniqueAddresses[0], ...tokens.slice(lotIndex + 1)].join(' ');
+  return {text:[landNo, uniqueAddresses[0], ...tokens.slice(lotIndex + 1)].join(' '),lines:matches.map(anchor=>anchor.line).filter(Boolean)};
 }
 
 function extractSubjectLandGroups(lines, stats = null) {
@@ -390,8 +402,11 @@ function extractSubjectLandGroups(lines, stats = null) {
       }
       if (!parsed) {
         const recoveredText = recoverRowWithAdjacentAnchor(combinedText, line, anchors);
-        parsed = recoveredText ? parseSubjectLandText(recoveredText) : null;
-        if (parsed) Object.defineProperty(parsed, '_recovered_adjacent_address', { value: true, enumerable: false });
+        parsed = recoveredText ? parseSubjectLandText(recoveredText.text) : null;
+        if (parsed) {
+          Object.defineProperty(parsed, '_recovered_adjacent_address', { value: true, enumerable: false });
+          Object.defineProperty(parsed, '_recovered_address_lines', { value: recoveredText.lines, enumerable: false });
+        }
       }
       if (parsed) {
         applyLegalDongRecovery(parsed, sectionLines, index, span, line.page_no);
@@ -428,7 +443,7 @@ function extractSubjectLandGroups(lines, stats = null) {
 
 function extractLands(lines, context = {}, stats = null) {
   return extractSubjectLandGroups(lines, stats).map(({ parsed, useStatus, sourceLines }, index) => {
-    const sourceRefs = [sourceRefFromLines(sourceLines, parsed, context)].filter(Boolean);
+    const sourceRefs = [sourceRefFromLines(sourceLines, parsed, context),...(parsed._recovered_address_lines||[]).map(line=>createParserSourceRef({appraisalId:context.appraisalId||'APP_001',fileName:context.fileName||null,pageNo:line.page_no,lineStart:line.line_no,lineEnd:line.line_no,sourceLabel:'소재지 복원 근거',rawTextExcerpt:line.raw_text}))].filter(Boolean);
     const usedAddressRelaxation = Boolean(parsed._used_address_relaxation);
     const missingLandCategory = Boolean(parsed._missing_land_category);
     const recoveredAdjacentAddress = Boolean(parsed._recovered_adjacent_address);

@@ -1,6 +1,6 @@
 # bosang-strategy-os
 
-> **Windows PC Release v1**: `RUN_BSO.cmd`를 실행하세요. 결과물 준비는 `SETUP_BSO_OUTPUT.cmd`, 사용·검증 기준은 [Release v1 안내](docs/releases/BSO_RELEASE_V1.md)를 따릅니다. 현재 버전은 `1.0.0-rc.2`입니다.
+> **Windows PC Release v1**: `RUN_BSO.cmd`를 실행하세요. 결과물 준비는 `SETUP_BSO_OUTPUT.cmd`, 사용·검증 기준은 [Release v1 안내](docs/releases/BSO_RELEASE_V1.md)를 따릅니다. 현재 버전은 `1.0.0-rc.4`입니다.
 
 Windows PC 실무용 진입점은 `RUN_BSO.cmd`이며, 검증된 Product 런타임을 `dist/release-v1`으로 빌드합니다. 아래 stable16·v2.1 문서는 기존 기능 기준과 이전 실행 경로의 기록입니다. `bosang_os_v04_alpha2_stable16.html`과 루트 `index.html`은 보존하며 v1 실행 화면과 구분합니다.
 

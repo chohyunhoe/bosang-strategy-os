@@ -39,7 +39,8 @@ function administrativeRank(token) {
 }
 
 function canonicalizeAdministrativePrefix(prefix) {
-  const tokens = String(prefix || '').split(/\s+/).filter(Boolean);
+  // A bare upper-jurisdiction suffix has no place name and is not location evidence.
+  const tokens = String(prefix || '').split(/\s+/).filter(Boolean).filter(token=>!/^(?:도|시|군|구)$/.test(token));
   if (tokens.length === 0 || tokens.some((token) => /[^가-힣]/.test(token))) return tokens.join(' ');
 
   const administrative = tokens.filter((token) => administrativeRank(token) >= 0);
@@ -439,7 +440,7 @@ function sourceRefFromLines(lines, context, sourceLabel) {
 }
 
 function toLandAppraisalResult(parsedRow, context = {}) {
-  const sourceRefs = [sourceRefFromLines(parsedRow.lines, context, '토지가액 산출근거')].filter(Boolean);
+  const sourceRefs = [sourceRefFromLines(parsedRow.lines, context, '토지가액 산출근거'),...(parsedRow.parsed._recovered_address_refs||[])].filter(Boolean);
   const parsed = parsedRow.parsed;
   // 원문이 토지에 별도 가액을 매기지 않는다고 밝힌 행은 '누락'이 아니라 '그렇게 적힌 것'이다.
   // 값은 비워 두되 그 사실을 상태로 보존해, 사람이 누락과 구분해 볼 수 있게 한다.
@@ -531,10 +532,13 @@ function recoverLandResultWithHint(text, landHints = []) {
   if (alreadyHasParcelAddress(tokens)) return null;
   const lotIndex = tokens.findIndex((token, index) => index > 0 && /^(?:산)?[0-9A-Z]{2,5}-\d{1,5}$/.test(token));
   if (lotIndex < 1) return null;
-  const matches = landHints.filter((land) => String(land?.land_no || land?.serial_no || '') === landNo);
+  const matches = landHints.filter((land) => String(land?.land_no || land?.serial_no || '') === landNo && normalizeParcelAddress(land.parcel_address).split(' ').at(-1)===normalizeParcelAddress(tokens[lotIndex]));
   const uniqueAddresses = [...new Set(matches.map((land) => normalizeParcelAddress(land.parcel_address)).filter(looksLikeParcelAddress))];
   if (uniqueAddresses.length !== 1) return null;
-  return parseLandResultText([landNo, uniqueAddresses[0], ...tokens.slice(lotIndex + 1)].join(' '));
+  const parsed=parseLandResultText([landNo, uniqueAddresses[0], ...tokens.slice(lotIndex + 1)].join(' '));
+  if(parsed&&!matches.some(land=>Number(land.area)===parsed.area))return null;
+  if(parsed)Object.defineProperty(parsed,'_recovered_address_refs',{value:matches.flatMap(land=>land.source_refs||[]),enumerable:false});
+  return parsed;
 }
 
 // 새 평가행의 시작: 줄이 연번으로 시작하고, 그 줄 자체가 소재지를 담고 있다.

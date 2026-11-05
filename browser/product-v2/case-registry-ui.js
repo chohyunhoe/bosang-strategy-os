@@ -139,4 +139,3 @@ window.addEventListener('beforeunload',(event)=>{
   if(navigator.webdriver||!registry.hasUnsavedWork())return;
   event.preventDefault();event.returnValue='';
 });
-

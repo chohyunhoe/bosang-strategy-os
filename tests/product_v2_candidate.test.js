@@ -165,4 +165,3 @@ assert.match(store, /issueCandidates/);
 assert.doesNotMatch(store, /querySelector|closest\(|scrollIntoView/);
 
 console.log('product_v2_candidate.test.js passed');
-

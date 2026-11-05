@@ -17,7 +17,7 @@ const routes = [
 
 const esc = (value) => String(value == null ? '' : value).replace(/[&<>"']/g, (ch) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[ch]));
 const arr = (value) => Array.isArray(value) ? value : [];
-const fmt = (value) => { const number = Number(value); return Number.isFinite(number) ? number.toLocaleString('ko-KR') : (value == null || value === '' ? '—' : esc(value)); };
+const fmt = (value) => { if(value == null || value === '')return '—'; const number = Number(value); return Number.isFinite(number) ? number.toLocaleString('ko-KR') : (value == null || value === '' ? '—' : esc(value)); };
 const statusClass = (status) => status === 'READY' ? 'ready' : status === 'PROCESSING' ? 'processing' : status === 'PARSE_HOLD' ? 'hold' : '';
 
 function parser() {
@@ -140,6 +140,7 @@ async function processFiles(fileList, { replace = false } = {}) {
         if(phase==='ocr-required')recordDiagnosticEvent('PDF_OCR_STARTED',{index:fileIndex+1,total:files.length,page_count:progressEvent.total,selected_count:progressEvent.selected_count});
         if(phase==='ocr-page-completed')recordDiagnosticEvent('PDF_OCR_PAGE_COMPLETED',{index:fileIndex+1,total:files.length,page,selection_index:progressEvent.selection_index,selected_count:progressEvent.total,elapsed_ms:progressEvent.elapsed_ms});
         if(phase==='ocr-table-crop-completed')recordDiagnosticEvent('PDF_OCR_TABLE_CROP_COMPLETED',{index:fileIndex+1,total:files.length,page});
+        if(phase==='ocr-statement-rows-completed')recordDiagnosticEvent('PDF_OCR_STATEMENT_ROWS_COMPLETED',{index:fileIndex+1,total:files.length,page,row_count:progressEvent.row_count});
         if(phase==='ocr-workers-ready')recordDiagnosticEvent('PDF_OCR_WORKERS_READY',{index:fileIndex+1,total:files.length,selected_count:progressEvent.total,parallel_count:progressEvent.parallel_count});
         if(phase==='ocr-worker-fallback')recordDiagnosticEvent('PDF_OCR_WORKER_FALLBACK',{index:fileIndex+1,total:files.length,parallel_count:progressEvent.parallel_count,error_code:progressEvent.error_code});
         if(phase==='ocr-completed')recordDiagnosticEvent('PDF_OCR_COMPLETED',{index:fileIndex+1,total:files.length,page_count:progressEvent.page_count,selected_count:progressEvent.selected_count,parallel_count:progressEvent.parallel_count,elapsed_ms:progressEvent.elapsed_ms});
