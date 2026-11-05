@@ -1,6 +1,7 @@
 'use strict';
 
 const { test, expect } = require('@playwright/test');
+const { enterLegacyFullScreen } = require('./legacy_navigation');
 
 function realReviewFixture() {
   const sourceText = `감정평가서
@@ -58,6 +59,7 @@ test('전체 검수 시작 executes parser and populates actionable review works
   });
 
   await page.goto('/', { waitUntil: 'networkidle' });
+  await enterLegacyFullScreen(page);
   await expect.poll(async () => page.evaluate(() => Boolean(window.__bsoReviewExecution))).toBe(true);
   await expect.poll(async () => page.evaluate(() => window.__bsoReviewExecution && window.__bsoReviewExecution.contractVersion)).toBe('review-execution/0.1');
 

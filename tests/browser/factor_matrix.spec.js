@@ -1,6 +1,7 @@
 'use strict';
 
 const { test, expect } = require('@playwright/test');
+const { enterLegacyFullScreen } = require('./legacy_navigation');
 
 function factorReviewData() {
   return {
@@ -66,6 +67,7 @@ test('PAIR_READY basis factors attach review-only and render in the numeric work
   });
 
   await page.goto('/', { waitUntil: 'networkidle' });
+  await enterLegacyFullScreen(page);
   await expect.poll(async () => page.evaluate(() => Boolean(window.__bsoFactorMatrixInstalled))).toBe(true);
   await expect.poll(async () => page.evaluate(() => window.__bsoFactorMatrixInstalled && window.__bsoFactorMatrixInstalled.contractVersion)).toBe('release-factor-matrix/0.1');
 
@@ -112,7 +114,7 @@ test('PAIR_READY basis factors attach review-only and render in the numeric work
   });
   expect(refresh.candidate.auxiliary.calculated_unit_price).toBe('510123');
 
-  await page.locator('nav [data-section="workflowValue"]').click();
+  await page.locator('nav.axis-nav [data-section="workflowValue"]').click();
   const matrix = page.locator('#workflowValueGrid [data-bso-factor-matrix="1"]');
   await expect(matrix).toHaveCount(1);
   await expect(matrix).toContainText('법인별 평가요인 비교');
