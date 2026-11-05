@@ -279,7 +279,7 @@ export function installWorkOpsUi(store) {
     if(store.state.route==='home') main.insertAdjacentHTML('beforeend',homeHtml());
     if(store.state.route==='map') main.insertAdjacentHTML('beforeend',`<section class="work-ops" data-work-ops-panel><div class="section-head"><div><div class="eyebrow">현장·데이터 업무도구</div><h2>현장선별 · 신규사업 · 거래사례 · 공부대조</h2><p>로컬 BSO 실행기에서 공공데이터 API와 연결됩니다.</p></div></div><div class="work-grid">${preFieldHtml()}${fieldHtml()}${signalHtml()}${rtmsHtml()}${buildingHtml()}</div></section>`);
 
-    document.querySelectorAll('[data-work-route]').forEach((button)=>button.addEventListener('click',()=>store.setRoute(button.dataset.workRoute)));
+    document.querySelectorAll('[data-work-route]').forEach((button)=>{button.disabled=store.state.status==='PROCESSING';button.addEventListener('click',()=>{if(store.state.status==='PROCESSING')return;store.setRoute(button.dataset.workRoute);window.scrollTo({top:0});});});
     document.querySelector('[data-field-boundary]')?.addEventListener('change',(event)=>readBoundary(event.target.files?.[0]));
     document.querySelector('[data-field-run]')?.addEventListener('click',runField);
     document.querySelector('[data-field-csv]')?.addEventListener('click',()=>downloadCsv(state.field.result?.csv_base64,state.field.result?.csv_file_name));

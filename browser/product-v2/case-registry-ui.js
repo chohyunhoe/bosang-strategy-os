@@ -54,7 +54,7 @@ function renderRegistry() {
     button.dataset.caseRegistryTop = '1';
     button.textContent = `사건목록 ${registry.list().length}${registry.hasUnsavedWork() ? ' · 저장 필요' : ''}`;
     button.disabled = store.state.status === 'PROCESSING';
-    button.addEventListener('click', () => { if(store.state.status !== 'PROCESSING') store.setRoute('home'); });
+    button.addEventListener('click', () => { if(store.state.status === 'PROCESSING') return; store.setRoute('home'); const panel=document.querySelector('[data-case-registry]'); const list=panel?.querySelector('details'); if(list)list.open=true; panel?.scrollIntoView({block:'start'}); const heading=panel?.querySelector('h2'); if(heading){heading.tabIndex=-1;heading.focus({preventScroll:true});} });
     topActions.prepend(button);
   }
 
