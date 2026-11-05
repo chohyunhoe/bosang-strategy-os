@@ -38,12 +38,19 @@ try {
         if ($PSCmdlet.ShouldProcess($linkPath, 'Create or update BSO shortcut')) {
             if (-not (Test-Path -LiteralPath $folder)) { [void](New-Item -ItemType Directory -Path $folder -Force) }
             $shortcut = $shell.CreateShortcut($linkPath)
+            $stage = 'target path'
             try {
                 $shortcut.TargetPath = $launcher
+                $stage = 'working directory'
                 $shortcut.WorkingDirectory = $repoRoot
+                $stage = 'description'
                 $shortcut.Description = $managedDescription
+                $stage = 'window style'
                 $shortcut.WindowStyle = 1
+                $stage = 'save'
                 $shortcut.Save()
+            } catch {
+                throw ('BSO shortcut failed at ' + $stage + ': ' + $_.Exception.Message)
             } finally { [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($shortcut) }
             Write-Host ('[BSO] Shortcut ready: ' + $linkPath)
         }

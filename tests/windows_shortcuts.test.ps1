@@ -42,6 +42,9 @@ try {
     Assert $rejected 'An unrelated existing shortcut must be rejected.'
     Assert (-not (Test-Path -LiteralPath $newDesktop)) 'All destinations must be checked before writing.'
     Write-Host 'Windows shortcuts passed: real .lnk targets, Unicode/spaced paths, repeat setup, dry run, conflict protection.'
+} catch {
+    Write-Host $_.ScriptStackTrace
+    throw
 } finally {
     [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($shell)
     if (Test-Path -LiteralPath $temporaryRoot) { Remove-Item -LiteralPath $temporaryRoot -Recurse -Force }
