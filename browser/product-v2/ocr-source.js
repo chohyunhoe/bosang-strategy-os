@@ -206,6 +206,9 @@ export async function ocrPdfDocument(pdfDocument, onProgress = () => {}, options
     const canvas=document.createElement('canvas');const context=canvas.getContext('2d',{willReadFrequently:true});if(!context)throw new Error('CANVAS_2D_UNAVAILABLE');
     const page=await pdfDocument.getPage(pageNo);const base=page.getViewport({scale:1});const scale=Math.min(2.2,Math.max(1.35,1800/Math.max(1,base.width)));const viewport=page.getViewport({scale});
     canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);context.clearRect(0,0,canvas.width,canvas.height);await page.render({canvasContext:context,viewport}).promise;
+    // Each reused worker starts a new page with automatic page segmentation.
+    // Detail/identity passes below use different modes and must not leak them.
+    await worker.setParameters?.({tessedit_pageseg_mode:'3'});
     const result=await worker.recognize(canvas,{}, {text:true,blocks:true});let value=String(result?.data?.text||'').trim();let items=wordBoxes(result?.data);
     const initialItems=items;
     const tableLike=/(?:토\s*지\s*(?:평\s*가\s*조\s*서|가\s*격\s*산\s*출)|비\s*교\s*표\s*준\s*지|공\s*시\s*지\s*가|개\s*별\s*요\s*인)/.test(value);

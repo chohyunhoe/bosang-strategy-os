@@ -6,7 +6,7 @@ const path = require('node:path');
 // Exercise the actual browser module without adding a browser or OCR dependency.
 (async () => {
   const source = fs.readFileSync(path.join(__dirname, '../../browser/product-v2/ocr-source.js'), 'utf8');
-  const { recoverStatementMoney, mergeTableOcrWords, ocrWordLines } = await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'));
+  const { recoverStatementMoney, mergeTableOcrWords, ocrWordLines, ocrPdfDocument } = await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'));
   const crop = { serial: '201', lot: '0015-0002' };
   const candidate = '201 익명시 15-2 답 답 120.000 * 1/2 180,000 10,800,000';
   const original = '201 AEA 15-2 답 답 120.000 * 12 180000 1800000';
@@ -66,6 +66,21 @@ const path = require('node:path');
   const staggered=[word('1',10,100),word('15-2',100,100),word('180,000',400,107)];
   const shiftedDetail=[word('1',10,96),word('15-2',100,96),word('190,000',400,96)];
   assert.equal(ocrWordLines(mergeTableOcrWords(staggered,shiftedDetail,tableCrop)),'1 15-2 190,000','a staggered row must be replaced as one band without a stale money tail');checks++;
+  const previousWindow=globalThis.window,previousDocument=globalThis.document;
+  const fullPageModes=[];let mode='3',terminated=false;
+  const data={text:'(주) 감정평가법인 새봄',blocks:[{paragraphs:[{lines:[{text:'(주) 감정평가법인 새봄',bbox:{x0:10,y0:10,x1:100,y1:30},words:[]}]}]}]};
+  const worker={setParameters:async parameters=>{mode=parameters.tessedit_pageseg_mode;},recognize:async canvas=>{if(canvas.kind==='page')fullPageModes.push(mode);return{data};},terminate:async()=>{terminated=true;}};
+  globalThis.window={Tesseract:{OEM:{LSTM_ONLY:1},createWorker:async()=>worker}};
+  globalThis.document={createElement:()=>{const canvas={width:0,height:0,kind:'detail'};canvas.getContext=()=>({canvas,clearRect(){},drawImage(){canvas.kind='detail';}});return canvas;}};
+  try{
+    const doc={numPages:3,getPage:async()=>({getViewport:({scale})=>({width:100*scale,height:100*scale}),render:({canvasContext})=>{canvasContext.canvas.kind='page';return{promise:Promise.resolve()};}})};
+    await ocrPdfDocument(doc,()=>{},{workerCount:1});
+    assert.deepEqual(fullPageModes,['3','3','3'],'focused company/table segmentation must not leak into the next full page');checks++;
+    assert.equal(terminated,true,'the worker must be terminated after the multi-page run');checks++;
+  }finally{
+    if(previousWindow===undefined)delete globalThis.window;else globalThis.window=previousWindow;
+    if(previousDocument===undefined)delete globalThis.document;else globalThis.document=previousDocument;
+  }
   console.log(`Statement money recovery safety regressions: ${checks} passed.`);
 })().catch(error => { console.error(error); process.exitCode = 1; });
 
