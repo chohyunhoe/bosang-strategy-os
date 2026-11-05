@@ -99,11 +99,11 @@ export function mergeTableOcrWords(original,detail,crop) {
     const overlap=Math.min(a.y+a.height,b.y+b.height)-Math.max(a.y,b.y);
     return overlap>=height*.25||Math.abs(a.y+a.height/2-b.y-b.height/2)<=Math.max(4,height*.65);
   };
-  const omittedRows=original.filter(item=>!outside.includes(item)&&!preservedDong.includes(item)&&!detail.some(word=>sameBand(item,word)));
+  const omittedRows=ocrWordRows(original).filter(row=>!row.items.some(item=>detail.some(word=>sameBand(item,word)))).flatMap(row=>row.items.filter(item=>!outside.includes(item)&&!preservedDong.includes(item)));
   return [...outside,...preservedDong,...omittedRows,...corrected];
 }
 
-export function ocrWordLines(items) {
+function ocrWordRows(items) {
   const rows=[];
   for(const item of [...items].sort((a,b)=>(a.y+a.height/2)-(b.y+b.height/2)||a.x-b.x)){
     const center=item.y+item.height/2;const row=rows.at(-1);
@@ -111,7 +111,11 @@ export function ocrWordLines(items) {
     if(row&&(overlap>=Math.min(row.height,item.height)*.25||Math.abs(center-row.y)<=Math.max(4,Math.min(row.height,item.height)*.65))){row.items.push(item);row.top=Math.min(row.top,item.y);row.bottom=Math.max(row.bottom,item.y+item.height);}
     else rows.push({y:center,height:item.height,top:item.y,bottom:item.y+item.height,items:[item]});
   }
-  return rows.map(row=>row.items.sort((a,b)=>a.x-b.x).map(item=>item.str).join(' ')).join('\n');
+  return rows;
+}
+
+export function ocrWordLines(items) {
+  return ocrWordRows(items).map(row=>row.items.sort((a,b)=>a.x-b.x).map(item=>item.str).join(' ')).join('\n');
 }
 
 // Read sparse statement rows independently: multi-line address cells otherwise

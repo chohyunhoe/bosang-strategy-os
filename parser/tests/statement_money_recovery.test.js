@@ -63,6 +63,9 @@ const path = require('node:path');
   const dongPass=[...firstPass,word('표본동',60,160)];
   const withDong=mergeTableOcrWords(dongPass,detailPass,tableCrop);
   assert.equal(withDong.filter(item=>item.str==='표본동').length,1,'preserved administrative text must not be duplicated');checks++;
+  const staggered=[word('1',10,100),word('15-2',100,100),word('180,000',400,107)];
+  const shiftedDetail=[word('1',10,96),word('15-2',100,96),word('190,000',400,96)];
+  assert.equal(ocrWordLines(mergeTableOcrWords(staggered,shiftedDetail,tableCrop)),'1 15-2 190,000','a staggered row must be replaced as one band without a stale money tail');checks++;
   console.log(`Statement money recovery safety regressions: ${checks} passed.`);
 })().catch(error => { console.error(error); process.exitCode = 1; });
 
