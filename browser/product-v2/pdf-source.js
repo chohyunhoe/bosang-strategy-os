@@ -195,7 +195,7 @@ export async function loadPdfPageModel(file, onProgress = () => {}) {
     let actualParallelCount=parallelCount;const ocrProgress=(event)=>{if(event?.phase==='ocr-workers-ready'||event?.phase==='ocr-worker-fallback')actualParallelCount=Number(event.parallel_count)||1;onProgress(event);};
     const ocrPages=await ocrPdfDocument(pdfDocument,ocrProgress,{pageNumbers:selectedPageNumbers,workerCount:parallelCount});
     const ocrByPage=new Map(ocrPages.map((page)=>[page.page_no,page]));
-    const merged=textPages.map((page)=>{const ocrPage=ocrByPage.get(page.page_no);return ocrPage&&String(ocrPage.text||'').trim()?ocrPage:page;});
+    const merged=textPages.map((page)=>{const ocrPage=ocrByPage.get(page.page_no);return ocrPage&&(String(ocrPage.text||'').trim()||ocrPage.ruled_tables?.length)?ocrPage:page;});
     onProgress({phase:'ocr-completed',page_count:pdfDocument.numPages,selected_count:selectedPageNumbers.length,parallel_count:actualParallelCount,elapsed_ms:Math.round(performance.now()-ocrStarted)});
     return merged;
   } finally {
@@ -204,5 +204,5 @@ export async function loadPdfPageModel(file, onProgress = () => {}) {
 }
 
 export function parserPagesFromPageModel(pageModel) {
-  return pageModel.map((page) => ({ page_no: page.page_no, text: page.text }));
+  return pageModel.map((page) => ({ page_no: page.page_no, text: page.text, ...(page.source_type==='LOCAL_BROWSER_OCR'&&Array.isArray(page.ruled_tables)?{ruled_tables:page.ruled_tables,image_width:page.image_width,image_height:page.image_height}:{}) }));
 }

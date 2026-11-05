@@ -1,0 +1,40 @@
+'use strict';
+const assert=require('node:assert/strict');
+const path=require('node:path');
+const {pathToFileURL}=require('node:url');
+const {applyRuledSummary,number,areaShare}=require('../src/ruled_summary_adapter');
+(async()=>{
+ const engine=await import(pathToFileURL(path.resolve(__dirname,'../../browser/product-v2/ruled-table-ocr.js')).href);
+ let checks=0;
+ const equal=(a,b,message)=>{assert.deepEqual(a,b,message);checks++;};
+ function image(scale=1,offset=0){const width=900*scale,height=500*scale,data=new Uint8Array(width*height*4).fill(255);const ink=(x,y)=>{for(let dy=0;dy<2*scale;dy++)for(let dx=0;dx<2*scale;dx++){const p=((y+dy)*width+x+dx)*4;data[p]=data[p+1]=data[p+2]=0;}};for(let j=0;j<=3;j++)for(let x=50+offset;x<=750+offset;x++)ink(x*scale,(50+j*80)*scale);for(let j=0;j<=7;j++)for(let y=50;y<=290;y++)ink((50+offset+j*100)*scale,y*scale);return{width,height,data};}
+ for(const [scale,offset] of [[1,0],[2,15]]){const tables=engine.detectRuledTables(image(scale,offset));equal(tables.length,1,'geometry must work without case-specific coordinates');equal(engine.summaryTablePlans(tables)[0].rows.length,2);equal(engine.summaryTablePlans(tables)[0].headers.length,7);}
+ equal(engine.detectRuledTables({width:300,height:300,data:new Uint8Array(4)}),[],'truncated pixels');
+ equal(engine.summaryTablePlans(engine.detectRuledTables({...image(),data:new Uint8Array(900*500*4).fill(255)})),[],'blank page');
+ equal(engine.readStrictNumber('1,234.567'),1234.567,'decimal area remains decimal');equal(engine.readStrictNumber('1,234.567',true),1234567,'money separator recovery is field-scoped');
+ equal(engine.readStrictNumber('12,34'),null);equal(engine.readAreaShare('100 x 1/'),null);equal(engine.readAreaShare('100 x 2/1'),null);equal(engine.arithmeticMatches(engine.readAreaShare('100 x 1/2'),200,10000),true);
+ const headings={company:'평가업체',address:'소재지',lot:'지번',unit:'단가'};
+ const values={text:'합성',address:'가상시 시험동',lot:'91-2','lot-korean':'91-2',category:'대',area:'100x1/2',number:'200'};
+ const read=async(box,mode)=>{if(mode.startsWith('header:'))return headings[mode.slice(7)];const base=mode.replace(/-pass\d+$/,'');if(base==='number')return box.left>640?'10,000':'200';return values[base]||'';};
+ const detected=await engine.recognizeRuledSummaries(image(),read);equal(detected.length,1);equal(detected[0].rows.length,2);equal(detected[0].rows.map(r=>r.arithmetic_match),[true,true]);
+ const failed=await engine.recognizeRuledSummaries(image(),async(box,mode)=>mode==='lot-pass7'?'91-3':read(box,mode));equal(failed[0].rows[0].lot,'','conflicting parcel readings must not use majority vote');
+ const mountain=await engine.recognizeRuledSummaries(image(),async(box,mode)=>mode==='lot-korean'?'산91-2':read(box,mode));equal(mountain[0].rows[0].lot,'산91-2','numeric whitelist must not erase mountain identity');
+ equal(await engine.recognizeRuledSummaries(image(),async(box,mode)=>mode==='header:unit'?'면적':read(box,mode)),[],'wrong table family is not promoted');
+ const base={meta:{},appraisals:[],lands:[],land_appraisal_results:[]};
+ const table=structuredClone(detected[0]);table.rows[1].raw.lot='91-3';
+ const pages=[{page_no:1,image_width:900,image_height:500,ruled_tables:[table]}];
+ let parsed=applyRuledSummary(base,pages,{appraisalId:'APP_SYNTHETIC',fileName:'synthetic.pdf'});
+ equal(parsed.lands.length,2);equal(parsed.land_appraisal_results.map(r=>[r.unit_price,r.amount,r.ownership_share_denominator]),[[200,10000,2],[200,10000,2]]);
+ equal(parsed.meta.recognition_checked_rows,2);equal(parsed.land_appraisal_results.every(r=>r.auto_confirmed===false),true,'machine arithmetic must not forge human approval');
+ equal(parsed.land_appraisal_results[0].source_refs[0].extraction_method,'RULED_CELL_OCR');
+ const other=structuredClone(pages[0]);other.page_no=2;other.ruled_tables[0].rows.forEach(r=>{r.raw.company='가상';r.raw.unit_price='300';r.raw.amount='15,000';});
+ parsed=applyRuledSummary(base,[...pages,other],{appraisalId:'APP_SYNTHETIC'});equal(parsed.appraisals.length,2);equal(parsed.lands.length,2);equal(parsed.land_appraisal_results.length,4);
+ const mismatch=structuredClone(pages);mismatch[0].ruled_tables[0].rows[0].raw.amount='9,990';parsed=applyRuledSummary(base,mismatch);equal(parsed.land_appraisal_results[0].amount,null,'do not compute an unprinted price');equal(parsed.land_appraisal_results[0].candidate_amount,9990);equal(parsed.meta.recognition_unresolved.length,1);
+ const bad=structuredClone(pages);bad[0].ruled_tables[0].rows[0].bbox.right=10000;bad[0].ruled_tables[0].rows[1].raw.land_category='모름';parsed=applyRuledSummary(base,bad);equal(parsed.lands.length,0);equal(parsed.meta.recognition_rows,2);equal(parsed.meta.recognition_unresolved.length,2,'invalid rows must remain counted as unresolved');
+ const existing={...base,lands:[{land_id:'EXISTING'}]};equal(applyRuledSummary(existing,pages),existing,'normal parser evidence must not be overwritten');
+ equal(number('9007199254740992'),null);equal(areaShare('100 x 0/1'),null);
+ const {CaseStore}=await import(pathToFileURL(path.resolve(__dirname,'../../browser/product-v2/case-store.js')).href);
+ const store=new CaseStore();parsed=applyRuledSummary(base,[...pages,other],{appraisalId:'APP_SYNTHETIC'});store.ingestDocument({fileMeta:{name:'synthetic.pdf',size:1},pageModel:[],parsed});
+ equal(store.state.sourceDocuments.length,1);equal(store.state.appraisals.length,2);equal(new Set(store.state.appraisalResults.map(r=>r.appraisal_id)).size,2);equal(store.state.appraisalResults.length,4,'one PDF containing two firms must not create missing cross-product rows');equal(store.state.documentSanity.length,2);equal(store.state.lands.every(r=>r.source_appraisal_ids.length===2),true);
+ console.log(`Ruled summary recognition regressions: ${checks} passed.`);
+})().catch(error=>{console.error(error);process.exitCode=1;});

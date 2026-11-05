@@ -1,3 +1,4 @@
+import { recognizeCanvasSummaries } from './ruled-table-ocr.js';
 let tesseractPromise = null;
 
 function loadScript(src, marker) {
@@ -271,7 +272,9 @@ export async function ocrPdfDocument(pdfDocument, onProgress = () => {}, options
       }
       if(new Set(companyLines.map(line=>line.name)).size===1)value=companyLines[0].text+'\n'+value;
     }
-    pages.push({page_no:pageNo,text:value,items,line_count:value?value.split(/\r?\n/).filter(Boolean).length:0,source_type:'LOCAL_BROWSER_OCR',extraction_method:'Tesseract.js kor+eng',auto_confirmed:false,review_status_code:'NEEDS_REVIEW'});
+    let ruledTables=[];
+    try{ruledTables=await recognizeCanvasSummaries(canvas,worker,event=>onProgress({...event,page:pageNo}));}catch(error){onProgress({phase:'ocr-grid-failed',page:pageNo,error_code:error?.message==='RULED_OCR_CELL_LIMIT'?'RULED_OCR_CELL_LIMIT':'RULED_OCR_FAILED'});}
+    pages.push({page_no:pageNo,text:value,items,ruled_tables:ruledTables,image_width:canvas.width,image_height:canvas.height,line_count:value?value.split(/\r?\n/).filter(Boolean).length:0,source_type:'LOCAL_BROWSER_OCR',extraction_method:'Tesseract.js kor+eng',auto_confirmed:false,review_status_code:'NEEDS_REVIEW'});
     completed.count+=1;onProgress({phase:'page',page:pageNo,selection_index:completed.count,total:pageNumbers.length});onProgress({phase:'ocr-page-completed',page:pageNo,selection_index:completed.count,total:pageNumbers.length,elapsed_ms:Math.round(performance.now()-pageStarted)});
   };
   try {
