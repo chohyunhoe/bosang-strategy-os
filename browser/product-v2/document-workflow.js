@@ -157,6 +157,7 @@ export function importDocumentExecution(rows, id, source, actor) {
 }
 
 export async function importDocumentResult(rows, id, source, actor) {
+  validateDocumentWorkflow(rows);
   if (Array.isArray(source)) {
     if (source.length !== 1) throw new Error('결과는 한 건씩 선택하세요.');
     source = source[0];
@@ -172,6 +173,15 @@ export async function importDocumentResult(rows, id, source, actor) {
   if (typeof bundle.output !== 'string' || bundle.output.length > 100000 || bundle.verification?.human_approved !== false || bundle.verification?.legal_accuracy_approved !== false || bundle.verification?.output_sha256_checked !== true) throw new Error('결과 본문·검증 형식이 올바르지 않습니다.');
   const digest = await sha256Bytes(new TextEncoder().encode(bundle.output));
   if (digest !== receipt?.output_sha256 || (receipt?.status === 'BLOCKED' && bundle.output !== '') || (receipt?.status === 'NEEDS_GPT_REVIEW' && (!bundle.output.trim() || bundle.verification.provider_guard_passed !== true))) throw new Error('결과 본문과 실행 지문이 일치하지 않습니다.');
+  const current = rows.find(row => row.id === id);
+  const previous = current?.execution_receipts?.find(item => item.job_id === receipt.job_id);
+  const preview = { document_id: id, revision: receipt.revision, job_id: receipt.job_id, output: bundle.output, status: receipt.status };
+  if (previous) {
+    required(actor, '기록자');
+    const keys = ['schema_version', 'job_id', 'document_id', 'revision', 'artifact_sha256', 'input_sha256', 'output_sha256', 'execution_id', 'status', 'human_approved'];
+    if (!current.artifact || receipt.revision !== current.revision || receipt.artifact_sha256 !== current.artifact.sha256 || keys.some(key => previous[key] !== receipt[key])) throw new Error('기존 실행 기록과 다른 결과는 다시 열 수 없습니다.');
+    return { rows: copy(rows), preview, reopened: true };
+  }
   const next = importDocumentExecution(rows, id, receipt, actor);
-  return { rows: next, preview: { document_id: id, revision: receipt.revision, job_id: receipt.job_id, output: bundle.output, status: receipt.status } };
+  return { rows: next, preview, reopened: false };
 }

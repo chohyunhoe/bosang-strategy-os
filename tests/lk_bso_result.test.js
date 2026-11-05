@@ -36,7 +36,13 @@ test('BSO request → intake → synthetic result fixture → result package →
   assert.equal(JSON.stringify(imported.rows).includes(bundle.output), false, 'body must not enter case backups');
   assert.equal(JSON.stringify(bundle).includes('MUST_NOT_EXPORT'), false);
   assert.equal(JSON.stringify(bundle).includes('Synthetic only; no model call'), false);
-  await assert.rejects(api.importDocumentResult(imported.rows, rows[0].id, bundle, 'A'), /이미 기록/);
+  const restored = JSON.parse(JSON.stringify(imported.rows));
+  const reopened = await api.importDocumentResult(restored, rows[0].id, bundle, 'A');
+  assert.equal(reopened.reopened, true); assert.deepEqual(reopened.rows, restored);
+  assert.equal(reopened.preview.output, bundle.output);
+  const receiptOnly = api.importDocumentExecution(rows, rows[0].id, bundle.bso_receipt, 'A');
+  assert.deepEqual((await api.importDocumentResult(receiptOnly, rows[0].id, bundle, 'A')).rows, receiptOnly);
+  await assert.rejects(api.importDocumentResult(restored, rows[0].id, { ...bundle, bso_receipt: { ...bundle.bso_receipt, execution_id: 'OTHER' } }, 'A'), /기존 실행 기록/);
 });
 test('modified output, stale revision, wrong input and schema downgrade are rejected', async () => {
   const { api, rows, bundle } = await fixture();

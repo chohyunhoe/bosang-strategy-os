@@ -120,6 +120,20 @@ test('결과 패키지는 본문 지문을 검증하고 HTML을 실행하지 않
   expect(await page.evaluate(() => window.__bsoResultXss)).toBeUndefined();
   expect(await page.evaluate(body => JSON.stringify(window.BSOProductV2.store.state).includes(body), bundle.output)).toBe(false);
   await expect(article).toContainText('작성 중 · PARTIAL');
+  const historyLength = await page.evaluate(() => window.BSOProductV2.store.state.documentWorkflow[0].history.length);
+  await page.evaluate(() => {
+    const store = window.BSOProductV2.store;
+    store.state = JSON.parse(JSON.stringify(store.state)); store.emit();
+  });
+  await expect(article.locator('[data-doc-result-preview]')).toHaveCount(0);
+  await article.locator('summary').filter({ hasText:'파일·n8n 실행 연결' }).click();
+  await form.locator('[name="actor"]').fill('기록자 A');
+  await form.locator('input[type="file"]').setInputFiles({name:'same-result.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(bundle))});
+  await form.locator('button').click();
+  await expect(page.locator('[data-doc-message]')).toContainText('다시 표시');
+  await article.locator('summary').filter({ hasText:'파일·n8n 실행 연결' }).click();
+  await expect(article.locator('[data-doc-result-preview]')).toContainText(bundle.output);
+  expect(await page.evaluate(() => window.BSOProductV2.store.state.documentWorkflow[0].history.length)).toBe(historyLength);
   await page.evaluate(() => {
     const store = window.BSOProductV2.store;
     return import('/document-workflow.js').then(api => {store.state.documentWorkflow=api.changeDocument(store.state.documentWorkflow,'WORK_DOC_1','REVISE',{actor:'A',reference:'수정'});store.emit();});

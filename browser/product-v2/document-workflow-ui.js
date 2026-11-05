@@ -54,7 +54,7 @@ export function installDocumentWorkflowUi(store) {
       const state = store.state;
       try {
         if (store.state.status === 'PROCESSING') throw new Error('평가서 처리 완료 후 기록하세요.');
-        let next, jobDownload = null, resultPreview = null;
+        let next, jobDownload = null, resultPreview = null, reopened = false;
         if (form.hasAttribute('data-doc-register')) next = registerDocument(rows, input);
         else {
           const id = form.closest('[data-doc-id]').dataset.docId;
@@ -70,7 +70,7 @@ export function installDocumentWorkflowUi(store) {
             const file = input.receipt_file;
             if (!file || file.size > 2 * 1024 * 1024) throw new Error('2MB 이하의 실행결과 JSON을 선택하세요.');
             const result = await importDocumentResult(rows, id, JSON.parse(await file.text()), input.actor);
-            next = result.rows; resultPreview = result.preview;
+            next = result.rows; resultPreview = result.preview; reopened = result.reopened === true;
           } else {
             let action = input.action;
             if (form.hasAttribute('data-doc-followup')) action = 'ADD_FOLLOWUP';
@@ -82,7 +82,7 @@ export function installDocumentWorkflowUi(store) {
         if (store.state !== state || store.state.documentWorkflow !== rows) throw new Error('처리 중 사건이나 문서가 변경됐습니다. 현재 사건에서 다시 시도하세요.');
         if (resultPreview) previews.set(state, resultPreview);
         store.state.documentWorkflow = next; store.emit();
-        document.querySelector('[data-doc-message]').textContent = '기록했습니다.';
+        document.querySelector('[data-doc-message]').textContent = reopened ? '기존 실행 기록과 일치하는 결과 본문을 다시 표시했습니다.' : '기록했습니다.';
         if (jobDownload) {
           const url = URL.createObjectURL(new Blob([JSON.stringify(jobDownload, null, 2)], { type: 'application/json' }));
           const anchor = document.createElement('a'); anchor.href = url; anchor.download = `${jobDownload.job_id}.json`; anchor.click();
