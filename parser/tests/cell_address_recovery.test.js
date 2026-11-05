@@ -32,5 +32,8 @@ const root=process.env.BSO_TEST_ROOT||path.resolve(__dirname,'../..');
 
  equal(adapter.cellAddress('가상\n도\n예시시\n표본동'),'가상도 예시시 표본동','restore an explicitly wrapped province suffix');equal(engine.normalizeCellAddress('가상\n도\n예시시\n표본동'),'가상도 예시시 표본동');equal(adapter.cellAddress('가상도\n시'),'가상도 시','never glue a city suffix onto a complete province');equal(adapter.cellAddressValid('가상도\n시'),false);
  const conflict=structuredClone(partial);conflict[0].rows[1].raw.unit_price='201';const contradicted=adapter.applyRuledSummary(base,[page(conflict)]);equal(contradicted.land_appraisal_results[0].recognition_status,'CONFLICTING_TABLE_ROWS','different incomplete numeric candidates must remain conflicts');equal(contradicted.land_appraisal_results[0].amount,null);
+
+ equal(adapter.cellAddressValid('가상시 평가'),false,'a value label ending in 가 is not a cadastral ga name');equal(engine.cellAddressValid('확인불가'),false,'an error placeholder must not become a ga locality');equal(adapter.cellAddressValid('가상시 종로2가'),true,'support numeric cadastral ga names');
+ for(let i=0;i<store.state.lands.length;i++)store.updateRecord('lands',(_r,index)=>index===i,{parcel_address:'확인불가 91-2'});equal(group().confirmable,false,'an error placeholder plus lot is not a repaired location');
  console.log(`Cell address recovery regressions: ${checks} passed.`);
 })().catch(error=>{console.error(error);process.exitCode=1;});

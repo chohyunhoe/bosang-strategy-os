@@ -5,7 +5,7 @@ export function normalizeCellAddress(value){
 }
 export function cellAddressValid(value){
   const normalized=normalizeCellAddress(value),tokens=normalized.split(' ');
-  if(!normalized||tokens.length>6||tokens.some(v=>!(/^[가-힣]{1,16}(?:시|도|군|구|읍|면|동|리)$/.test(v)||/^[가-힣0-9]{1,16}가$/.test(v))))return false;
+  if(!normalized||tokens.length>6||tokens.some(v=>!(/^[가-힣]{1,16}(?:시|도|군|구|읍|면|동|리)$/.test(v)||/^[가-힣][가-힣0-9]{0,14}\d가$/.test(v))))return false;
   const ranks=tokens.map(v=>/(?:특별시|광역시|특별자치시|시)$/.test(v)?1:/도$/.test(v)?0:/(?:군|구)$/.test(v)?2:/(?:읍|면)$/.test(v)?3:4);
   if(ranks.some((rank,index)=>index>0&&rank<=ranks[index-1]))return false;
   return /(?:읍|면|동|리|가)$/.test(tokens.at(-1));

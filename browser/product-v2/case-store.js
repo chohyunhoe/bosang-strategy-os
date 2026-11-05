@@ -60,7 +60,7 @@ function needsExceptionReview(row) { return REVIEW_PENDING.has(recordStatus(row)
 function validPnu(value) { return /^\d{19}$/.test(text(value)); }
 function plausibleParcelAddress(value) {
   const normalized=text(value).replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim();
-  return /(?:읍|면|동|리|가)\s+산?\d+(?:-\d+)?(?:\s|$)/.test(normalized);
+  return /(?:읍|면|동|리|\d가)\s+산?\d+(?:-\d+)?(?:\s|$)/.test(normalized);
 }
 function standardLandLocationReviewRequired(row) { return !validPnu(row?.pnu) && !plausibleParcelAddress(row?.parcel_address || row?.address); }
 function issueSignature(rows) { return JSON.stringify(arr(rows).map((row) => [row.issue_id, row.issue_code, row.severity, row.description])); }
