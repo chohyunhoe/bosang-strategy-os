@@ -1,6 +1,7 @@
 'use strict';
 
 const { test, expect } = require('@playwright/test');
+const { enterLegacyFullScreen } = require('./legacy_navigation');
 
 function anonymousReviewData() {
   return {
@@ -53,7 +54,8 @@ test('five-stage review flow renders without external requests or overflow', asy
   });
 
   await page.goto('/', { waitUntil: 'networkidle' });
-  await expect(page.locator('nav [data-section="overview"]')).toContainText('사건 개요');
+  await enterLegacyFullScreen(page);
+  await expect(page.locator('nav.axis-nav [data-section="overview"]')).toContainText('사건 개요');
   await page.evaluate((fixture) => {
     data = fixture;
     window.__releaseMapSession = undefined;
@@ -66,7 +68,7 @@ test('five-stage review flow renders without external requests or overflow', asy
     ['workflowOutput', '#workflowOutputGrid'],
   ];
   for (const [section, grid] of stages) {
-    await page.locator(`nav [data-section="${section}"]`).click();
+    await page.locator(`nav.axis-nav [data-section="${section}"]`).click();
     await expect(page.locator(`#${section}`)).toHaveClass(/active/);
     await expect(page.locator(`${grid} .release-stage-strip`)).toHaveCount(1);
   }
@@ -74,22 +76,22 @@ test('five-stage review flow renders without external requests or overflow', asy
   // v1.0 검토 순서 내비게이션: 사건 개요 → 대상토지 → 법인별 평가 비교 → 개별요인 비교
   // → 그 밖의 요인 → 지도 → 검토 필요사항 이 순서 그대로 도달 가능해야 한다.
   const reviewOrder = ['overview', 'lands', 'landCompare', 'subjectFactors', 'otherFactors', 'workflowLogic', 'reviewQueue'];
-  const navOrder = await page.locator('nav button[data-section]').evaluateAll(
+  const navOrder = await page.locator('nav.axis-nav button[data-section]').evaluateAll(
     (buttons) => buttons.map((button) => button.getAttribute('data-section')),
   );
   expect(navOrder.filter((section) => reviewOrder.includes(section)).slice(0, reviewOrder.length)).toEqual(reviewOrder);
   for (const section of reviewOrder) {
-    await page.locator(`nav [data-section="${section}"]`).click();
+    await page.locator(`nav.axis-nav [data-section="${section}"]`).click();
     await expect(page.locator(`#${section}`)).toHaveClass(/active/);
   }
   await expect(page.locator('#reviewQueueGrid')).toContainText('검토 필요사항');
 
-  await page.locator('nav [data-section="workflowLogic"]').click();
+  await page.locator('nav.axis-nav [data-section="workflowLogic"]').click();
   await expect(page.locator('#workflowLogicGrid')).toContainText('선택 대상토지');
   await expect(page.locator('#workflowLogicGrid .release-map-svg path')).toHaveCount(2);
   await expect(page.locator('#workflowLogicGrid')).toContainText('개략 벡터 미리보기');
 
-  await page.locator('nav [data-section="workflowValue"]').click();
+  await page.locator('nav.axis-nav [data-section="workflowValue"]').click();
   await expect(page.locator('#workflowValueGrid .release-table-desktop')).toHaveCount(1);
   await expect(page.locator('#workflowValueGrid .release-numeric-card')).toHaveCount(1);
   const viewportWidth = (page.viewportSize() || {}).width || 0;
@@ -101,7 +103,7 @@ test('five-stage review flow renders without external requests or overflow', asy
     await expect(page.locator('#workflowValueGrid .release-numeric-mobile')).toBeHidden();
   }
 
-  await page.locator('nav [data-section="workflowOutput"]').click();
+  await page.locator('nav.axis-nav [data-section="workflowOutput"]').click();
   await expect(page.locator('#workflowOutputGrid .release-layout-preview')).toHaveCount(1);
   const layoutColumns = await page.locator('#workflowOutputGrid .release-layout-preview').evaluate((element) => getComputedStyle(element).gridTemplateColumns);
   if (viewportWidth <= 900) {

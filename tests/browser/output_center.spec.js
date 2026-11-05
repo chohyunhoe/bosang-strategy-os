@@ -8,6 +8,7 @@
 // 5) APPRAISAL_ROW_COVERAGE_GAP 이 UI 에 유지되는지
 
 const { test, expect } = require('@playwright/test');
+const { enterLegacyFullScreen } = require('./legacy_navigation');
 
 function collectErrors(page) {
   const errors = [];
@@ -87,6 +88,7 @@ function requireFormat(formats, format) {
 
 async function loadCase(page, caseData) {
   await page.goto('/');
+  await enterLegacyFullScreen(page);
   await page.waitForFunction(() => typeof window.renderOutputCenter === 'function');
   // `data` 는 스크립트 최상위 let 바인딩이라 window 프로퍼티가 아니다. 기존 스펙과 같은 방식으로 대입한다.
   await page.evaluate((payload) => {
@@ -101,7 +103,7 @@ test('산출물 센터가 내비게이션에 노출되고 산출 준비상태를
   const errors = collectErrors(page);
   await loadCase(page, coverageGapCase());
 
-  const navButton = page.locator('nav button[data-section="outputCenter"]');
+  const navButton = page.locator('nav.axis-nav button[data-section="outputCenter"]');
   await expect(navButton).toBeVisible();
   await expect(navButton).toHaveText(/산출물 센터/);
 

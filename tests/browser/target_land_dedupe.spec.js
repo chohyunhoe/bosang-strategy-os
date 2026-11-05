@@ -1,6 +1,7 @@
 'use strict';
 
 const { test, expect } = require('@playwright/test');
+const { enterLegacyFullScreen } = require('./legacy_navigation');
 
 // 동일 필지를 담은 평가서 2건이 서로 다른 상위 행정구역 표기로 들어오는 경우를 재현합니다.
 // 실제 사건자료를 쓰지 않으며 모든 지명·지번은 합성값입니다.
@@ -67,6 +68,7 @@ test('상위 행정구역 표기가 다른 평가서 2건의 동일 필지는 �
   });
 
   await page.goto('/', { waitUntil: 'networkidle' });
+  await enterLegacyFullScreen(page);
   await expect.poll(async () => page.evaluate(() => Boolean(window.__bsoReviewExecution))).toBe(true);
 
   await page.evaluate((fixture) => {
