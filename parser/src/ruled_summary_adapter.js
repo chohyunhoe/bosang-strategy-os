@@ -8,12 +8,12 @@ function areaShare(value){const s=text(value).replace(/\s/g,'').split(/[xX×*]/)
 function partialAreaShare(value){const parts=text(value).replace(/\s/g,'').split(/[xX×*]/);if(parts.length!==2)return null;const area=number(parts[0]),m=/^(\d+)\/$/.exec(parts[1]);if(!(area>0)||!m)return null;const numerator=Number(m[1]);return Number.isSafeInteger(numerator)&&numerator>0?{area,numerator,denominator:null,shareIncomplete:true}:null;}
 function normalizeCellAddress(value){
   const lines=String(value??'').split(/\r?\n/).map(v=>v.replace(/\s+/g,' ').trim().replace(/^[|"'.]+(?=[가-힣])/,'').replace(/(?<=[가-힣])[|"'.]+$/,'')).filter(Boolean),out=[];
-  for(const line of lines){const previous=out.at(-1)||'';if(/^[시도군구읍면동리가]$/.test(line)&&/^[가-힣]{2,}$/.test(previous)&&!/[시도군구읍면동리가]$/.test(previous))out[out.length-1]+=line;else out.push(line);}
+  for(const line of lines){const previous=out.at(-1)||'';if(/^[시도군구읍면동리가]$/.test(line)&&/^[가-힣][가-힣0-9]{1,15}$/.test(previous)&&!/[시도군구읍면동리가]$/.test(previous))out[out.length-1]+=line;else out.push(line);}
   return out.join(' ');
 }
 function cellAddressValid(value){
   const normalized=normalizeCellAddress(value),tokens=normalized.split(' ');
-  if(!normalized||tokens.length>6||tokens.some(v=>!(/^[가-힣]{1,16}(?:시|도|군|구|읍|면|동|리)$/.test(v)||/^[가-힣][가-힣0-9]{0,14}\d가$/.test(v))))return false;
+  if(!normalized||tokens.length>6||tokens.some(v=>!(/^[가-힣]{1,16}(?:시|도|군|구|읍|면|동|리)$/.test(v)||/^[가-힣][가-힣0-9]{0,15}(?:동|리)$/.test(v)||/^[가-힣][가-힣0-9]{0,14}\d가$/.test(v))))return false;
   const ranks=tokens.map(v=>/(?:특별시|광역시|특별자치시|시)$/.test(v)?1:/도$/.test(v)?0:/(?:군|구)$/.test(v)?2:/(?:읍|면)$/.test(v)?3:4);
   if(ranks.some((rank,index)=>index>0&&rank<=ranks[index-1]))return false;
   return /(?:읍|면|동|리|가)$/.test(tokens.at(-1));
