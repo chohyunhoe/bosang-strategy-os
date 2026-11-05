@@ -7,7 +7,7 @@ const {applyRuledSummary,number,areaShare}=require('../src/ruled_summary_adapter
  const engine=await import(pathToFileURL(path.resolve(__dirname,'../../browser/product-v2/ruled-table-ocr.js')).href);
  let checks=0;
  const equal=(a,b,message)=>{assert.deepEqual(a,b,message);checks++;};
- function image(scale=1,offset=0){const width=900*scale,height=500*scale,data=new Uint8Array(width*height*4).fill(255);const ink=(x,y)=>{for(let dy=0;dy<2*scale;dy++)for(let dx=0;dx<2*scale;dx++){const p=((y+dy)*width+x+dx)*4;data[p]=data[p+1]=data[p+2]=0;}};for(let j=0;j<=3;j++)for(let x=50+offset;x<=750+offset;x++)ink(x*scale,(50+j*80)*scale);for(let j=0;j<=7;j++)for(let y=50;y<=290;y++)ink((50+offset+j*100)*scale,y*scale);return{width,height,data};}
+ function image(scale=1,offset=0,rowCount=2){const width=900*scale,height=500*scale,data=new Uint8Array(width*height*4).fill(255);const ink=(x,y)=>{for(let dy=0;dy<2*scale;dy++)for(let dx=0;dx<2*scale;dx++){const p=((y+dy)*width+x+dx)*4;data[p]=data[p+1]=data[p+2]=0;}};for(let j=0;j<=rowCount+1;j++)for(let x=50+offset;x<=750+offset;x++)ink(x*scale,(50+j*80)*scale);for(let j=0;j<=7;j++)for(let y=50;y<=50+(rowCount+1)*80;y++)ink((50+offset+j*100)*scale,y*scale);return{width,height,data};}
  for(const [scale,offset] of [[1,0],[2,15]]){const tables=engine.detectRuledTables(image(scale,offset));equal(tables.length,1,'geometry must work without case-specific coordinates');equal(engine.summaryTablePlans(tables)[0].rows.length,2);equal(engine.summaryTablePlans(tables)[0].headers.length,7);}
  equal(engine.detectRuledTables({width:300,height:300,data:new Uint8Array(4)}),[],'truncated pixels');
  equal(engine.summaryTablePlans(engine.detectRuledTables({...image(),data:new Uint8Array(900*500*4).fill(255)})),[],'blank page');
@@ -37,6 +37,16 @@ const {applyRuledSummary,number,areaShare}=require('../src/ruled_summary_adapter
  const store=new CaseStore();parsed=applyRuledSummary(base,[...pages,other],{appraisalId:'APP_SYNTHETIC'});store.ingestDocument({fileMeta:{name:'synthetic.pdf',size:1},pageModel:[],parsed});
  equal(store.state.sourceDocuments.length,1);equal(store.state.appraisals.length,2);equal(new Set(store.state.appraisalResults.map(r=>r.appraisal_id)).size,2);equal(store.state.appraisalResults.length,4,'one PDF containing two firms must not create missing cross-product rows');equal(store.state.documentSanity.length,2);equal(store.state.lands.every(r=>r.source_appraisal_ids.length===2),true);
 
+
+ equal((await engine.recognizeRuledSummaries(image(1,0,1),read))[0].rows.length,1,'single-parcel summaries are supported');
+ const mountainConflict=await engine.recognizeRuledSummaries(image(),async(box,mode)=>mode==='lot-korean'?'산91-3':read(box,mode));equal(mountainConflict[0].rows[0].lot,'','mountain prefix and conflicting digits must not be combined');
+ const mountainIncomplete=await engine.recognizeRuledSummaries(image(),async(box,mode)=>mode==='lot-korean'?'산 모름':read(box,mode));equal(mountainIncomplete[0].rows[0].lot,'','an incomplete mountain lot cannot borrow digits');
+ const addressPages=['신리','가상시 동면 신리','가상시 서면 신리'].map((address,i)=>{const page=structuredClone(pages[0]);page.page_no=i+1;page.ruled_tables[0].rows=page.ruled_tables[0].rows.slice(0,1);page.ruled_tables[0].rows[0].raw.address=address;page.ruled_tables[0].rows[0].raw.company=['가상','합성','시험'][i];return page;});
+ equal(applyRuledSummary(base,addressPages).lands.length,3,'abbreviated locality cannot pick the first of conflicting jurisdictions');equal(applyRuledSummary(base,[...addressPages].reverse()).lands.length,3,'parcel linkage must not depend on source order');
+ const gate=require('../src/parse_sanity_gate').evaluateParseSanity;
+ equal(gate(applyRuledSummary(base,bad)).hold_codes.includes('UNRESOLVED_RULED_OCR_ROWS'),true,'unreadable rows are a promotion hold');
+ const partialPages=structuredClone(pages);partialPages[0].ruled_tables[0].rows[1].raw.lot='';const partialParsed=applyRuledSummary(base,partialPages);
+ const partialStore=new CaseStore();partialStore.ingestDocument({fileMeta:{name:'partial.pdf'},pageModel:[],parsed:partialParsed});equal(partialStore.state.reviewQueue.find(r=>r.collection==='appraisalResults').confirmable,false,'a readable subset must not masquerade as complete coverage');
  const parse=require('../src/appraisal_pages_parser').parseAppraisalPages;
  const integrated=parse(pages,{appraisalId:'APP_INTEGRATION',fileName:'synthetic.pdf'});
  equal(integrated.land_appraisal_results.length,2,'the actual page parser must consume grid evidence');

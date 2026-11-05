@@ -46,7 +46,7 @@ export function summaryTablePlans(tables) {
     const count=Math.max(...table.rows.map(row=>row.cells.length));
     if(count<6||count>10)return [];
     const rows=table.rows.slice(1).filter(row=>row.cells.length===count);
-    if(rows.length<2)return [];
+    if(rows.length<1)return [];
     const first=rows[0];
     if(first.top<=table.top)return [];
     return [{id:index,headers:first.cells.map(cell=>({...cell,top:table.top,bottom:first.top})),rows}];
@@ -120,7 +120,7 @@ export async function recognizeRuledSummaries(image,readCell,onProgress=()=>{}){
       if(/산/.test(koreanLot))for(let i=0;i<lotReadings.length;i++)if(/^\d/.test(lotReadings[i]))lotReadings[i]='산'+lotReadings[i];
       if(/^(?:산)?\d{1,5}(?:-\d{1,5})?$/.test(koreanLot)&&!lotReadings.some(v=>v.replace(/-/g,'')===koreanLot.replace(/-/g,'')))lotReadings.push(koreanLot);
       const alternatives={lot:lotReadings,lot_korean:[koreanLot]};
-      const votes=[...new Set(lotReadings)].filter(v=>/^(?:산)?\d{1,5}(?:-\d{1,5})?$/.test(v)).map(v=>({v,n:lotReadings.filter(s=>s===v).length})).sort((a,b)=>b.n-a.n);const lot=votes.length===1&&votes[0].n>=2?votes[0].v:'';raw.lot=lot;
+      const votes=[...new Set(lotReadings)].filter(v=>/^(?:산)?\d{1,5}(?:-\d{1,5})?$/.test(v)).map(v=>({v,n:lotReadings.filter(s=>s===v).length})).sort((a,b)=>b.n-a.n);const lot=votes.length===1&&votes[0].n>=2&&(!/산/.test(koreanLot)||/^산\d{1,5}(?:-\d{1,5})?$/.test(koreanLot))?votes[0].v:'';raw.lot=lot;
       const categories=[raw.land_category,await read(band.cells[3],'category-pass10'),await read(band.cells[3],'category-binary')].map(v=>v.replace(/\s/g,''));
       alternatives.land_category=categories;
       const validCategories=[...new Set(categories.filter(v=>/^(?:전|답|대|임야|도로|잡종지|공장용지|과수원|목장용지|학교용지|주차장|창고용지|하천|구거|유지|제방|철도용지|묘지|공원|체육용지|종교용지|사적지|광천지|염전|주유소용지)$/.test(v)))];

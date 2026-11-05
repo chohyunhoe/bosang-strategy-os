@@ -71,6 +71,8 @@ function evaluateParseSanity(caseData) {
   const holds = [];
   const add = (code, detail, evidence) => holds.push({ code, detail, evidence: evidence || null });
 
+  if(list(meta.recognition_unresolved).length)add('UNRESOLVED_RULED_OCR_ROWS','자동 표 인식에서 해결되지 않은 행이 있습니다. 원본 교체 또는 재추출로 누락 행을 해결해야 합니다.',{rows:list(meta.recognition_unresolved).length});
+
   // 1) 평가법인 식별 실패
   const namedAppraisals = appraisals.filter((row) => text(row && row.appraisal_company));
   if (appraisals.length === 0 || namedAppraisals.length !== appraisals.length) {
