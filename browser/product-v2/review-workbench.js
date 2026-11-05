@@ -66,85 +66,113 @@ function rowPreview(collection, row, state) {
 }
 
 export function installReviewWorkbench(store) {
-  const local = { open:false, index:0, notice:'' };
-
-  function pending() { return arr(store.state.reviewQueue).filter((item) => item && item.status !== 'CONFIRMED'); }
-  function rowsFor(item) {
-    if (!item || !item.collection) return [];
-    if (item.collection === 'caseInfo') return store.state.caseInfo ? [store.state.caseInfo] : [];
-    return arr(store.state[item.collection]);
+  const PAGE_SIZE = 10;
+  const local = { open:false, index:0, selectedId:null, filter:'active', page:0, query:'', notice:'' };
+  const filterLabels = { active:'진행', attention:'주의', hold:'보류', all:'전체' };
+  function pending() { return arr(store.state.reviewQueue).filter((item) => item && item.status !== 'CONFIRMED').map(item=>({...item,status:store.state.reviewDecisions?.[item.review_id]?.status==='HOLD'?'HOLD':item.status})); }
+  function attention(item) {
+    if(item.confirmable === false || item.type === 'EXCEPTION' || item.collection === 'issueCandidates')return true;
+    return rowEntries(item).some(({row}) => ['MISSING','LOW_CONFIDENCE','OCR_REQUIRED','PARSE_FAILED'].includes(String(row?.review_status_code || row?.extraction_status || row?.parse_status || '').toUpperCase()) || String(row?.confidence_level || '').toUpperCase() === 'LOW' || row?.total_crosscheck_status === 'MISMATCH');
   }
-
+  function visibleItems() {
+    return pending().filter((item) => local.filter === 'hold' ? item.status === 'HOLD' : local.filter === 'attention' ? attention(item) : local.filter === 'active' ? item.status !== 'HOLD' : true);
+  }
+  function rowEntries(item) {
+    if (!item?.collection) return [];
+    const rows = item.collection === 'caseInfo' ? (store.state.caseInfo ? [store.state.caseInfo] : []) : arr(store.state[item.collection]);
+    const entries = rows.map((row,rowIndex)=>({row,rowIndex}));
+    if (item.type === 'EXCEPTION' && item.collection === 'obstacleSummaries') {
+      const match = /^EXCEPTION:obstacleSummary:(\d+)$/.exec(item.review_id);
+      return match ? entries.filter((entry)=>entry.rowIndex===Number(match[1])) : [];
+    }
+    return entries;
+  }
   function ensureStyle() {
-    if (document.getElementById('bso-v2-review-workbench-style')) return;
-    const style = document.createElement('style');
-    style.id = 'bso-v2-review-workbench-style';
-    style.textContent = `
-      .review-workbench-launch{border:0;background:#872647;color:#fff;border-radius:10px;padding:8px 12px;font-weight:850;min-height:40px}.review-workbench-launch.complete{background:#eaf7ee;color:#24633d;border:1px solid #bcdcc7}
-      .review-workbench-backdrop{position:fixed;inset:0;z-index:500;background:rgba(17,20,24,.52);display:flex;justify-content:center;align-items:center;padding:20px}
-      .review-workbench{width:min(760px,100%);max-height:min(820px,calc(100vh - 40px));background:#f5f6f8;border-radius:18px;box-shadow:0 22px 70px rgba(0,0,0,.26);display:flex;flex-direction:column;overflow:hidden}
-      .review-workbench-head{background:#fff;border-bottom:1px solid #dde1e6;padding:16px 18px;display:flex;justify-content:space-between;align-items:center;gap:12px}.review-workbench-head h2{margin:2px 0 0;font-size:20px}.review-workbench-progress{font-size:12px;color:#6c737c;font-weight:800}.review-workbench-close{border:0;background:#eef0f3;border-radius:10px;width:40px;height:40px;font-size:20px}
-      .review-workbench-body{padding:18px;overflow:auto}.review-workbench-card{background:#fff;border:1px solid #dde1e6;border-radius:15px;padding:18px}.review-workbench-card h3{margin:8px 0 8px;font-size:22px}.review-workbench-card p{margin:0;line-height:1.65;color:#555e68}
-      .review-workbench-meta{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:16px}.review-workbench-meta div{background:#f7f8fa;border-radius:10px;padding:10px}.review-workbench-meta span{display:block;font-size:10px;color:#707883;font-weight:800}.review-workbench-meta b{display:block;margin-top:4px;font-size:14px}
-      .review-workbench-previews{display:grid;gap:9px;margin-top:14px}.review-workbench-preview{border:1px solid #e0e4e8;border-radius:11px;padding:11px;background:#fafbfc}.review-workbench-preview-head{display:flex;gap:8px;justify-content:space-between;align-items:flex-start}.review-workbench-preview-head b{display:block;font-size:13px}.review-workbench-edit{border:1px solid #c8ced5;background:#fff;border-radius:8px;padding:5px 8px;font-size:10px;font-weight:850;white-space:nowrap}.review-workbench-value{margin-top:5px;font-size:12px;line-height:1.55;color:#343b43}.review-workbench-source{margin-top:7px;padding-top:7px;border-top:1px dashed #d9dde2;font-size:11px;line-height:1.5;color:#67707a}.review-workbench-source strong{color:#505861}.review-workbench-more{margin-top:9px;font-size:11px;color:#6c737c;font-weight:800}
-      .review-workbench-blocked{margin-top:12px;padding:11px;border-radius:10px;background:#fff1f3;color:#8b253f;font-size:12px;line-height:1.55;font-weight:750}.review-workbench-actions{background:#fff;border-top:1px solid #dde1e6;padding:12px 16px;display:grid;grid-template-columns:1.15fr 1fr 1fr 1fr;gap:8px}.review-workbench-actions button{min-height:48px;border-radius:11px;padding:8px 10px;font-weight:850}.review-workbench-actions button:disabled{cursor:not-allowed;opacity:.55}.review-workbench-open{border:1px solid #c8ced5;background:#fff}.review-workbench-confirm{border:0;background:#872647;color:#fff}.review-workbench-hold,.review-workbench-next{border:1px solid #c8ced5;background:#f8f9fa}.review-workbench-empty{text-align:center;padding:42px 20px;background:#fff;border-radius:14px}.review-workbench-empty h3{font-size:20px;margin:0 0 8px}
-      @media(max-width:640px){.review-workbench-backdrop{padding:0;align-items:stretch}.review-workbench{width:100%;max-height:none;height:100%;border-radius:0}.review-workbench-head{padding:14px 15px}.review-workbench-body{padding:14px;padding-bottom:100px}.review-workbench-card h3{font-size:20px}.review-workbench-meta{grid-template-columns:1fr}.review-workbench-actions{position:fixed;left:0;right:0;bottom:0;grid-template-columns:repeat(4,1fr);padding:10px max(10px,env(safe-area-inset-right)) calc(10px + env(safe-area-inset-bottom)) max(10px,env(safe-area-inset-left));z-index:501}.review-workbench-actions button{font-size:12px;padding:6px}.review-workbench-launch{min-height:40px;padding:7px 10px;font-size:12px}}
-    `;
-    document.head.appendChild(style);
+    if(document.getElementById('bso-v2-review-workbench-style'))return;
+    const style=document.createElement('style');style.id='bso-v2-review-workbench-style';
+    style.textContent=`
+      .review-workbench-launch{border:0;background:var(--accent,#7b2d43);color:#fff;border-radius:5px;padding:8px 12px;font-weight:600;min-height:40px}.review-workbench-launch.complete{background:#e8f1ec;color:#2f6652;border:1px solid #c8ddd0}
+      .review-workbench-backdrop{position:fixed;inset:0;z-index:500;background:#24222666;display:flex;justify-content:center;align-items:center;padding:20px}.review-workbench{width:min(1200px,100%);height:min(900px,calc(100dvh - 40px));background:#f5f3f0;border:1px solid #e3deda;border-radius:8px;box-shadow:0 20px 70px #24222633;display:flex;flex-direction:column;overflow:hidden;color:#242226}.review-workbench-head{background:#fff;border-bottom:1px solid #e3deda;padding:14px 20px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-shrink:0}.review-workbench-head h2{margin:2px 0 0;font-size:19px;font-weight:600}.review-workbench-progress{font-size:12px;color:#716b70}.review-workbench-close{border:0;background:#f1eeeb;border-radius:5px;width:40px;height:40px;font-size:21px}.review-key-hint{font-size:11px;color:#716b70;margin-left:auto}
+      .review-workbench-layout{display:grid;grid-template-columns:220px minmax(0,1fr);min-height:0;flex:1}.review-navigator{background:#fff;border-right:1px solid #e3deda;overflow:auto;padding:14px 12px}.review-filters{display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin-bottom:14px}.review-filters button{border:1px solid #e3deda;background:#fff;color:#716b70;border-radius:5px;min-height:38px;font-size:12px;padding:6px}.review-filters button.active{background:#f4e9ed;color:#7b2d43;border-color:#d9bcc7}.review-group-list{display:grid;gap:4px}.review-group{display:block;text-align:left;background:#fff;border:0;border-radius:5px;padding:11px 10px;width:100%;color:#51464d;font-size:13px}.review-group.active{background:#f4e9ed;color:#7b2d43}.review-group small{display:block;color:#716b70;font-size:11px;margin-top:3px}.review-group-select{display:none}.review-nav-note{font-size:11px;color:#716b70;margin:18px 8px 0;line-height:1.7}
+      .review-workbench-body{padding:20px;overflow:auto;min-width:0;min-height:0}.review-workbench-card{background:#fff;border:1px solid #e3deda;border-radius:6px;padding:20px}.review-workbench-card h3{margin:6px 0 5px;font-size:21px;font-weight:600}.review-workbench-card p{margin:0;font-size:12px;line-height:1.6;color:#716b70}.review-workbench-meta{display:flex;gap:20px;flex-wrap:wrap;padding:12px 0;font-size:12px;color:#716b70}.review-workbench-meta b{color:#242226;margin-left:6px;font-variant-numeric:tabular-nums;font-weight:600}.review-workbench-blocked{margin:10px 0;padding:11px;background:#fff1f3;border-left:3px solid #a23d3d;font-size:12px;color:#8b253f}
+      .review-search{display:flex;gap:8px;margin:10px 0 12px;flex-wrap:wrap}.review-search input{flex:1;min-width:120px;width:100%;padding:9px 11px;border:1px solid #d9d0d4;border-radius:5px;background:#fff;font:inherit;font-size:13px}.review-search button,.review-pagination button{border:1px solid #e3deda;border-radius:5px;background:#fff;min-height:40px;padding:8px 12px;font-size:12px;color:#51464d}.review-pagination{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:12px 0 0;font-size:12px;color:#716b70}.review-pagination>span{font-variant-numeric:tabular-nums;text-align:center}.review-workbench-previews{display:grid;gap:10px}.review-workbench-preview{border:1px solid #e3deda;border-radius:5px;padding:14px;background:#fff;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:9px 18px;overflow-wrap:anywhere}.review-workbench-preview-head{grid-column:1/-1;display:flex;justify-content:space-between;align-items:center;gap:8px}.review-workbench-preview-head b{font-size:13px;font-weight:600}.review-workbench-edit{border:1px solid #d9d0d4;background:#fff;border-radius:5px;min-height:36px;padding:6px 9px;font-size:12px;white-space:nowrap}.review-workbench-value,.review-workbench-source{font-size:12px;line-height:1.7;white-space:pre-wrap;min-width:0}.review-workbench-value{color:#242226}.review-workbench-source{border-left:1px solid #e3deda;padding-left:18px;color:#716b70;max-height:160px;overflow:auto}.review-workbench-source strong{font-size:11px;color:#7b2d43}.review-workbench-more{margin-top:10px;font-size:12px;color:#716b70}.review-workbench-empty{background:#fff;border:1px solid #e3deda;border-radius:6px;padding:38px 24px;text-align:center}.review-workbench-empty h3{font-size:20px;margin:0 0 10px}.review-workbench-empty p{font-size:13px;color:#716b70}
+      .review-workbench-actions{display:grid;grid-template-columns:1fr 1.2fr 1fr 1fr;gap:8px;padding:12px 20px;background:#fff;border-top:1px solid #e3deda;flex-shrink:0}.review-workbench-actions button{border:1px solid #d9d0d4;background:#fff;color:#51464d;border-radius:5px;min-height:46px;padding:8px;font-size:13px;font-weight:600}.review-workbench-actions .review-workbench-confirm{border-color:#7b2d43;background:#7b2d43;color:#fff}.review-workbench-actions button:disabled{cursor:not-allowed;opacity:.5}.review-decision-note{grid-column:1/-1;font-size:11px;color:#716b70;text-align:center}.review-workbench button:focus-visible,.review-workbench input:focus-visible,.review-workbench select:focus-visible{outline:3px solid #a35e72;outline-offset:2px}
+      @media(max-width:700px){.review-workbench-backdrop{padding:0}.review-workbench{width:100%;height:100dvh;border:0;border-radius:0}.review-workbench-layout{display:flex;flex-direction:column}.review-navigator{flex-shrink:0;padding:10px 14px;border-right:0;border-bottom:1px solid #e3deda;overflow:visible}.review-filters{display:flex;gap:6px;margin-bottom:8px}.review-filters button{flex:1;min-height:38px}.review-group-list,.review-nav-note,.review-key-hint{display:none}.review-group-select{display:block;width:100%;min-height:40px;border:1px solid #d9d0d4;border-radius:5px;background:#fff;padding:7px;font:inherit;font-size:13px}.review-workbench-head{padding:12px 14px}.review-workbench-body{padding:14px;flex:1}.review-workbench-card{padding:15px}.review-workbench-card h3{font-size:18px}.review-workbench-meta{gap:12px}.review-workbench-preview{grid-template-columns:1fr;padding:12px}.review-workbench-source{border-left:0;border-top:1px solid #e3deda;padding:8px 0 0;max-height:130px}.review-workbench-actions{padding:10px 10px calc(10px + env(safe-area-inset-bottom));grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}.review-workbench-actions button{font-size:12px;padding:7px 3px}.review-decision-note{font-size:11px}.review-pagination button{min-height:42px}}
+    `;document.head.appendChild(style);
   }
-
-  function normalizeIndex(items) { if (!items.length) { local.index = 0; return; } if (local.index < 0) local.index = 0; if (local.index >= items.length) local.index = items.length - 1; }
-  function open(index = 0) { if(store.state.status==='PROCESSING')return; local.index = Math.max(0, Number(index) || 0); local.notice = ''; local.open = true;recordDiagnosticEvent('REVIEW_WORKBENCH_OPENED',{review_pending:pending().length,index:local.index+1});render(); }
-  function close() { local.open = false; render(); }
-
-  function confirmCurrent() {
+  function normalizeIndex(items) {
+    if(!items.length){local.index=0;local.selectedId=null;return;}
+    const selected=items.findIndex(item=>item.review_id===local.selectedId);
+    if(selected>=0)local.index=selected;
+    local.index=Math.max(0,Math.min(local.index,items.length-1));local.selectedId=items[local.index].review_id;
+  }
+  function resetRows(){local.page=0;local.query='';local.notice='';}
+  function open(index=0){if(store.state.status==='PROCESSING')return;local.filter='active';if(!visibleItems().length&&pending().length)local.filter='hold';local.index=Math.max(0,Number(index)||0);local.selectedId=null;resetRows();local.open=true;recordDiagnosticEvent('REVIEW_WORKBENCH_OPENED',{review_pending:pending().length,index:local.index+1});render();document.querySelector('.review-workbench-close')?.focus();}
+  function close(){local.open=false;render();document.querySelector('[data-review-workbench-launch]')?.focus();}
+  function choose(id){if(store.state.status==='PROCESSING')return;local.selectedId=id;resetRows();renderOverlay();}
+  function move(direction){if(store.state.status==='PROCESSING')return;const items=visibleItems();normalizeIndex(items);if(!items.length)return;local.index=(local.index+direction+items.length)%items.length;local.selectedId=items[local.index].review_id;resetRows();renderOverlay();}
+  function nextCurrent(){move(1);}
+  function decision(status){
     if(store.state.status==='PROCESSING')return;
-    const items = pending(); normalizeIndex(items); const item = items[local.index]; if (!item) return;
-    const result = store.decide(item.review_id, 'CONFIRMED');
-    if (result && result.ok === false) { recordDiagnosticEvent('REVIEW_DECISION',{status:'BLOCKED',confirmable:false});local.notice = result.reason || item.blocked_reason || '현재 항목은 검수완료할 수 없습니다.'; render(); return; }
-    recordDiagnosticEvent('REVIEW_DECISION',{status:'CONFIRMED',confirmable:true});
-    local.notice = '';
-    const next = pending(); if (!next.length) local.index = 0; else if (local.index >= next.length) local.index = next.length - 1; render();
+    const items=visibleItems();normalizeIndex(items);const item=items[local.index];if(!item)return;
+    if(status==='CONFIRMED'&&item.confirmable===false){local.notice=item.blocked_reason||'필수값을 먼저 확인하세요.';renderOverlay();return;}
+    const next=items[(local.index+1)%items.length];local.selectedId=next&&next.review_id!==item.review_id?next.review_id:null;resetRows();
+    const result=store.decide(item.review_id,status);
+    if(result?.ok===false){local.selectedId=item.review_id;local.notice=result.reason||'검수 결과를 기록하지 못했습니다.';renderOverlay();return;}
+    recordDiagnosticEvent('REVIEW_DECISION',{status,confirmable:status==='CONFIRMED'});
   }
-  function holdCurrent() {
-    if(store.state.status==='PROCESSING')return;
-    const items = pending(); normalizeIndex(items); const item = items[local.index]; if (!item) return;
-    store.decide(item.review_id, 'HOLD');recordDiagnosticEvent('REVIEW_DECISION',{status:'HOLD'});const nextItems = pending(); if (nextItems.length) local.index = (local.index + 1) % nextItems.length; render();
+  function openSource(){if(store.state.status==='PROCESSING')return;const items=visibleItems();normalizeIndex(items);const item=items[local.index];if(!item)return;local.open=false;store.setRoute(item.route||'home');window.scrollTo({top:0});}
+  function renderLauncher(){
+    ensureStyle();document.querySelector('[data-review-workbench-launch]')?.remove();if(store.state.status==='EMPTY')return;
+    const actions=document.querySelector('.topbar .review-actions');if(!actions)return;
+    const count=pending().length;const button=document.createElement('button');button.type='button';button.className=`review-workbench-launch${count?'':' complete'}`;button.dataset.reviewWorkbenchLaunch='1';button.disabled=store.state.status==='PROCESSING';button.dataset.reviewState=count?'pending':'complete';button.textContent=count?`전체 검수 ${count}`:'검수 완료 ✓';button.addEventListener('click',()=>open(0));actions.prepend(button);
   }
-  function nextCurrent() { const items = pending(); normalizeIndex(items); if (!items.length) return; local.notice = ''; local.index = (local.index + 1) % items.length; render(); }
-  function openSource() { const items = pending(); normalizeIndex(items); const item = items[local.index]; if (!item) return; local.open = false; store.setRoute(item.route || 'home'); }
-
-  function renderLauncher() {
-    ensureStyle(); document.querySelector('[data-review-workbench-launch]')?.remove(); if (store.state.status === 'EMPTY') return;
-    const actions = document.querySelector('.topbar .review-actions'); if (!actions) return;
-    const count = pending().length; const button = document.createElement('button'); button.type = 'button'; button.className = `review-workbench-launch${count ? '' : ' complete'}`; button.dataset.reviewWorkbenchLaunch = '1'; button.disabled=store.state.status==='PROCESSING'; button.dataset.reviewState = count ? 'pending' : 'complete'; button.textContent = count ? `전체 검수 ${count}` : '검수 완료 ✓'; button.addEventListener('click', () => open(0)); actions.prepend(button);
-  }
-
-  function renderOverlay() {
-    document.querySelector('[data-review-workbench]')?.remove(); if (!local.open) return;
-    const items = pending(); normalizeIndex(items); const current = items[local.index] || null; const allRows = current ? rowsFor(current) : [];
-    const previews = allRows.slice(0, 5).map((row, rowIndex) => ({ ...rowPreview(current.collection, row, store.state), rowIndex }));
-    const overlay = document.createElement('div'); overlay.className = 'review-workbench-backdrop'; overlay.dataset.reviewWorkbench = '1';
-    overlay.innerHTML = `
-      <section class="review-workbench" role="dialog" aria-modal="true" aria-label="전체 검수">
-        <div class="review-workbench-head"><div><div class="review-workbench-progress">${items.length ? `${local.index + 1} / ${items.length}` : '완료'}</div><h2>전체 검수</h2></div><button type="button" class="review-workbench-close" aria-label="닫기">×</button></div>
-        <div class="review-workbench-body">${current ? `<div class="review-workbench-card"><span class="badge ${current.status === 'HOLD' ? 'warn' : ''}">${esc(current.route_label || current.route || '검토')}</span><h3>${esc(current.label)}</h3><p>${esc(current.description || '원문과 구조화 값을 확인하세요.')}</p><div class="review-workbench-meta"><div><span>검토 행</span><b>${esc(current.row_count || 0)}행</b></div><div><span>주의</span><b>${esc(current.exception_count || 0)}건</b></div><div><span>현재 상태</span><b>${esc(current.status || 'NEEDS_REVIEW')}</b></div></div>${current.confirmable === false || local.notice ? `<div class="review-workbench-blocked">${esc(local.notice || current.blocked_reason || '필수값 누락으로 검수완료할 수 없습니다.')}</div>` : ''}${previews.length ? `<div class="review-workbench-previews">${previews.map((preview) => `<div class="review-workbench-preview"><div class="review-workbench-preview-head"><b>${esc(preview.title)}</b><button type="button" class="review-workbench-edit" data-review-edit="${preview.rowIndex}">원문·수정</button></div><div class="review-workbench-value">${esc(preview.value)}</div><div class="review-workbench-source"><strong>${esc(preview.evidence.label)}</strong><br>${esc(preview.evidence.text)}</div></div>`).join('')}</div>${allRows.length > previews.length ? `<div class="review-workbench-more">외 ${allRows.length - previews.length}행 · 전체 내용은 ‘상세화면’에서 확인</div>` : ''}` : '<div class="review-workbench-more">구조화 행이 없습니다. 상세화면에서 원문 상태를 확인하세요.</div>'}</div>` : `<div class="review-workbench-empty"><h3>검수가 완료되었습니다.</h3><p>현재 reviewQueue에 남은 검토 항목이 없습니다. 완료 버튼을 눌러 이 상태를 다시 확인할 수 있습니다.</p></div>`}</div>
-        ${current ? `<div class="review-workbench-actions"><button type="button" class="review-workbench-open">상세화면</button><button type="button" class="review-workbench-confirm" ${current.confirmable === false ? 'disabled' : ''}>${current.confirmable === false ? '확인 불가' : '검수완료'}</button><button type="button" class="review-workbench-hold">보류</button><button type="button" class="review-workbench-next">다음</button></div>` : ''}
-      </section>`;
+  function renderOverlay(){
+    const previous=document.querySelector('[data-review-workbench]');const focusKey=previous?.contains(document.activeElement)?document.activeElement.dataset.reviewFocus:null;
+    previous?.remove();if(!local.open)return;
+    const items=visibleItems();normalizeIndex(items);const current=items[local.index]||null;const allRows=current?rowEntries(current):[];
+    const normalized=(value)=>String(value).replace(/[\s,]/g,'').toLocaleLowerCase('ko-KR');const query=normalized(local.query);
+    const matches=allRows.map(entry=>({...rowPreview(current.collection,entry.row,store.state),rowIndex:entry.rowIndex})).filter(preview=>!query||normalized([preview.title,preview.value,preview.evidence.label,preview.evidence.text].join(' ')).includes(query));
+    const pages=Math.max(1,Math.ceil(matches.length/PAGE_SIZE));local.page=Math.max(0,Math.min(local.page,pages-1));const previews=matches.slice(local.page*PAGE_SIZE,(local.page+1)*PAGE_SIZE);
+    const allPending=pending();const counts={active:allPending.filter(item=>item.status!=='HOLD').length,attention:allPending.filter(attention).length,hold:allPending.filter(item=>item.status==='HOLD').length,all:allPending.length};
+    const overlay=document.createElement('div');overlay.className='review-workbench-backdrop';overlay.dataset.reviewWorkbench='1';
+    overlay.innerHTML=`<section class="review-workbench" role="dialog" aria-modal="true" aria-label="전체 검수">
+      <header class="review-workbench-head"><div><div class="review-workbench-progress">${items.length?`${local.index+1} / ${items.length}`:allPending.length?'선택한 보기':'완료'}</div><h2>전체 검수</h2></div><span class="review-key-hint">Ctrl+Enter 검수완료 · Alt+←/→ 이동</span><button type="button" class="review-workbench-close" data-review-focus="close" aria-label="닫기">×</button></header>
+      <div class="review-workbench-layout"><aside class="review-navigator" aria-label="검수 묶음"><div class="review-filters">${Object.entries(filterLabels).map(([key,label])=>`<button type="button" data-review-filter="${key}" data-review-focus="filter-${key}" class="${local.filter===key?'active':''}" aria-pressed="${local.filter===key}">${label} ${counts[key]}</button>`).join('')}</div><label class="review-group-select-label"><span class="sr-only" style="position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)">검수 묶음 선택</span><select class="review-group-select" aria-label="검수 묶음 선택" data-review-focus="group-select">${items.length?items.map(item=>`<option value="${esc(item.review_id)}" ${current?.review_id===item.review_id?'selected':''}>${esc(item.label)} · ${item.row_count}행</option>`).join(''):'<option value="">항목 없음</option>'}</select></label><div class="review-group-list">${items.map(item=>`<button type="button" class="review-group ${item.review_id===current?.review_id?'active':''}" data-review-group="${esc(item.review_id)}" data-review-focus="group-${esc(item.review_id)}" ${item.review_id===current?.review_id?'aria-current="true"':''}>${esc(item.label)}<small>${item.row_count}행${attention(item)?' · 주의':''}${item.confirmable===false?' · 보완 필요':''}${item.status==='HOLD'?' · 보류':''}</small></button>`).join('')}</div><p class="review-nav-note">보류는 ‘진행’에서 제외됩니다.<br>검수 기록과 승인·제출은 별도입니다.</p></aside>
+      <div class="review-workbench-body">${current?`<section class="review-workbench-card"><span class="badge">${esc(current.route_label||current.route||'검토')}</span><h3>${esc(current.label)}</h3><p>${esc(current.description||'원문과 추출값을 대조하세요.')}</p><div class="review-workbench-meta"><span>검토 행 <b>${allRows.length}행</b></span><span>구분 <b>${attention(current)?'보완·쟁점 확인':'원문 대조'}</b></span><span>상태 <b>${current.status==='HOLD'?'보류':'검토 대기'}</b></span></div>${current.confirmable===false||local.notice?`<div class="review-workbench-blocked">${esc(local.notice||current.blocked_reason||'필수값을 먼저 확인하세요.')}</div>`:''}
+      <form class="review-search"><input type="search" aria-label="검수 행 검색" placeholder="지번·기호·금액 검색" value="${esc(local.query)}" data-review-focus="search"><button type="submit" data-review-focus="search-submit">검색</button>${local.query?'<button type="button" data-review-clear data-review-focus="search-clear">초기화</button>':''}</form><div class="review-workbench-previews">${previews.map(preview=>`<article class="review-workbench-preview"><div class="review-workbench-preview-head"><b>${esc(preview.title)}</b><button type="button" class="review-workbench-edit" data-review-edit="${preview.rowIndex}" data-review-focus="edit-${preview.rowIndex}">원문·수정</button></div><div class="review-workbench-value">${esc(preview.value)}</div><div class="review-workbench-source"><strong>${esc(preview.evidence.label)}</strong><br>${esc(preview.evidence.text)}</div></article>`).join('')||'<div class="review-workbench-more">검색 결과가 없습니다.</div>'}</div><div class="review-pagination"><button type="button" data-review-page="-1" data-review-focus="page-prev" ${local.page===0?'disabled':''}>이전 행</button><span>${matches.length?`${local.page*PAGE_SIZE+1}–${Math.min((local.page+1)*PAGE_SIZE,matches.length)} / ${matches.length}행`:'0행'} · ${local.page+1}/${pages}쪽</span><button type="button" data-review-page="1" data-review-focus="page-next" ${local.page+1>=pages?'disabled':''}>다음 행</button></div></section>`:`<section class="review-workbench-empty"><h3>${allPending.length?'이 보기에 남은 항목이 없습니다.':'검수가 완료되었습니다.'}</h3><p>${allPending.length?`남은 검토 ${allPending.length}묶음 · 보류 ${counts.hold}묶음. 왼쪽 또는 상단 보기에서 선택하세요.`:'현재 남은 검토 항목이 없습니다. 검수 완료는 승인·실제 제출과 별도입니다.'}</p></section>`}</div></div>
+      ${current?`<footer class="review-workbench-actions"><button type="button" class="review-workbench-open" data-review-focus="detail">상세화면</button><button type="button" class="review-workbench-confirm" data-review-focus="confirm" ${current.confirmable===false?'disabled':''}>${current.confirmable===false?'확인 불가':'검수완료'}</button><button type="button" class="review-workbench-hold" data-review-focus="hold">보류</button><button type="button" class="review-workbench-next" data-review-focus="next">다음</button><div class="review-decision-note">검수완료는 검색·페이지와 관계없이 현재 묶음 ${allRows.length}행 전체에 적용됩니다.</div></footer>`:''}
+    </section>`;
     document.body.appendChild(overlay);
-    overlay.querySelector('.review-workbench-close')?.addEventListener('click', close);
-    overlay.querySelector('.review-workbench-open')?.addEventListener('click', openSource);
-    overlay.querySelector('.review-workbench-confirm')?.addEventListener('click', confirmCurrent);
-    overlay.querySelector('.review-workbench-hold')?.addEventListener('click', holdCurrent);
-    overlay.querySelector('.review-workbench-next')?.addEventListener('click', nextCurrent);
-    overlay.querySelectorAll('[data-review-edit]').forEach((button) => button.addEventListener('click', () => {
-      if (!current) return;
-      openRecordInspector(store, current.collection, Number(button.dataset.reviewEdit), `${current.label} · 원문·수정`);
-    }));
-    overlay.addEventListener('click', (event) => { if (event.target === overlay) close(); });
+    overlay.querySelector('.review-workbench-close').addEventListener('click',close);
+    overlay.querySelector('.review-workbench-open')?.addEventListener('click',openSource);
+    overlay.querySelector('.review-workbench-confirm')?.addEventListener('click',()=>decision('CONFIRMED'));
+    overlay.querySelector('.review-workbench-hold')?.addEventListener('click',()=>decision('HOLD'));
+    overlay.querySelector('.review-workbench-next')?.addEventListener('click',nextCurrent);
+    overlay.querySelectorAll('[data-review-filter]').forEach(button=>button.addEventListener('click',()=>{local.filter=button.dataset.reviewFilter;local.index=0;local.selectedId=null;resetRows();renderOverlay();}));
+    overlay.querySelectorAll('[data-review-group]').forEach(button=>button.addEventListener('click',()=>choose(button.dataset.reviewGroup)));
+    overlay.querySelector('.review-group-select').addEventListener('change',event=>choose(event.target.value));
+    overlay.querySelector('.review-search')?.addEventListener('submit',event=>{event.preventDefault();local.query=event.target.querySelector('input').value;local.page=0;renderOverlay();document.querySelector('.review-search input')?.focus();});
+    overlay.querySelector('[data-review-clear]')?.addEventListener('click',()=>{local.query='';local.page=0;renderOverlay();document.querySelector('.review-search input')?.focus();});
+    overlay.querySelectorAll('[data-review-page]').forEach(button=>button.addEventListener('click',()=>{local.page+=Number(button.dataset.reviewPage);renderOverlay();document.querySelector('.review-workbench-body')?.scrollTo({top:0});}));
+    overlay.querySelectorAll('[data-review-edit]').forEach(button=>button.addEventListener('click',()=>{if(current&&store.state.status!=='PROCESSING')openRecordInspector(store,current.collection,Number(button.dataset.reviewEdit),`${current.label} · 원문·수정`,{onClose:()=>document.querySelector(`[data-review-workbench] [data-review-edit="${Number(button.dataset.reviewEdit)}"]`)?.focus({preventScroll:true})});}));
+    overlay.addEventListener('click',event=>{if(event.target===overlay)close();});
+    if(focusKey)(Array.from(overlay.querySelectorAll('[data-review-focus]')).find(node=>node.dataset.reviewFocus===focusKey&&!node.disabled)||overlay.querySelector('.review-workbench-close'))?.focus({preventScroll:true});
   }
-
-  function render() { if(store.state.status==='PROCESSING')local.open=false; renderLauncher(); renderOverlay(); }
-  store.subscribe(render); render();
-  return { open, close, next:nextCurrent, state:local, pending };
+  document.addEventListener('keydown',event=>{
+    if(!local.open||store.state.status==='PROCESSING'||document.querySelector('.inspector-backdrop')||event.isComposing)return;
+    const editable=event.target instanceof HTMLElement && (event.target.matches('input,textarea,select') || event.target.isContentEditable);
+    if(event.key==='Escape'){event.preventDefault();close();return;}
+    if(event.repeat&&event.target instanceof HTMLElement&&event.target.matches('.review-workbench-confirm')){event.preventDefault();return;}
+    if(!editable&&event.ctrlKey&&event.key==='Enter'){event.preventDefault();if(!event.repeat)decision('CONFIRMED');}
+    else if(!editable&&event.altKey&&['ArrowLeft','ArrowRight'].includes(event.key)){event.preventDefault();move(event.key==='ArrowRight'?1:-1);}
+    else if(event.key==='Tab'){
+      const controls=Array.from(document.querySelectorAll('[data-review-workbench] button:not(:disabled),[data-review-workbench] input,[data-review-workbench] select')).filter(node=>node.getClientRects().length);
+      const first=controls[0],last=controls.at(-1);if(!first)return;
+      if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus();}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus();}
+    }
+  });
+  function render(){if(store.state.status==='PROCESSING')local.open=false;renderLauncher();renderOverlay();}
+  store.subscribe(render);render();
+  return {open,close,next:nextCurrent,state:local,pending};
 }

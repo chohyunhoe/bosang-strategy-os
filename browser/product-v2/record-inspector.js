@@ -63,7 +63,7 @@ function getRecord(store, collection, index) {
   return store.state?.[collection]?.[Number(index)] || null;
 }
 
-export function openRecordInspector(store, collection, index = 0, title = '원문·수정') {
+export function openRecordInspector(store, collection, index = 0, title = '원문·수정', { onClose } = {}) {
   style();
   document.querySelector('.inspector-backdrop')?.remove();
   const record = getRecord(store, collection, index);
@@ -73,7 +73,7 @@ export function openRecordInspector(store, collection, index = 0, title = '원�
   backdrop.className = 'inspector-backdrop';
   backdrop.innerHTML = `<aside class="inspector" role="dialog" aria-modal="true"><header class="inspector-head"><div><h2>${esc(title)}</h2><div class="source-meta">${esc(collection)} · 자동확정 아님</div></div><button type="button" class="inspector-close" aria-label="닫기">×</button></header><div class="inspector-body"><section class="inspector-section"><h3>구조화값</h3>${schema.length ? `<div class="field-grid">${schema.map(([key,label,type]) => `<div class="field"><label>${esc(label)}</label><input data-key="${esc(key)}" data-type="${type}" type="text" inputmode="${type === 'number' ? 'decimal' : key === 'pnu' ? 'numeric' : 'text'}" value="${esc(record[key] ?? '')}"></div>`).join('')}</div>` : '<div class="review-warning">이 컬렉션은 현재 직접 수정 대상이 아닙니다.</div>'}</section><section class="inspector-section"><h3>원문 근거</h3>${renderSourceRefs(record)}</section><section class="inspector-section"><h3>검토 상태</h3><div class="review-warning">저장하면 해당 레코드 또는 기본정보 그룹은 다시 NEEDS_REVIEW 상태가 됩니다. PNU도 자동추정하지 않으며 19자리 확인값만 저장합니다.</div></section></div><footer class="inspector-actions"><button type="button" class="inspector-cancel">취소</button><button type="button" class="inspector-save" ${schema.length ? '' : 'disabled'}>수정 저장</button></footer></aside>`;
   document.body.appendChild(backdrop);
-  const close = () => backdrop.remove();
+  const close = () => { backdrop.remove(); if(typeof onClose === 'function')onClose(); };
   backdrop.querySelector('.inspector-close').addEventListener('click', close);
   backdrop.querySelector('.inspector-cancel').addEventListener('click', close);
   backdrop.addEventListener('click', (event) => { if (event.target === backdrop) close(); });
