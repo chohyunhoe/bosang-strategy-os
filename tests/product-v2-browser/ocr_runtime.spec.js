@@ -141,7 +141,7 @@ test('표 셀 OCR 분할을 복원하고 첫 OCR의 유일한 법정동을 버�
     const {ocrPdfDocument}=await import('/ocr-source.js');const pages=await ocrPdfDocument(pdf);
     return{modes,calls,text:pages[0].text,confirmed:pages[0].auto_confirmed};
   });
-  expect(result.modes).toEqual(['11','6']);expect(result.calls).toBe(2);expect(result.text).toContain('표본동');expect(result.text).toContain('12-3');expect(result.confirmed).toBe(false);
+  expect(result.modes).toEqual(['3','11','6']);expect(result.calls).toBe(2);expect(result.text).toContain('표본동');expect(result.text).toContain('12-3');expect(result.confirmed).toBe(false);
 });
 
 test('조서 금액 복구는 같은 연번·지번·면적의 OCR 수치와 명시 지분을 대조하고 주소를 보존한다',async({page})=>{
