@@ -119,6 +119,23 @@ export function readAreaShare(text){
 }
 export function arithmeticMatches(area,unit,amount){return Boolean(area&&unit>0&&amount>0&&Number.isSafeInteger(unit)&&Number.isSafeInteger(amount)&&Math.abs(area.area*area.numerator/area.denominator*unit-amount)<=1);}
 
+function reducedShare(area){let a=area.numerator,b=area.denominator;while(b){const next=a%b;a=b;b=next;}return[area.numerator/a,area.denominator/a];}
+function compatibleShareReading(original,candidate){
+  if(!candidate)return false;
+  // A reread which dropped the share marker cannot prove a whole interest.
+  if(/[xX×*\/]/.test(String(original))&&!candidate.explicitShare)return false;
+  const first=readAreaShare(original);
+  if(first?.explicitShare){const a=reducedShare(first),b=reducedShare(candidate);if(a[0]!==b[0]||a[1]!==b[1])return false;}
+  return true;
+}
+function rememberArithmeticChoice(choices,sourceArea,a,u,m){
+  const aa=readAreaShare(a),uu=readStrictNumber(u,true),mm=readStrictNumber(m,true);
+  if(!compatibleShareReading(sourceArea,aa)||!arithmeticMatches(aa,uu,mm))return;
+  const key=JSON.stringify([aa.area,...reducedShare(aa),uu,mm]);
+  // Prefer the earliest explicit source representation for equivalent shares.
+  if(!choices.has(key))choices.set(key,{a,u,m,aa,uu,mm});
+}
+
 // A bounded format family, identified by four independent header anchors and
 // the grid, not by file name, fixed page coordinates, or an amount guess.
 export async function recognizeRuledSummaries(image,readCell,onProgress=()=>{}){
@@ -155,15 +172,15 @@ export async function recognizeRuledSummaries(image,readCell,onProgress=()=>{}){
         const areaReads=[raw.area,await read(band.cells[n-3],'area-small')],unitReads=[raw.unit_price,await read(band.cells[n-2],'number-small')],amountReads=[raw.amount,await read(band.cells[n-1],'number-small')];
         alternatives.area=areaReads;alternatives.unit_price=unitReads;alternatives.amount=amountReads;
         for(const mode of ['tight','binary']){areaReads.push(await read(band.cells[n-3],'area-'+mode));unitReads.push(await read(band.cells[n-2],'number-'+mode));amountReads.push(await read(band.cells[n-1],'number-'+mode));}
-        let choices=new Map();for(const a of areaReads)for(const u of unitReads)for(const m of amountReads){const aa=readAreaShare(a),uu=readStrictNumber(u,true),mm=readStrictNumber(m,true);if(arithmeticMatches(aa,uu,mm))choices.set(JSON.stringify([aa,uu,mm]),{a,u,m,aa,uu,mm});}
+        let choices=new Map();for(const a of areaReads)for(const u of unitReads)for(const m of amountReads)rememberArithmeticChoice(choices,raw.area,a,u,m);
         if(choices.size===0){
           areaReads.push(await read(band.cells[n-3],'area-edge'));unitReads.push(await read(band.cells[n-2],'number-edge'));amountReads.push(await read(band.cells[n-1],'number-edge'));
           for(const mode of [6,8]){areaReads.push(await read(band.cells[n-3],'area-pass'+mode));unitReads.push(await read(band.cells[n-2],'number-pass'+mode));amountReads.push(await read(band.cells[n-1],'number-pass'+mode));}
-          for(const a of areaReads)for(const u of unitReads)for(const m of amountReads){const aa=readAreaShare(a),uu=readStrictNumber(u,true),mm=readStrictNumber(m,true);if(arithmeticMatches(aa,uu,mm))choices.set(JSON.stringify([aa,uu,mm]),{a,u,m,aa,uu,mm});}
+          for(const a of areaReads)for(const u of unitReads)for(const m of amountReads)rememberArithmeticChoice(choices,raw.area,a,u,m);
         }
         if(choices.size===0){
           for(const mode of ['best','best-small']){areaReads.push(await read(band.cells[n-3],'area-'+mode));unitReads.push(await read(band.cells[n-2],'number-'+mode));amountReads.push(await read(band.cells[n-1],'number-'+mode));}
-          for(const a of areaReads)for(const u of unitReads)for(const m of amountReads){const aa=readAreaShare(a),uu=readStrictNumber(u,true),mm=readStrictNumber(m,true);if(arithmeticMatches(aa,uu,mm))choices.set(JSON.stringify([aa,uu,mm]),{a,u,m,aa,uu,mm});}
+          for(const a of areaReads)for(const u of unitReads)for(const m of amountReads)rememberArithmeticChoice(choices,raw.area,a,u,m);
         }
         if(choices.size===1){const chosen=[...choices.values()][0];raw.area=chosen.a;raw.unit_price=chosen.u;raw.amount=chosen.m;area=chosen.aa;unit=chosen.uu;amount=chosen.mm;}
       }

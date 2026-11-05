@@ -35,5 +35,11 @@ const root=process.env.BSO_TEST_ROOT||path.resolve(__dirname,'../..');
 
  equal(adapter.cellAddressValid('가상시 평가'),false,'a value label ending in 가 is not a cadastral ga name');equal(engine.cellAddressValid('확인불가'),false,'an error placeholder must not become a ga locality');equal(adapter.cellAddressValid('가상시 종로2가'),true,'support numeric cadastral ga names');
  for(let i=0;i<store.state.lands.length;i++)store.updateRecord('lands',(_r,index)=>index===i,{parcel_address:'확인불가 91-2'});equal(group().confirmable,false,'an error placeholder plus lot is not a repaired location');
+
+ const shareRead=(original,retry,initialAmount,retryAmount)=>async(b,m)=>{if(m==='area')return original;if(m.startsWith('area-'))return retry;if(m.startsWith('number'))return b.left>640?(m==='number'?initialAmount:retryAmount):'200';return read(b,m);};
+ const lostMarker=await engine.recognizeRuledSummaries(image,shareRead('100x1/','100','20,000','20,000'));equal(lostMarker[0].rows[0].arithmetic_match,false,'a missing share denominator must not become an implicit whole share');
+ const changedShare=await engine.recognizeRuledSummaries(image,shareRead('100x1/2','100x1/1','20,000','20,000'));equal(changedShare[0].rows[0].arithmetic_match,false,'printed explicit shares cannot be changed to fit monetary OCR');
+ const explicitRecovery=await engine.recognizeRuledSummaries(image,shareRead('100x1/','100x1/1','20,000','20,000'));equal(explicitRecovery[0].rows[0].arithmetic_match,true,'a complete explicit reread may recover the missing share');
+ const equivalentShare=await engine.recognizeRuledSummaries(image,shareRead('100x1/2','100x2/4','9,000','10,000'));equal(equivalentShare[0].rows[0].arithmetic_match,true,'equivalent fraction readings represent one arithmetic choice');equal(equivalentShare[0].rows[0].raw.area,'100x1/2','retain the original explicit share when equivalent rereads agree');
  console.log(`Cell address recovery regressions: ${checks} passed.`);
 })().catch(error=>{console.error(error);process.exitCode=1;});
