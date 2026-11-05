@@ -267,3 +267,20 @@ test('단순 미검수 상태와 명시적 보완 대상을 구분한다',async(
   await page.locator('[data-review-filter="active"]').click();
   await expect(page.locator('.review-group-select option[value="GROUP:lands"]')).toHaveCount(1);
 });
+
+
+test('보완 차단된 묶음도 보류에 모으고 자동 반복 키로 여러 묶음을 확정하지 않는다',async({page})=>{
+  await page.goto('/');await inject(page);await page.locator('[data-review-workbench-launch]').click();
+  await page.locator('.review-workbench-close').focus();
+  await page.keyboard.down('Control');await page.keyboard.down('Enter');await page.keyboard.down('Enter');await page.keyboard.down('Enter');await page.keyboard.up('Enter');await page.keyboard.up('Control');
+  expect(await page.evaluate(()=>Object.keys(window.BSOProductV2.store.state.reviewDecisions))).toEqual(['GROUP:caseInfo']);
+  await page.evaluate(()=>window.BSOProductV2.store.updateRecord('appraisalResults',(_row,index)=>index===0,{unit_price:null,amount:null}));
+  await chooseReviewGroup(page,'GROUP:appraisalResults');
+  await expect(page.locator('.review-workbench-confirm')).toBeDisabled();
+  await page.locator('.review-workbench-hold').click();
+  await expect(page.locator('.review-group-select option[value="GROUP:appraisalResults"]')).toHaveCount(0);
+  await page.locator('[data-review-filter="hold"]').click();
+  await expect(page.locator('.review-workbench-card h3')).toHaveText('필지별 평가결과');
+  await expect(page.locator('.review-workbench-confirm')).toBeDisabled();
+  expect(await page.evaluate(()=>window.BSOProductV2.store.state.reviewDecisions['GROUP:appraisalResults'].status)).toBe('HOLD');
+});
