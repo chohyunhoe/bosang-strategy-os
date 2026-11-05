@@ -113,26 +113,35 @@ export async function recognizeRuledSummaries(image,readCell,onProgress=()=>{}){
     if(![7,8].includes(n))continue;
     for(let index=0;index<plan.rows.length;index++){
       const band=plan.rows[index];const raw={};
-      for(const [field,col,mode] of [['company',0,'text'],['address',1,'address'],['lot',2,'lot'],['land_category',3,'category'],['area',n-3,'area'],['unit_price',n-2,'number'],['amount',n-1,'number']])raw[field]=await read(band.cells[col],mode);
-      const lotReadings=[raw.lot,await read(band.cells[2],'lot-pass7')].map(v=>v.replace(/\s/g,''));
-      if(lotReadings[0]!==lotReadings[1])for(const mode of ['lot-pass6','lot-pass8'])lotReadings.push((await read(band.cells[2],mode)).replace(/\s/g,''));
+      // Read Korean fields together before numeric fields to avoid repeatedly
+      // reinitializing the worker for each cell in the same row.
+      for(const [field,col,mode] of [['company',0,'text'],['address',1,'address'],['land_category',3,'category']])raw[field]=await read(band.cells[col],mode);
+      const companyReads=[raw.company];
+      if(!/^[가-힣·]{2,20}$/.test(raw.company.replace(/\s/g,''))){for(const mode of ['text-small','text-pass6','text-binary'])companyReads.push(await read(band.cells[0],mode));const names=[...new Set(companyReads.map(v=>v.replace(/\s/g,'')).filter(v=>/^[가-힣·]{2,20}$/.test(v)))];raw.company=names.length===1?names[0]:'';}
       const koreanLot=(await read(band.cells[2],'lot-korean')).replace(/\s/g,'');
-      if(/산/.test(koreanLot))for(let i=0;i<lotReadings.length;i++)if(/^\d/.test(lotReadings[i]))lotReadings[i]='산'+lotReadings[i];
-      if(/^(?:산)?\d{1,5}(?:-\d{1,5})?$/.test(koreanLot)&&!lotReadings.some(v=>v.replace(/-/g,'')===koreanLot.replace(/-/g,'')))lotReadings.push(koreanLot);
-      const alternatives={lot:lotReadings,lot_korean:[koreanLot]};
-      const votes=[...new Set(lotReadings)].filter(v=>/^(?:산)?\d{1,5}(?:-\d{1,5})?$/.test(v)).map(v=>({v,n:lotReadings.filter(s=>s===v).length})).sort((a,b)=>b.n-a.n);const lot=votes.length===1&&votes[0].n>=2&&(!/산/.test(koreanLot)||/^산\d{1,5}(?:-\d{1,5})?$/.test(koreanLot))?votes[0].v:'';raw.lot=lot;
       const categories=[raw.land_category,await read(band.cells[3],'category-pass10'),await read(band.cells[3],'category-binary')].map(v=>v.replace(/\s/g,''));
-      alternatives.land_category=categories;
       const validCategories=[...new Set(categories.filter(v=>/^(?:전|답|대|임야|도로|잡종지|공장용지|과수원|목장용지|학교용지|주차장|창고용지|하천|구거|유지|제방|철도용지|묘지|공원|체육용지|종교용지|사적지|광천지|염전|주유소용지)$/.test(v)))];
       raw.land_category=validCategories.length===1?validCategories[0]:'';
+      for(const [field,col,mode] of [['lot',2,'lot'],['area',n-3,'area'],['unit_price',n-2,'number'],['amount',n-1,'number']])raw[field]=await read(band.cells[col],mode);
+      const lotReadings=[raw.lot,await read(band.cells[2],'lot-pass7')].map(v=>v.replace(/\s/g,''));
+      if(lotReadings[0]!==lotReadings[1])for(const mode of ['lot-pass6','lot-pass8'])lotReadings.push((await read(band.cells[2],mode)).replace(/\s/g,''));
+      if(/산/.test(koreanLot))for(let i=0;i<lotReadings.length;i++)if(/^\d/.test(lotReadings[i]))lotReadings[i]='산'+lotReadings[i];
+      if(/^(?:산)?\d{1,5}(?:-\d{1,5})?$/.test(koreanLot)&&!lotReadings.some(v=>v.replace(/-/g,'')===koreanLot.replace(/-/g,'')))lotReadings.push(koreanLot);
+      const alternatives={company:companyReads,lot:lotReadings,lot_korean:[koreanLot],land_category:categories};
+      const votes=[...new Set(lotReadings)].filter(v=>/^(?:산)?\d{1,5}(?:-\d{1,5})?$/.test(v)).map(v=>({v,n:lotReadings.filter(s=>s===v).length})).sort((a,b)=>b.n-a.n);const lot=votes.length===1&&votes[0].n>=2&&(!/산/.test(koreanLot)||/^산\d{1,5}(?:-\d{1,5})?$/.test(koreanLot))?votes[0].v:'';raw.lot=lot;
       let area=readAreaShare(raw.area),unit=readStrictNumber(raw.unit_price,true),amount=readStrictNumber(raw.amount,true);
       if(!arithmeticMatches(area,unit,amount)){
         const areaReads=[raw.area,await read(band.cells[n-3],'area-small')],unitReads=[raw.unit_price,await read(band.cells[n-2],'number-small')],amountReads=[raw.amount,await read(band.cells[n-1],'number-small')];
         alternatives.area=areaReads;alternatives.unit_price=unitReads;alternatives.amount=amountReads;
+        for(const mode of ['tight','binary']){areaReads.push(await read(band.cells[n-3],'area-'+mode));unitReads.push(await read(band.cells[n-2],'number-'+mode));amountReads.push(await read(band.cells[n-1],'number-'+mode));}
         let choices=new Map();for(const a of areaReads)for(const u of unitReads)for(const m of amountReads){const aa=readAreaShare(a),uu=readStrictNumber(u,true),mm=readStrictNumber(m,true);if(arithmeticMatches(aa,uu,mm))choices.set(JSON.stringify([aa,uu,mm]),{a,u,m,aa,uu,mm});}
         if(choices.size===0){
           areaReads.push(await read(band.cells[n-3],'area-edge'));unitReads.push(await read(band.cells[n-2],'number-edge'));amountReads.push(await read(band.cells[n-1],'number-edge'));
           for(const mode of [6,8]){areaReads.push(await read(band.cells[n-3],'area-pass'+mode));unitReads.push(await read(band.cells[n-2],'number-pass'+mode));amountReads.push(await read(band.cells[n-1],'number-pass'+mode));}
+          for(const a of areaReads)for(const u of unitReads)for(const m of amountReads){const aa=readAreaShare(a),uu=readStrictNumber(u,true),mm=readStrictNumber(m,true);if(arithmeticMatches(aa,uu,mm))choices.set(JSON.stringify([aa,uu,mm]),{a,u,m,aa,uu,mm});}
+        }
+        if(choices.size===0){
+          for(const mode of ['best','best-small']){areaReads.push(await read(band.cells[n-3],'area-'+mode));unitReads.push(await read(band.cells[n-2],'number-'+mode));amountReads.push(await read(band.cells[n-1],'number-'+mode));}
           for(const a of areaReads)for(const u of unitReads)for(const m of amountReads){const aa=readAreaShare(a),uu=readStrictNumber(u,true),mm=readStrictNumber(m,true);if(arithmeticMatches(aa,uu,mm))choices.set(JSON.stringify([aa,uu,mm]),{a,u,m,aa,uu,mm});}
         }
         if(choices.size===1){const chosen=[...choices.values()][0];raw.area=chosen.a;raw.unit_price=chosen.u;raw.amount=chosen.m;area=chosen.aa;unit=chosen.uu;amount=chosen.mm;}
@@ -146,6 +155,9 @@ export async function recognizeRuledSummaries(image,readCell,onProgress=()=>{}){
   return output;
 }
 
+export function normalizedCellScale(region,targetHeight=32){
+  const inkHeight=Math.max(1,Number(region?.height)-4);return Math.max(1,Math.min(4,targetHeight/inkHeight));
+}
 export function renderCellForOcr(region,scale=4){
   const base=document.createElement('canvas');base.width=region.width;base.height=region.height;const ctx=base.getContext('2d');if(!ctx)throw new Error('CELL_CANVAS_UNAVAILABLE');
   const image=ctx.createImageData(region.width,region.height);for(let i=0;i<region.pixels.length;i++){const v=region.pixels[i];image.data[i*4]=v;image.data[i*4+1]=v;image.data[i*4+2]=v;image.data[i*4+3]=255;}ctx.putImageData(image,0,0);
@@ -159,13 +171,15 @@ export async function recognizeCanvasSummaries(canvas,worker,onProgress=()=>{}){
   const selectLanguage=async next=>{if(language!==next&&worker.reinitialize){await worker.reinitialize(next);language=next;}};
   try{return await recognizeRuledSummaries(image,async(box,mode)=>{
     const header=mode.startsWith('header:'),role=header?mode.slice(7):'';
-    const pass=/-pass(\d+)$/.exec(mode),small=mode.endsWith('-small'),binary=mode.endsWith('-binary'),edge=mode.endsWith('-edge'),baseMode=mode.replace(/-(?:pass\d+|small|binary|edge)$/,'');
+    const best=mode.includes('-best'),coreMode=mode.replace('-best','');
+    const pass=/-pass(\d+)$/.exec(coreMode),small=coreMode.endsWith('-small'),binary=mode.endsWith('-binary'),edge=mode.endsWith('-edge'),tight=mode.endsWith('-tight'),baseMode=coreMode.replace(/-(?:pass\d+|small|binary|edge|tight)$/,'');
     const numeric=['number','area','lot'].includes(baseMode);
-    await selectLanguage(numeric?'eng_fast':'kor');
+    const primaryNumber=['number','area'].includes(baseMode)&&!pass&&!small&&!binary&&!edge&&!tight&&!best;
+    await selectLanguage(numeric?(best?'eng':'eng_fast'):'kor');
     const whitelist={number:'0123456789,.',area:'0123456789,./xX×*',lot:'0123456789-',category:''}[baseMode]||'';
     await worker.setParameters?.({tessedit_pageseg_mode:header?'6':pass?pass[1]:'7',tessedit_char_whitelist:whitelist});
-    const run=async region=>String((await worker.recognize(renderCellForOcr(region,small||binary||edge?2:4),{},{text:true,blocks:false}))?.data?.text||'').trim();
-    let text='';for(const region of prepareCellImages(image,box,{splitLines:baseMode==='address'||binary,binary,inset:edge?0:pass||small||binary||baseMode==='address'?1:3,cleanLines:Boolean(pass)||small||binary||edge}))text+=await run(region)+'\n';
+    const run=async region=>String((await worker.recognize(renderCellForOcr(region,header||primaryNumber||baseMode==='address'?4:normalizedCellScale(region,small||binary||edge?24:pass?40:32)),{},{text:true,blocks:false}))?.data?.text||'').trim();
+    let text='';for(const region of prepareCellImages(image,box,{splitLines:!header&&!primaryNumber||binary,binary,inset:edge?0:header||primaryNumber?3:1,cleanLines:!header&&!primaryNumber}))text+=await run(region)+'\n';
     if(header&&!matchesHeader(text,role)){await worker.setParameters?.({tessedit_pageseg_mode:'7',tessedit_char_whitelist:''});for(const region of prepareCellImages(image,box,{splitLines:true}))text+=await run(region)+'\n';}
     return text;
   },onProgress);}finally{await selectLanguage('kor+eng');await worker.setParameters?.({tessedit_pageseg_mode:'3',tessedit_char_whitelist:''});}

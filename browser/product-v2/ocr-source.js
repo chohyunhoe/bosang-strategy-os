@@ -205,7 +205,7 @@ export async function ocrPdfDocument(pdfDocument, onProgress = () => {}, options
   const processPage=async(worker,pageNo)=>{
     const pageStarted=performance.now();
     const canvas=document.createElement('canvas');const context=canvas.getContext('2d',{willReadFrequently:true});if(!context)throw new Error('CANVAS_2D_UNAVAILABLE');
-    const page=await pdfDocument.getPage(pageNo);const base=page.getViewport({scale:1});const scale=Math.min(2.2,Math.max(1.35,2000/Math.max(1,base.width)));const viewport=page.getViewport({scale});
+    const page=await pdfDocument.getPage(pageNo);const base=page.getViewport({scale:1});const scale=Math.min(3.2,Math.max(1.35,3000/Math.max(1,base.width)));const viewport=page.getViewport({scale});
     canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);context.clearRect(0,0,canvas.width,canvas.height);await page.render({canvasContext:context,viewport}).promise;
     // Each reused worker starts a new page with automatic page segmentation.
     // Detail/identity passes below use different modes and must not leak them.
