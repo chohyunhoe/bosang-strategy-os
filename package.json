@@ -19,7 +19,7 @@
     "release:v2.1:test": "npm run release:v2.1:build && node tests/product_v2_1_release.test.js",
     "release:v2.1:gate": "npm run parser:test && npm run release:v2.1:test && npm run product:v2:e2e",
     "product:v2:build": "node scripts/build_product_v2_candidate.js",
-    "product:v2:test": "npm run product:v2:build && node tests/document_workflow.test.js && node tests/document_execution_handoff.test.js && node tests/lk_execution_contract.test.js && node tests/product_v2_candidate.test.js && node tests/product_v2_vworld_api_map.test.js && node tests/product_v2_public_bridge.test.js && node tests/product_v2_map_bridge.test.js && node tests/bso_local_mcp_bridge.test.js && node tests/work_ops_bridge_contract.test.js && node tests/pre_field_kit.test.js && node tests/v2_1_launcher_contract.test.js",
+    "product:v2:test": "npm run product:v2:build && node tests/document_workflow.test.js && node tests/document_execution_handoff.test.js && node tests/lk_execution_contract.test.js && node --test tests/lk_bso_intake.test.js && node tests/product_v2_candidate.test.js && node tests/product_v2_vworld_api_map.test.js && node tests/product_v2_public_bridge.test.js && node tests/product_v2_map_bridge.test.js && node tests/bso_local_mcp_bridge.test.js && node tests/work_ops_bridge_contract.test.js && node tests/pre_field_kit.test.js && node tests/v2_1_launcher_contract.test.js",
     "product:v2:e2e": "playwright test -c playwright.product-v2.config.js",
     "product:v2:acceptance": "playwright test -c playwright.product-v2.config.js tests/product-v2-browser/real_appraisal_acceptance.spec.js",
     "product:v2:hardening": "npm run product:v2:test && playwright test -c playwright.product-v2.config.js tests/product-v2-browser/mobile_table_affordance.spec.js tests/product-v2-browser/ocr_runtime.spec.js tests/product-v2-browser/multi_appraisal_merge.spec.js tests/product-v2-browser/multi_appraisal_issues.spec.js tests/product-v2-browser/dual_appraiser_ground_truth.spec.js tests/product-v2-browser/case_info_conflict.spec.js tests/product-v2-browser/appraisal_purpose.spec.js tests/product-v2-browser/vworld_api_quick_map.spec.js tests/product-v2-browser/work_ops_ui.spec.js tests/product-v2-browser/pre_field_kit.spec.js tests/product-v2-browser/pre_field_hold_exclusion.spec.js",
@@ -48,4 +48,3 @@
     "jsdom": "26.1.0"
   }
 }
-
