@@ -158,7 +158,7 @@ export function installReviewWorkbench(store) {
   }
   document.addEventListener('keydown',event=>{
     if(!local.open||store.state.status==='PROCESSING'||document.querySelector('.inspector-backdrop')||event.isComposing)return;
-    const editable=event.target?.closest('input,textarea,select,[contenteditable="true"]');
+    const editable=event.target instanceof HTMLElement && (event.target.matches('input,textarea,select') || event.target.isContentEditable);
     if(event.key==='Escape'){event.preventDefault();close();return;}
     if(!editable&&event.ctrlKey&&event.key==='Enter'){event.preventDefault();decision('CONFIRMED');}
     else if(!editable&&event.altKey&&['ArrowLeft','ArrowRight'].includes(event.key)){event.preventDefault();move(event.key==='ArrowRight'?1:-1);}
