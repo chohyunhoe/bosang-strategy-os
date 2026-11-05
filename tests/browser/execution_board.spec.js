@@ -9,6 +9,7 @@
 // 4) 오류 복구·초기화 경로가 모든 화면에 남는지 (G4)
 
 const { test, expect } = require('@playwright/test');
+const {openFullView}=require('./full_view_helper');
 
 const STAGE_KEYS = ['home', 'workspace', 'data', 'analysis', 'map', 'output'];
 
@@ -73,6 +74,7 @@ function mapPreview() {
 test('실행보드 6단계가 모든 화면에 노출되고 상태에 따라 다음 Action이 전이된다', async ({ page }) => {
   const errors = collectErrors(page);
   await page.goto('/', { waitUntil: 'networkidle' });
+  await openFullView(page);
 
   const bar = page.locator('#lkExecutionBar');
   await expect(bar).toBeVisible();
@@ -150,6 +152,7 @@ test('OCR 검수 완료값 JSON 반영이 UI에서 실행되고 평가결과에 
   page.on('dialog', (dialog) => dialog.accept());
 
   await page.goto('/', { waitUntil: 'networkidle' });
+  await openFullView(page);
   await page.evaluate((fixture) => {
     window.__releaseMapSession = undefined;
     data = fixture;
@@ -209,6 +212,7 @@ test('OCR 검수 완료값 JSON 반영이 UI에서 실행되고 평가결과에 
 test('후보 검수가 남아 있으면 실행보드와 다음작업 카드가 같은 단계를 가리킨다', async ({ page }) => {
   const errors = collectErrors(page);
   await page.goto('/', { waitUntil: 'networkidle' });
+  await openFullView(page);
 
   // 실제 게이트 상태 재현: 편입토지·평가행은 이미 있으나 검수 대기 후보가 남아 있는 경우
   await page.evaluate(() => {

@@ -1,6 +1,7 @@
 'use strict';
 
 const { test, expect } = require('@playwright/test');
+const {openFullView}=require('./full_view_helper');
 
 function anonymousReviewData() {
   return {
@@ -53,6 +54,7 @@ test('five-stage review flow renders without external requests or overflow', asy
   });
 
   await page.goto('/', { waitUntil: 'networkidle' });
+  await openFullView(page);
   await expect(page.locator('nav [data-section="overview"]')).toContainText('사건 개요');
   await page.evaluate((fixture) => {
     data = fixture;

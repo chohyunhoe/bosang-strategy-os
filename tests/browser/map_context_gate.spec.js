@@ -7,6 +7,7 @@
 // 좌표는 기존 검증용 EPSG:5186 preview 값을 그대로 쓴다. 실제 사건 지도를 새로 만들지 않는다.
 
 const { test, expect } = require('@playwright/test');
+const {openFullView}=require('./full_view_helper');
 
 function mapContextFixture() {
   const land = (id, address, area, note) => ({
@@ -112,6 +113,7 @@ test('비교표에서 고른 필지가 지도에서 정확한 도형으로 선�
   });
 
   await page.goto('/', { waitUntil: 'networkidle' });
+  await openFullView(page);
   await page.evaluate((fixture) => {
     data = fixture;
     window.__releaseMapSession = undefined;

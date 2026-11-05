@@ -76,7 +76,7 @@
       .bso-direct-empty{background:#fff;border:1px solid #dfe3e8;border-radius:17px;padding:22px;font-size:15px;line-height:1.6}
       .bso-direct-actions{position:fixed;left:0;right:0;bottom:0;z-index:2147483647;display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:10px 10px calc(10px + env(safe-area-inset-bottom));background:#fff;border-top:1px solid #d9dee4}
       .bso-direct-actions button{min-height:52px;border-radius:12px;border:1px solid #cbd1d8;background:#fff;font-size:14px;font-weight:900}.bso-direct-actions .confirm{background:#872647;border-color:#872647;color:#fff}.bso-direct-actions .hold{background:#fff7df;border-color:#e2c66f}.bso-direct-actions .next{background:#edf4ff;border-color:#b8cdef}
-      .bso-fallback-home{padding:16px 14px 110px}.bso-fallback-card{background:#fff;border:1px solid #dfe3e8;border-radius:16px;padding:17px;margin-bottom:12px}.bso-fallback-k{font-size:12px;color:#747b83;font-weight:800}.bso-fallback-v{font-size:22px;font-weight:950;margin-top:5px}.bso-fallback-row{display:flex;justify-content:space-between;padding:10px 0;border-top:1px solid #edf0f2}.bso-fallback-row:first-child{border-top:0}.bso-fallback-start{width:100%;min-height:52px;border:0;border-radius:13px;background:#872647;color:#fff;font-size:15px;font-weight:900}
+      .bso-fallback-home{padding:16px 14px 110px}.bso-fallback-card{display:block;background:#fff;border:1px solid #dfe3e8;border-radius:16px;padding:17px;margin-bottom:12px}.bso-fallback-k{font-size:12px;color:#747b83;font-weight:800}.bso-fallback-v{font-size:22px;font-weight:950;margin-top:5px}.bso-fallback-row{display:flex;justify-content:space-between;padding:10px 0;border-top:1px solid #edf0f2}.bso-fallback-row:first-child{border-top:0}.bso-fallback-start{width:100%;min-height:52px;border:0;border-radius:13px;background:#872647;color:#fff;font-size:15px;font-weight:900}
       @media(min-width:821px){#${OVERLAY_ID}{display:none!important}}
     `;
     document.head.appendChild(style);
@@ -175,7 +175,7 @@
   }
 
   function route(event) {
-    if (!isMobile()) return;
+    if (!isMobile() || document.body.classList.contains('bso3-legacy')) return;
     const target = event && event.target && event.target.closest ? event.target.closest('button,[role="button"],a') : null;
     if (!target || target.closest(`#${OVERLAY_ID}`)) return;
     if (!/전체\s*검수(?:\s*\d+건)?\s*시작/.test(clean(target.textContent))) return;
@@ -197,7 +197,6 @@
     observer.observe(document.body, { childList: true, subtree: true });
   }
 
-  window.addEventListener('pointerdown', route, true);
   window.addEventListener('click', route, true);
   if (document.readyState === 'loading') window.addEventListener('DOMContentLoaded', boot, { once: true }); else boot();
   window.bsoOpenDirectMobileReview = openOverlay;

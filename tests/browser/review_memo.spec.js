@@ -10,6 +10,7 @@
 
 const fs = require('node:fs');
 const { test, expect } = require('@playwright/test');
+const {openFullView}=require('./full_view_helper');
 
 function collectErrors(page) {
   const errors = [];
@@ -89,6 +90,7 @@ function memoCase() {
 
 async function loadCase(page, caseData) {
   await page.goto('/');
+  await openFullView(page);
   await page.waitForFunction(() => typeof window.buildReviewMemo === 'function');
   await page.evaluate((payload) => {
     data = payload;

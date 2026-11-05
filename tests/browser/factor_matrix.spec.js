@@ -1,6 +1,7 @@
 'use strict';
 
 const { test, expect } = require('@playwright/test');
+const {openFullView}=require('./full_view_helper');
 
 function factorReviewData() {
   return {
@@ -66,6 +67,7 @@ test('PAIR_READY basis factors attach review-only and render in the numeric work
   });
 
   await page.goto('/', { waitUntil: 'networkidle' });
+  await openFullView(page);
   await expect.poll(async () => page.evaluate(() => Boolean(window.__bsoFactorMatrixInstalled))).toBe(true);
   await expect.poll(async () => page.evaluate(() => window.__bsoFactorMatrixInstalled && window.__bsoFactorMatrixInstalled.contractVersion)).toBe('release-factor-matrix/0.1');
 
