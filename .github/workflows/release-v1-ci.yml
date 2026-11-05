@@ -10,6 +10,7 @@ on:
       - 'brief_output/**'
       - 'RUN_BSO.cmd'
       - 'SETUP_BSO_OUTPUT.cmd'
+      - 'SETUP_BSO_SHORTCUTS.cmd'
       - 'playwright.release-v1.config.js'
       - 'package*.json'
       - '.github/workflows/release-v1-ci.yml'
@@ -31,6 +32,9 @@ jobs:
       - run: npm ci
       - run: python -m pip install -r brief_output/requirements.txt
       - run: npx playwright install chromium
+      - name: Desktop and Start menu shortcuts
+        shell: powershell
+        run: ./tests/windows_shortcuts.test.ps1
       - name: Windows launcher checks
         shell: pwsh
         run: |
