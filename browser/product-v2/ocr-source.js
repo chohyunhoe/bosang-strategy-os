@@ -131,36 +131,49 @@ export function recoverStatementMoney(original, candidate, crop) {
   if(!candidateLine)return original;
   const number='(?:\\d{1,3}(?:,\\d{3})+|\\d+)(?:\\.\\d+)?';
   const moneyNumber='(?:\\d{1,3}(?:,\\d{3})+|\\d+)';
-  const readRow=line=>{
+  const validShare=(n,d)=>Number.isSafeInteger(n)&&Number.isSafeInteger(d)&&n>0&&d>=n;
+  const sameShare=(n,d,a,b)=>BigInt(n)*BigInt(b)===BigInt(a)*BigInt(d);
+  const readRow=(line,allowDamagedMoney=false)=>{
     const tokens=[...line.matchAll(/\S+/g)];
     const lotIndex=tokens.findIndex(token=>/^(?:산)?\d{1,5}-\d{1,5}$/.test(token[0])&&lotKey(token[0])===lotKey(crop.lot));
     const areaToken=tokens.slice(lotIndex+1).find(token=>new RegExp('^'+number+'$').test(token[0]));
     if(lotIndex<0||!areaToken)return null;
-    // Bind the two money cells to the end of the area/share expression. Never
-    // select them by magnitude: a large area is not a monetary position.
-    const layout=line.slice(areaToken.index).match(new RegExp('^('+number+')\\s*[*×]\\s*(\\d+)(?:\\s*/\\s*(\\d+))?\\s+('+moneyNumber+')\\s+('+moneyNumber+')\\s*$'));
+    // Exactly two positional money cells; owner remarks may follow, but no
+    // additional numeric cells. A damaged dot separator is source evidence only.
+    const cell=allowDamagedMoney?'\\d[\\d,.]*':moneyNumber;
+    const layout=line.slice(areaToken.index).match(new RegExp('^('+number+')\\s*[*×]\\s*(\\d+)(?:\\s*/\\s*(\\d+))?\\s+('+cell+')\\s+('+cell+')(?:\\s+(.+?))?\\s*$'));
     if(!layout)return null;
-    const prices=layout.slice(4,6).map(value=>Number(value.replace(/,/g,'')));
-    if(prices.some(value=>!Number.isSafeInteger(value)||value<1000))return null;
-    return{area:Number(layout[1].replace(/,/g,'')),numerator:Number(layout[2]),denominator:layout[3]===undefined?null:Number(layout[3]),prices,areaToken};
+    const prices=[];
+    for(const raw of layout.slice(4,6)){
+      if(raw.length>24)return null;
+      if(new RegExp('^'+moneyNumber+'$').test(raw)){
+        const price=Number(raw.replace(/,/g,''));
+        if(!Number.isSafeInteger(price)||price<1000)return null;
+        prices.push(price);
+      }else if(allowDamagedMoney&&/^\d{1,3}\.\d{4,}$/.test(raw))prices.push(null);
+      else return null;
+    }
+    const trailer=(layout[6]||'').trim(),ownerShares=[];
+    const words=trailer.replace(/\(\s*(\d+)\s*\/\s*(\d+)\s*\)/g,(_,n,d)=>{ownerShares.push([Number(n),Number(d)]);return '';});
+    if(/\d/.test(words)||ownerShares.some(([n,d])=>!validShare(n,d)))return null;
+    return{area:Number(layout[1].replace(/,/g,'')),numerator:Number(layout[2]),denominator:layout[3]===undefined?null:Number(layout[3]),prices,areaToken,trailer,ownerShares};
   };
   const recovered=readRow(candidateLine);
   if(!recovered||recovered.denominator===null)return original;
   const {area,numerator,denominator,prices}=recovered;
-  if(!Number.isFinite(area)||!Number.isSafeInteger(numerator)||!Number.isSafeInteger(denominator)||!(area>0&&numerator>0&&denominator>=numerator)||Math.abs(area*numerator/denominator*prices[0]-prices[1])>1)return original;
+  if(!Number.isFinite(area)||area<=0||!validShare(numerator,denominator)||Math.abs(area*numerator/denominator*prices[0]-prices[1])>1)return original;
+  if(recovered.ownerShares.some(([n,d])=>!sameShare(n,d,numerator,denominator)))return original;
   return original.split(/\r?\n/).map(line=>{
     if(!matches(line))return line;
-    // A source fraction is independent evidence, even when prices lack commas.
-    // Do not overwrite conflicting shares or already readable explicit rows.
     const explicit=line.match(/[*×]\s*(\d+)\s*\/\s*(\d+)(?=\s|$)/);
-    if(explicit&&Number(explicit[1])*denominator!==numerator*Number(explicit[2]))return line;
-    const existing=readRow(line);
+    if(explicit&&(!validShare(Number(explicit[1]),Number(explicit[2]))||!sameShare(Number(explicit[1]),Number(explicit[2]),numerator,denominator)))return line;
+    const existing=readRow(line,true);
     if(!existing||existing.area!==area||existing.denominator!==null)return line;
-    // An explicit integer multiplier can be a valid whole share or quantity.
-    // Preserve its independently consistent prices rather than invent a fraction.
-    if(Number.isSafeInteger(existing.numerator)&&existing.numerator>0&&Math.abs(existing.area*existing.numerator*existing.prices[0]-existing.prices[1])<=1)return line;
+    if(existing.ownerShares.some(([n,d])=>!sameShare(n,d,numerator,denominator)))return line;
+    // Protect independently consistent whole-share or quantity rows.
+    if(Number.isSafeInteger(existing.numerator)&&existing.numerator>0&&existing.prices.every(Number.isSafeInteger)&&Math.abs(existing.area*existing.numerator*existing.prices[0]-existing.prices[1])<=1)return line;
     const areaEnd=existing.areaToken.index+existing.areaToken[0].length;
-    return line.slice(0,areaEnd)+' * '+numerator+'/'+denominator+' '+prices.map(value=>value.toLocaleString('en-US')).join(' ');
+    return line.slice(0,areaEnd)+' * '+numerator+'/'+denominator+' '+prices.map(value=>value.toLocaleString('en-US')).join(' ')+(existing.trailer?' '+existing.trailer:'');
   }).join('\n');
 }
 
