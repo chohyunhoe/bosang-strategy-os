@@ -53,7 +53,8 @@ function renderRegistry() {
     button.className = 'case-registry-top';
     button.dataset.caseRegistryTop = '1';
     button.textContent = `사건목록 ${registry.list().length}${registry.hasUnsavedWork() ? ' · 저장 필요' : ''}`;
-    button.addEventListener('click', () => store.setRoute('home'));
+    button.disabled = store.state.status === 'PROCESSING';
+    button.addEventListener('click', () => { if(store.state.status !== 'PROCESSING') store.setRoute('home'); });
     topActions.prepend(button);
   }
 
@@ -66,15 +67,15 @@ function renderRegistry() {
   section.dataset.caseRegistry = '1';
   section.innerHTML = `
     <div class="section-head">
-      <div><div class="eyebrow">세션 사건목록</div><h2>현재 브라우저에서 ${entries.length}건</h2><p>작업 중에는 메모리에서 유지됩니다. 종료 전 사건 JSON을 로컬에 저장하세요.</p><div class="case-registry-save-note">PDF 원본과 API 키는 제외됩니다. 주소·PNU·평가금액 등 사건정보가 포함되므로 파일을 안전하게 보관하세요.</div></div>
+      <div><div class="eyebrow">세션 사건목록</div><h2>사건 관리 <span class="registry-count">${entries.length}</span></h2><p>${registry.hasUnsavedWork() ? '저장 필요 · 종료 전 사건 JSON을 저장하세요.' : '현재 탭 메모리에서만 유지됩니다.'}</p></div>
       <div class="case-registry-head-actions">
         <button type="button" class="case-registry-import" data-case-import>사건 불러오기</button>
         <button type="button" class="case-registry-import" data-case-save>사건 저장</button>
-        <button type="button" class="primary" data-case-new>새 사건</button>
+        <button type="button" class="secondary" data-case-new>새 사건</button>
         <input type="file" accept="application/json,.json" data-case-import-input hidden>
       </div>
     </div>
-    <div class="case-registry-grid">
+    <details class="registry-list" ${entries.length > 1 ? 'open' : ''}><summary>세션 사건 ${entries.length}건 보기</summary><div class="case-registry-grid">
       ${entries.map((entry) => `
         <div class="case-registry-item ${entry.active ? 'active' : ''}">
           <div><h3>${esc(entry.label)}</h3><div class="case-registry-meta">평가서 ${entry.documents} · 토지 ${entry.lands} · 검토 ${entry.review_pending}<br>${entry.active ? '현재 사건' : '세션 보관'}</div></div>
@@ -83,8 +84,8 @@ function renderRegistry() {
             <button type="button" class="case-registry-remove" data-case-remove="${esc(entry.id)}">삭제</button>
           </div>
         </div>`).join('')}
-    </div>`;
-  main.prepend(section);
+    </div></details><p class="case-registry-save-note">PDF 원본·API 키는 백업에서 제외됩니다. 주소·PNU·금액 등 사건정보가 포함되므로 안전하게 보관하세요.</p>`;
+  (main.querySelector('[data-registry-slot]') || main).append(section);
 
   if (store.state.status === 'PROCESSING') {
     section.querySelectorAll('[data-case-new],[data-case-import],[data-case-switch],[data-case-remove]').forEach((button) => { button.disabled = true; });
