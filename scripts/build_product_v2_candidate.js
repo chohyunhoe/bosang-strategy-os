@@ -38,6 +38,7 @@ const files = [
   ['browser/product-v2/public-data-adapter.js', 'public-data-adapter.js'],
   ['browser/product-v2/pdf-source.js', 'pdf-source.js'],
   ['browser/product-v2/ocr-source.js', 'ocr-source.js'],
+  ['browser/product-v2/ruled-table-ocr.js', 'ruled-table-ocr.js'],
   ['browser/parser-bundle.js', 'parser-bundle.js'],
   ['browser/vendor/pdf.min.mjs', 'vendor/pdf.min.mjs'],
   ['browser/vendor/pdf.worker.min.mjs', 'vendor/pdf.worker.min.mjs'],
@@ -47,6 +48,8 @@ const files = [
   ['browser/vendor/tesseract/core/tesseract-core-simd-lstm.wasm.js', 'vendor/tesseract/core/tesseract-core-simd-lstm.wasm.js'],
   ['browser/vendor/tesseract/tessdata/kor.traineddata.gz', 'vendor/tesseract/tessdata/kor.traineddata.gz'],
   ['browser/vendor/tesseract/tessdata/eng.traineddata.gz', 'vendor/tesseract/tessdata/eng.traineddata.gz'],
+  ['browser/vendor/tesseract/tessdata/eng_fast.traineddata.gz', 'vendor/tesseract/tessdata/eng_fast.traineddata.gz'],
+  ['browser/vendor/tesseract/tessdata/NOTICE.txt', 'vendor/tesseract/tessdata/NOTICE.txt'],
 ];
 
 fs.rmSync(out, { recursive: true, force: true });

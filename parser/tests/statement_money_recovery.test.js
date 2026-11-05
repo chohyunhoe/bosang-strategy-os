@@ -5,7 +5,8 @@ const path = require('node:path');
 
 // Exercise the actual browser module without adding a browser or OCR dependency.
 (async () => {
-  const source = fs.readFileSync(path.join(__dirname, '../../browser/product-v2/ocr-source.js'), 'utf8');
+  let source = fs.readFileSync(path.join(__dirname, '../../browser/product-v2/ocr-source.js'), 'utf8');
+  source = source.replace("'./ruled-table-ocr.js'", JSON.stringify(require('node:url').pathToFileURL(path.join(__dirname, '../../browser/product-v2/ruled-table-ocr.js')).href));
   const { recoverStatementMoney, mergeTableOcrWords, ocrWordLines, ocrPdfDocument } = await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'));
   const crop = { serial: '201', lot: '0015-0002' };
   const candidate = '201 익명시 15-2 답 답 120.000 * 1/2 180,000 10,800,000';

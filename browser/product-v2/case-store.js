@@ -255,20 +255,28 @@ export class CaseStore {
     const documentIndex=this.state.sourceDocuments.length+1;
     const appraisalId=text(parsed?.appraisals?.[0]?.appraisal_id)||`APP_${String(documentIndex).padStart(3,'0')}`;
     const documentId=`DOC_${String(documentIndex).padStart(3,'0')}`;
+    const incomingIds=[...new Set(arr(parsed.appraisals).map(row=>text(row.appraisal_id)).filter(Boolean))];
+    const multiple=incomingIds.length>1;
+    const scopedId=row=>multiple&&incomingIds.includes(text(row?.appraisal_id))?text(row.appraisal_id):appraisalId;
+    const landSources=row=>multiple?[...new Set([...arr(row.source_appraisal_ids),...arr(parsed.land_appraisal_results).filter(result=>result.land_id===row.land_id).map(result=>result.appraisal_id)].map(text).filter(id=>incomingIds.includes(id)))]:[appraisalId];
     const fileName=text(fileMeta?.name);
         // 문서 단위로 먼저 승격 여부를 본다. 한 문서가 PARSE_HOLD 여도 다른 문서가 READY 라는
     // 이유로 배치 전체를 READY 로 덮어쓰지 않는다.
     const sanity=evaluateDocumentSanity(parsed);
-    this.state.sourceDocuments.push({document_id:documentId,appraisal_id:appraisalId,file_name:fileName,file_size:Number(fileMeta?.size)||0,page_count:arr(pageModel).length,parse_status:text(parsed?.meta?.parse_status)||'TEXT_PARSED',page_model_retained:false,sanity_status:sanity.status,hold_codes:sanity.hold_codes});
-    this.state.documentSanity.push({document_id:documentId,appraisal_id:appraisalId,file_name:fileName,status:sanity.status,hold_codes:sanity.hold_codes,holds:sanity.holds});
+    this.state.sourceDocuments.push({document_id:documentId,appraisal_id:appraisalId,...(multiple?{appraisal_ids:incomingIds}:{}),file_name:fileName,file_size:Number(fileMeta?.size)||0,page_count:arr(pageModel).length,parse_status:text(parsed?.meta?.parse_status)||'TEXT_PARSED',page_model_retained:false,sanity_status:sanity.status,hold_codes:sanity.hold_codes,...(parsed.meta?.recognition_method?{recognition_report:{method:parsed.meta.recognition_method,rows:parsed.meta.recognition_rows,arithmetic_checked_rows:parsed.meta.recognition_checked_rows,unresolved:clone(arr(parsed.meta.recognition_unresolved))}}:{})});
+    for(const id of multiple?incomingIds:[appraisalId]){
+      const scopedParsed=multiple?{...parsed,appraisals:arr(parsed.appraisals).filter(row=>row.appraisal_id===id),lands:arr(parsed.lands).filter(row=>landSources(row).includes(id)),land_appraisal_results:arr(parsed.land_appraisal_results).filter(row=>row.appraisal_id===id)}:parsed;
+      const checked=multiple?evaluateDocumentSanity(scopedParsed):sanity;
+      this.state.documentSanity.push({document_id:documentId,appraisal_id:id,file_name:fileName,status:checked.status,hold_codes:checked.hold_codes,holds:checked.holds});
+    }
     this.state.batchHasHold=this.state.documentSanity.some((row)=>row.status===PARSE_HOLD_STATUS);
     const explicitPurpose=derivePurposeFromPageModel(pageModel,appraisalId,fileName);
     const incomingCaseInfo=canonicalCaseInfo(parsed.case,explicitPurpose);
     this.state.caseInfo=mergeCaseInfo(this.state.caseInfo,incomingCaseInfo);
-    const incomingAppraisals=arr(parsed.appraisals).map((row)=>appraisalWithFileNameProvenance(row,fileName,appraisalId,documentId));
+    const incomingAppraisals=arr(parsed.appraisals).map((row)=>appraisalWithFileNameProvenance(row,fileName,scopedId(row),documentId));
     this.state.appraisals.push(...incomingAppraisals);
     const appraisalCompany=text(incomingAppraisals[0]?.appraisal_company);
-    const scoped=(source)=>({...clone(source),appraisal_id:appraisalId,appraisal_company:text(source?.appraisal_company)||appraisalCompany});
+    const scoped=(source)=>({...clone(source),appraisal_id:scopedId(source),appraisal_company:text(source?.appraisal_company)||text(incomingAppraisals.find(row=>row.appraisal_id===scopedId(source))?.appraisal_company)||appraisalCompany});
 
     const landIdMap=new Map();const incomingCanonicalLands=[];
     const incomingLands=arr(parsed.lands);
@@ -284,12 +292,12 @@ export class CaseStore {
       const candidates=samePnu.length?samePnu:compatible;
       let canonical=candidates.length===1?candidates[0]:null;
       if(!canonical){
-        canonical={...clone(source),land_id:`LAND_${String(this.state.lands.length+1).padStart(3,'0')}`,source_appraisal_ids:[appraisalId],parcel_address_variants:[text(source.parcel_address)].filter(Boolean)};
+        canonical={...clone(source),land_id:`LAND_${String(this.state.lands.length+1).padStart(3,'0')}`,source_appraisal_ids:landSources(source).length?landSources(source):[appraisalId],parcel_address_variants:[text(source.parcel_address)].filter(Boolean)};
         this.state.lands.push(canonical);
       } else {
         if(!categoryKey(canonical.land_category)&&categoryKey(source.land_category)){canonical.land_category=source.land_category;canonical.land_category_origin_appraisal_id=appraisalId;}
         canonical.source_refs=mergeSourceRefs(canonical.source_refs,source.source_refs);
-        canonical.source_appraisal_ids=[...new Set([...arr(canonical.source_appraisal_ids),appraisalId])];
+        canonical.source_appraisal_ids=[...new Set([...arr(canonical.source_appraisal_ids),...(landSources(source).length?landSources(source):[appraisalId])])];
         canonical.parcel_address_variants=[...new Set([...arr(canonical.parcel_address_variants),text(source.parcel_address)].filter(Boolean))];
         // Keep explicit location evidence even when the displayed address is abbreviated.
         if(!validPnu(canonical.pnu) && validPnu(source.pnu)) canonical.pnu=text(source.pnu);
@@ -300,21 +308,24 @@ export class CaseStore {
     });
 
     const standardIdMap=new Map();const standardBySymbol=new Map();
-    arr(parsed.standard_lands).forEach((source,index)=>{const id=`STD_${appraisalId}_${String(index+1).padStart(3,'0')}`;const row={...scoped(source),standard_land_id:id};this.state.standardLands.push(row);if(source.standard_land_id)standardIdMap.set(source.standard_land_id,id);if(source.standard_land_symbol)standardBySymbol.set(String(source.standard_land_symbol),id);});
-    const remapLand=(row)=>({...scoped(row),land_id:landIdMap.get(row.land_id)||row.land_id||'',standard_land_id:standardIdMap.get(row.standard_land_id)||standardBySymbol.get(String(row.standard_land_symbol||''))||row.standard_land_id||''});
+    arr(parsed.standard_lands).forEach((source,index)=>{const id=`STD_${appraisalId}_${String(index+1).padStart(3,'0')}`;const row={...scoped(source),standard_land_id:id};this.state.standardLands.push(row);if(source.standard_land_id)standardIdMap.set(source.standard_land_id,id);if(source.standard_land_symbol)standardBySymbol.set(scopedId(source)+':'+String(source.standard_land_symbol),id);});
+    const remapLand=(row)=>({...scoped(row),land_id:landIdMap.get(row.land_id)||row.land_id||'',standard_land_id:standardIdMap.get(row.standard_land_id)||standardBySymbol.get(scopedId(row)+':'+String(row.standard_land_symbol||''))||row.standard_land_id||''});
     const withAppraisal=(row)=>scoped(row);
     const incomingResults=arr(parsed.land_appraisal_results).map(remapLand);
     this.state.appraisalResults.push(...incomingResults);
     incomingCanonicalLands.forEach((land,index)=>{
-      const linked=this.state.appraisalResults.some((row)=>text(row.appraisal_id)===appraisalId&&text(row.land_id)===text(land.land_id));
-      if(!linked)this.state.appraisalResults.push(runtimeMissingAppraisalResult(land,appraisalId,appraisalCompany,index));
+      for(const id of multiple?incomingIds:[appraisalId]){
+        if(multiple&&!arr(land.source_appraisal_ids).includes(id))continue;
+        const linked=this.state.appraisalResults.some((row)=>text(row.appraisal_id)===id&&text(row.land_id)===text(land.land_id));
+        if(!linked)this.state.appraisalResults.push(runtimeMissingAppraisalResult(land,id,text(incomingAppraisals.find(row=>row.appraisal_id===id)?.appraisal_company)||appraisalCompany,index));
+      }
     });
     this.state.appraisalTotals.push(...arr(parsed.appraisal_totals).map(withAppraisal));
     this.state.subjectFactorDetails.push(...arr(parsed.subject_to_standard_factor_comparisons).map(remapLand));
     this.state.subjectFactorTotals.push(...arr(parsed.subject_factor_total_candidates).map(remapLand));
     this.state.standardToCompCaseFactors.push(...arr(parsed.standard_to_comp_case_factor_comparisons).map(withAppraisal));
     this.state.transactionCases.push(...arr(parsed.comp_cases).map(withAppraisal));
-    this.state.otherFactors.push(...arr(parsed.other_factor_reviews).map((row)=>({...scoped(row),standard_land_id:standardIdMap.get(row.standard_land_id)||standardBySymbol.get(String(row.standard_land_symbol||''))||row.standard_land_id||''})));
+    this.state.otherFactors.push(...arr(parsed.other_factor_reviews).map((row)=>({...scoped(row),standard_land_id:standardIdMap.get(row.standard_land_id)||standardBySymbol.get(scopedId(row)+':'+String(row.standard_land_symbol||''))||row.standard_land_id||''})));
     this.state.comparisonSummaryByLand.push(...arr(parsed.comparison_summary_by_land).map(remapLand));
     this.state.obstacleRows.push(...arr(parsed.obstacle_appraisal_results_sample).map(withAppraisal));
     this.state.obstacleSummaries.push(...arr(parsed.obstacle_summary_by_appraisal).map(withAppraisal));
@@ -328,7 +339,7 @@ export class CaseStore {
   }
 
   rebuildIssues(){const before=issueSignature(this.state.issueCandidates);const next=buildIssueCandidates(this.state);this.state.issueCandidates=next;if(before!==issueSignature(next)&&this.state.reviewDecisions['GROUP:issueCandidates']?.status==='CONFIRMED')delete this.state.reviewDecisions['GROUP:issueCandidates'];}
-  rebuildReviewQueue(){const decisions=this.state.reviewDecisions;const queue=[];if(hasCaseInfo(this.state.caseInfo)){const itemKey='GROUP:caseInfo';queue.push({review_id:itemKey,type:'GROUP',collection:'caseInfo',label:'사건 기본정보',route:'case',route_label:'사건',description:'사업명·사건명·평가목적·기준시점을 원문과 대조합니다.',row_count:1,exception_count:needsExceptionReview(this.state.caseInfo)?1:0,confirmable:true,status:decisions[itemKey]?.status||'NEEDS_REVIEW'});}COLLECTION_META.forEach(([key,label,route,routeLabel,description])=>{const rows=arr(this.state[key]);if(!rows.length)return;const itemKey=`GROUP:${key}`;const incompleteResults=key==='appraisalResults'?rows.filter((row)=>!appraisalResultComplete(row)):[];const invalidStandardLocations=key==='standardLands'?rows.filter(standardLandLocationReviewRequired):[];const confirmable=incompleteResults.length===0&&invalidStandardLocations.length===0;const missingLabels=incompleteResults.slice(0,3).map((row)=>text(row.parcel_address)||text(row.land_id)).filter(Boolean);const invalidLocationLabels=invalidStandardLocations.slice(0,3).map((row)=>text(row.standard_land_symbol)||text(row.standard_land_id)||'표준지').filter(Boolean);let blockedReason='';if(incompleteResults.length)blockedReason=`평가결과 누락 ${incompleteResults.length}필지${missingLabels.length?` (${missingLabels.join(', ')})`:''}. 적용단가와 평가금액을 원문에서 입력해야 완료할 수 있습니다.`;else if(invalidStandardLocations.length)blockedReason=`비교표준지 위치 확인 필요 ${invalidStandardLocations.length}건${invalidLocationLabels.length?` (${invalidLocationLabels.join(', ')})`:''}. 원문·수정에서 실제 소재지 또는 검증된 19자리 PNU를 입력해야 완료할 수 있습니다.`;queue.push({review_id:itemKey,type:'GROUP',collection:key,label,route,route_label:routeLabel,description:blockedReason||description,blocked_reason:blockedReason,confirmable,row_count:rows.length,exception_count:rows.filter(needsExceptionReview).length+invalidStandardLocations.length,status:confirmable?(decisions[itemKey]?.status||'NEEDS_REVIEW'):'NEEDS_REVIEW'});});this.state.obstacleSummaries.forEach((summary,index)=>{if(summary.total_crosscheck_status!=='MISMATCH')return;const itemKey=`EXCEPTION:obstacleSummary:${index}`;queue.unshift({review_id:itemKey,type:'EXCEPTION',collection:'obstacleSummaries',label:'지장물 합계 불일치',route:'obstacles',route_label:'지장물',description:'원문 기재 합계와 추출 행 합계가 다릅니다.',row_count:1,exception_count:1,confirmable:true,status:decisions[itemKey]?.status||'NEEDS_REVIEW'});});this.state.reviewQueue=queue;}
+  rebuildReviewQueue(){const decisions=this.state.reviewDecisions;const queue=[];if(hasCaseInfo(this.state.caseInfo)){const itemKey='GROUP:caseInfo';queue.push({review_id:itemKey,type:'GROUP',collection:'caseInfo',label:'사건 기본정보',route:'case',route_label:'사건',description:'사업명·사건명·평가목적·기준시점을 원문과 대조합니다.',row_count:1,exception_count:needsExceptionReview(this.state.caseInfo)?1:0,confirmable:true,status:decisions[itemKey]?.status||'NEEDS_REVIEW'});}COLLECTION_META.forEach(([key,label,route,routeLabel,description])=>{const rows=arr(this.state[key]);if(!rows.length)return;const itemKey=`GROUP:${key}`;const incompleteResults=key==='appraisalResults'?rows.filter((row)=>!appraisalResultComplete(row)):[];const invalidStandardLocations=key==='standardLands'?rows.filter(standardLandLocationReviewRequired):[];const unresolvedGridRows=key==='appraisalResults'?this.state.sourceDocuments.reduce((sum,doc)=>sum+arr(doc.recognition_report?.unresolved).length,0):0;const confirmable=incompleteResults.length===0&&invalidStandardLocations.length===0&&unresolvedGridRows===0;const missingLabels=incompleteResults.slice(0,3).map((row)=>text(row.parcel_address)||text(row.land_id)).filter(Boolean);const invalidLocationLabels=invalidStandardLocations.slice(0,3).map((row)=>text(row.standard_land_symbol)||text(row.standard_land_id)||'표준지').filter(Boolean);let blockedReason='';if(unresolvedGridRows)blockedReason=`자동 표 인식 미해결 ${unresolvedGridRows}행. 원본 교체·재추출로 해결해야 완료할 수 있습니다.`;else if(incompleteResults.length)blockedReason=`평가결과 누락 ${incompleteResults.length}필지${missingLabels.length?` (${missingLabels.join(', ')})`:''}. 적용단가와 평가금액을 원문에서 입력해야 완료할 수 있습니다.`;else if(invalidStandardLocations.length)blockedReason=`비교표준지 위치 확인 필요 ${invalidStandardLocations.length}건${invalidLocationLabels.length?` (${invalidLocationLabels.join(', ')})`:''}. 원문·수정에서 실제 소재지 또는 검증된 19자리 PNU를 입력해야 완료할 수 있습니다.`;queue.push({review_id:itemKey,type:'GROUP',collection:key,label,route,route_label:routeLabel,description:blockedReason||description,blocked_reason:blockedReason,confirmable,row_count:rows.length,exception_count:rows.filter(needsExceptionReview).length+invalidStandardLocations.length,status:confirmable?(decisions[itemKey]?.status||'NEEDS_REVIEW'):'NEEDS_REVIEW'});});this.state.obstacleSummaries.forEach((summary,index)=>{if(summary.total_crosscheck_status!=='MISMATCH')return;const itemKey=`EXCEPTION:obstacleSummary:${index}`;queue.unshift({review_id:itemKey,type:'EXCEPTION',collection:'obstacleSummaries',label:'지장물 합계 불일치',route:'obstacles',route_label:'지장물',description:'원문 기재 합계와 추출 행 합계가 다릅니다.',row_count:1,exception_count:1,confirmable:true,status:decisions[itemKey]?.status||'NEEDS_REVIEW'});});this.state.reviewQueue=queue;}
   decide(reviewId,status,note=''){const item=this.state.reviewQueue.find((row)=>row.review_id===reviewId);if(status==='CONFIRMED'&&item?.confirmable===false){return{ok:false,reason:item.blocked_reason||'필수값 누락으로 검수완료할 수 없습니다.'};}this.state.reviewDecisions[reviewId]={status,note,reviewed_at:new Date().toISOString()};this.rebuildReviewQueue();this.emit();return{ok:true};}
   updateCaseInfo(changes){this.state.caseInfo={...this.state.caseInfo,...clone(changes),review_status_code:'NEEDS_REVIEW',auto_confirmed:false,reviewed_at:null};delete this.state.reviewDecisions['GROUP:caseInfo'];this.rebuildIssues();this.rebuildReviewQueue();this.emit();return true;}
   updateRecord(collection,matcher,changes){
@@ -359,8 +370,8 @@ export class CaseStore {
     }
     document.status = document.hold_codes.length ? PARSE_HOLD_STATUS : 'READY';
     document.manual_company_correction = true;
-    for (const source of this.state.sourceDocuments.filter((row) => row.appraisal_id === appraisalId)) {
-      source.sanity_status = document.status;source.hold_codes = [...document.hold_codes];
+    for (const source of this.state.sourceDocuments.filter((row) => row.appraisal_id === appraisalId || arr(row.appraisal_ids).includes(appraisalId))) {
+      const related=this.state.documentSanity.filter(row=>row.document_id===source.document_id);source.sanity_status=related.some(row=>row.status===PARSE_HOLD_STATUS)?PARSE_HOLD_STATUS:'READY';source.hold_codes=[...new Set(related.flatMap(row=>arr(row.hold_codes)))];
     }
     for (const key of ['standardLands','transactionCases','appraisalResults','subjectFactorDetails','subjectFactorTotals','standardToCompCaseFactors','otherFactors','obstacleRows','obstacleSummaries']) {
       for (const row of this.state[key].filter((row) => row.appraisal_id === appraisalId)) row.appraisal_company = company;

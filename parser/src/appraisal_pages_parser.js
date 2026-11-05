@@ -2,6 +2,7 @@
 
 const { normalizeGeneratedCase } = require('./schema_adapter');
 const REVIEW_STATUS = require('./review_status');
+const { applyRuledSummary } = require('./ruled_summary_adapter');
 const { normalizePages } = require('./text_normalizer');
 const { segmentLines } = require('./line_table_segmenter');
 const { sourceRefFromLine } = require('./source_refs');
@@ -125,7 +126,7 @@ function parseAppraisalPages(pages, options = {}) {
   const obstacleSummary = obstacle.summary.map(forceLowConfidenceWithoutSourceRefs);
   const appraisalTotals = extractAppraisalTotals(lines, appraisal, context).map(forceLowConfidenceWithoutSourceRefs);
 
-  return normalizeGeneratedCase({
+  const parsed = normalizeGeneratedCase({
     meta: {
       parser_stage: 'parser_layer_1_pages',
       coverage_version: 'product_v2/0.1',
@@ -151,6 +152,7 @@ function parseAppraisalPages(pages, options = {}) {
     obstacle_appraisal_results_sample: obstacleRows,
     appraisal_totals: appraisalTotals,
   });
+  return applyRuledSummary(parsed,pages,context);
 }
 
 module.exports = {
