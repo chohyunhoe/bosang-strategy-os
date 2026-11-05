@@ -162,6 +162,20 @@ test('조서 금액 복구는 같은 연번·지번·면적의 OCR 수치와 명
   expect(result.crops).toHaveLength(1);expect(result.crops[0].y).toBeLessThan(500);expect(result.crops[0].serial).toBe('201');
 });
 
+test('조서 복구는 큰 면적과 미식별 금액·명시 지분 충돌을 보존한다',async({page})=>{
+  await page.goto('/');
+  const rows=await page.evaluate(async()=>{
+    const {recoverStatementMoney}=await import('/ocr-source.js');
+    const crop={serial:'201',lot:'15-2'};
+    return [
+      ['201 AEA 15-2 답 답 2,000 * 12 180000 OOOOO','201 익명시 15-2 답 답 2,000 * 1/2 180,000 180,000,000'],
+      ['201 AEA 15-2 답 답 120.000 * 1/4 180000 5400000','201 익명시 15-2 답 답 120.000 * 1/2 180,000 10,800,000'],
+      ['201 AEA 15-2 답 답 120.000 * 12 180000 1800000 9999','201 익명시 15-2 답 답 120.000 * 1/2 180,000 10,800,000'],
+    ].map(([original,candidate])=>({original,recovered:recoverStatementMoney(original,candidate,crop)}));
+  });
+  for(const row of rows)expect(row.recovered).toBe(row.original);
+});
+
 test('표지 법인명은 확대 OCR의 완전한 기재를 우선하며 누락 수치는 0으로 표시하지 않는다',async({page})=>{
   await page.goto('/');
   const result=await page.evaluate(async()=>{

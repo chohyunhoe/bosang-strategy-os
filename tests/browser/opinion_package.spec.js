@@ -10,7 +10,7 @@
 
 const fs = require('node:fs');
 const { test, expect } = require('@playwright/test');
-const {openFullView}=require('./full_view_helper');
+const { enterLegacyFullScreen } = require('./legacy_navigation');
 
 function collectErrors(page) {
   const errors = [];
@@ -108,7 +108,7 @@ function requireFormat(formats, format) {
 
 async function loadCase(page, caseData) {
   await page.goto('/');
-  await openFullView(page);
+  await enterLegacyFullScreen(page);
   await page.waitForFunction(() => typeof window.generateOpinionPackageFile === 'function');
   await page.evaluate((payload) => {
     data = payload;

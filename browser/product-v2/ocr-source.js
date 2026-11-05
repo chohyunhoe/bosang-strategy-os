@@ -129,24 +129,38 @@ export function recoverStatementMoney(original, candidate, crop) {
   const matches=line=>new RegExp('^\\s*'+crop.serial+'(?:\\s|$)').test(line)&&line.split(/\s+/).some(token=>/^(?:산)?\d{1,5}-\d{1,5}$/.test(token)&&lotKey(token)===lotKey(crop.lot));
   const candidateLine=candidate.split(/\r?\n/).find(matches);
   if(!candidateLine)return original;
-  const share=candidateLine.match(/(\d[\d,]*(?:\.\d+)?)\s*[*×]\s*(\d+)\s*\/\s*(\d+)/);
-  const prices=[...candidateLine.matchAll(/(?:^|\s)(\d{1,3}(?:,\d{3})+)(?=\s|$)/g)].map(match=>Number(match[1].replace(/,/g,''))).filter(value=>value>=1000).slice(-2);
-  if(!share||prices.length!==2)return original;
-  const area=Number(share[1].replace(/,/g,'')),numerator=Number(share[2]),denominator=Number(share[3]);
-  if(!(area>0&&numerator>0&&denominator>=numerator)||Math.abs(area*numerator/denominator*prices[0]-prices[1])>1)return original;
+  const number='(?:\\d{1,3}(?:,\\d{3})+|\\d+)(?:\\.\\d+)?';
+  const moneyNumber='(?:\\d{1,3}(?:,\\d{3})+|\\d+)';
+  const readRow=line=>{
+    const tokens=[...line.matchAll(/\S+/g)];
+    const lotIndex=tokens.findIndex(token=>/^(?:산)?\d{1,5}-\d{1,5}$/.test(token[0])&&lotKey(token[0])===lotKey(crop.lot));
+    const areaToken=tokens.slice(lotIndex+1).find(token=>new RegExp('^'+number+'$').test(token[0]));
+    if(lotIndex<0||!areaToken)return null;
+    // Bind the two money cells to the end of the area/share expression. Never
+    // select them by magnitude: a large area is not a monetary position.
+    const layout=line.slice(areaToken.index).match(new RegExp('^('+number+')\\s*[*×]\\s*(\\d+)(?:\\s*/\\s*(\\d+))?\\s+('+moneyNumber+')\\s+('+moneyNumber+')\\s*$'));
+    if(!layout)return null;
+    const prices=layout.slice(4,6).map(value=>Number(value.replace(/,/g,'')));
+    if(prices.some(value=>!Number.isSafeInteger(value)||value<1000))return null;
+    return{area:Number(layout[1].replace(/,/g,'')),numerator:Number(layout[2]),denominator:layout[3]===undefined?null:Number(layout[3]),prices,areaToken};
+  };
+  const recovered=readRow(candidateLine);
+  if(!recovered||recovered.denominator===null)return original;
+  const {area,numerator,denominator,prices}=recovered;
+  if(!Number.isFinite(area)||!Number.isSafeInteger(numerator)||!Number.isSafeInteger(denominator)||!(area>0&&numerator>0&&denominator>=numerator)||Math.abs(area*numerator/denominator*prices[0]-prices[1])>1)return original;
   return original.split(/\r?\n/).map(line=>{
     if(!matches(line))return line;
-    const existingPrices=[...line.matchAll(/(?:^|\s)(\d{1,3}(?:,\d{3})+)(?=\s|$)/g)];
-    if(existingPrices.length>=2&&/[*×]\s*\d+\s*\/\s*\d+/.test(line))return line;
-    const tokens=[...line.matchAll(/\S+/g)];
-    const lotIndex=tokens.findIndex(match=>/^(?:산)?\d{1,5}-\d{1,5}$/.test(match[0]));
-    const money=tokens.slice(lotIndex+1).filter(match=>/^\d[\d,.]*$/.test(match[0])&&Number(match[0].replace(/[,.]/g,''))>=1000).slice(-2);
-    if(money.length!==2)return line;
-    // An independent area match prevents a different row's values crossing over.
-    const areaToken=tokens[lotIndex+1]&&tokens.slice(lotIndex+1).find(match=>/^\d[\d,.]*$/.test(match[0]));
-    if(!areaToken||Number(areaToken[0].replace(/,/g,''))!==area)return line;
-    for(let i=1;i>=0;i--){const token=money[i];line=line.slice(0,token.index)+prices[i].toLocaleString('en-US')+line.slice(token.index+token[0].length);}
-    return line.replace(/[*×]\s*\d+\s*(?:\/\s*\d+)?/, '* '+numerator+'/'+denominator+' ');
+    // A source fraction is independent evidence, even when prices lack commas.
+    // Do not overwrite conflicting shares or already readable explicit rows.
+    const explicit=line.match(/[*×]\s*(\d+)\s*\/\s*(\d+)(?=\s|$)/);
+    if(explicit&&Number(explicit[1])*denominator!==numerator*Number(explicit[2]))return line;
+    const existing=readRow(line);
+    if(!existing||existing.area!==area||existing.denominator!==null)return line;
+    // An explicit integer multiplier can be a valid whole share or quantity.
+    // Preserve its independently consistent prices rather than invent a fraction.
+    if(Number.isSafeInteger(existing.numerator)&&existing.numerator>0&&Math.abs(existing.area*existing.numerator*existing.prices[0]-existing.prices[1])<=1)return line;
+    const areaEnd=existing.areaToken.index+existing.areaToken[0].length;
+    return line.slice(0,areaEnd)+' * '+numerator+'/'+denominator+' '+prices.map(value=>value.toLocaleString('en-US')).join(' ');
   }).join('\n');
 }
 

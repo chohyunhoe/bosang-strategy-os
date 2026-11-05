@@ -5,12 +5,12 @@
   const ROOT_ID = 'bsoMobileShellV3';
   const STYLE_ID = 'bso-mobile-shell-v3-style';
   const NAV = [
-    ['home','홈',/홈.?실행보드/],
-    ['case','사건',/사건 워크스페이스/],
-    ['data','자료',/자료.?데이터/],
-    ['analysis','분석',/^\s*4\.?\s*분석|^\s*분석\s*$/],
-    ['map','지도',/지도.?현장/],
-    ['output','결과물',/결과물/],
+    ['home','홈',/홈.?실행보드/,'overview'],
+    ['case','사건',/사건 워크스페이스/,'uploadHub'],
+    ['data','자료',/자료.?데이터/,'lands'],
+    ['analysis','분석',/^\s*4\.?\s*분석|^\s*분석\s*$/,'landCompare'],
+    ['map','지도',/지도.?현장/,'workflowLogic'],
+    ['output','결과물',/결과물/,'outputCenter'],
   ];
   const state = { mode:'home', items:[], index:0, legacy:false, timer:null };
   const clean = (v) => String(v == null ? '' : v).replace(/\s+/g,' ').trim();
@@ -105,7 +105,7 @@
     a.hidden=false; a.innerHTML='<button class="ok" data-action="confirm">확인</button><button data-action="edit">수정</button><button data-action="hold">보류</button><button data-action="next">다음</button>';
   }
   function transfer(input){ const orig=Array.from(document.querySelectorAll('input[type=file]')).find(x=>!x.closest(`#${ROOT_ID}`)); if(!orig||!input.files.length) return toast('파일 입력을 찾지 못했습니다.'); try{ const dt=new DataTransfer(); Array.from(input.files).forEach(f=>dt.items.add(f)); orig.files=dt.files; orig.dispatchEvent(new Event('change',{bubbles:true})); setTimeout(renderHome,500); }catch(e){ toast('자료 탭에서 파일을 등록해주세요.'); } }
-  function findNav(key){ const def=NAV.find(n=>n[0]===key); if(!def) return null; return buttons().find(b=>!b.closest(`#${ROOT_ID}`)&&def[2].test(clean(b.textContent))); }
+  function findNav(key){ const def=NAV.find(n=>n[0]===key); if(!def) return null; return document.querySelector(`nav.axis-nav button[data-section="${def[3]}"]`)||buttons().find(b=>!b.closest(`#${ROOT_ID}`)&&def[2].test(clean(b.textContent))); }
   function openLegacy(key){ const b=findNav(key)||findNav('home'); if(!b) return toast('해당 PC 기능을 찾지 못했습니다.'); state.legacy=true; document.body.classList.add('bso3-legacy'); b.click(); }
   function closeLegacy(){ state.legacy=false; document.body.classList.remove('bso3-legacy'); renderHome(); }
   function act(kind){
@@ -122,7 +122,7 @@
   function click(e){ const b=e.target.closest('button'); if(!b) return; if(b.dataset.nav){ if(b.dataset.nav==='home') renderHome(); else openLegacy(b.dataset.nav); return; } switch(b.dataset.action){ case 'start-review': state.index=0; renderReview(); break; case 'legacy-home': openLegacy('home'); break; case 'legacy-case': openLegacy('case'); break; case 'confirm': act('confirm'); break; case 'edit': act('edit'); break; case 'hold': act('hold'); break; case 'next': state.index=(state.index+1)%state.items.length; renderReview(); break; } }
   function interceptLegacyReview(){
     document.addEventListener('click',e=>{
-      if(!isMobile()||document.body.classList.contains('bso3-legacy')) return;
+      if(!isMobile()||state.legacy) return;
       const b=e.target.closest('button');
       if(!b||b.closest(`#${ROOT_ID}`)) return;
       if(/전체\s*검수\s*시작/.test(clean(b.textContent))){

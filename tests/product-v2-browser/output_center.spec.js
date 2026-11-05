@@ -93,8 +93,13 @@ test('수동 확인 결정만 output snapshot에 CONFIRMED로 승계되고 원�
 test('개별요인 canonical 그룹 확인 시 세부행과 누계가 함께 CONFIRMED 된다', async ({ page }) => {
   await page.goto('/');
   const state = v2State();
-  state.reviewDecisions['GROUP:subjectFactorTotals'] = {status:'CONFIRMED',reviewed_at:'2026-08-22T05:00:00.000Z'};
-  const out = await snapshot(page, state);
+  const out = await page.evaluate(async (runtimeState) => {
+    const {CaseStore} = await import('/case-store.js');
+    const {caseSnapshotForOutput} = await import('/output-adapter.js');
+    const store = new CaseStore();store.restoreSnapshot(runtimeState);
+    store.decide('GROUP:subjectFactorTotals','CONFIRMED');
+    return caseSnapshotForOutput(store.state);
+  }, state);
   expect(out.subject_to_standard_factor_comparisons[0].review_status_code).toBe('CONFIRMED');
   expect(out.subject_factor_total_candidates[0].review_status_code).toBe('CONFIRMED');
 });

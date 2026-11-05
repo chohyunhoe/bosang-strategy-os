@@ -23,6 +23,12 @@ const OUTPUT_COLLECTION_GROUPS = Object.freeze({
 
 function manualDecision(state, collection) {
   const decision = state?.reviewDecisions?.[`GROUP:${collection}`] || null;
+  const item = asArray(state?.reviewQueue).find(row=>row.review_id===`GROUP:${collection}`);
+  const rowCount = collection === 'caseInfo' ? 1 : asArray(state?.[collection]).length;
+  // A detached or stale decision must not turn newly added/blocked rows into
+  // manually reviewed output. The canonical queue is the current review scope.
+  if (!item || item.status !== 'CONFIRMED' || item.confirmable === false) return null;
+  if (item.row_count !== undefined && item.row_count !== rowCount) return null;
   return decision && decision.status === 'CONFIRMED' ? decision : null;
 }
 
@@ -71,7 +77,7 @@ function reviewedIssues(state) {
 
 export function caseSnapshotForOutput(state) {
   const queue = asArray(state?.reviewQueue);
-  const fullyReviewed = state?.batchHasHold !== true && !['PARSE_HOLD','PROCESSING','ERROR'].includes(state?.status) && queue.length > 0 && queue.every((item) => item.status === 'CONFIRMED');
+  const fullyReviewed = state?.batchHasHold !== true && !['PARSE_HOLD','PROCESSING','ERROR'].includes(state?.status) && queue.length > 0 && queue.every((item) => item.status === 'CONFIRMED' && item.confirmable !== false && (!item.review_id?.startsWith('GROUP:') || manualDecision(state,item.review_id.slice(6))));
   return {
     meta: {
       product_runtime: 'product_v2.1',
@@ -165,10 +171,12 @@ export async function generateNumericTable(state, formats = ['xlsx', 'csv']) {
 }
 
 export async function generateOpinionPackage(state, mapPngBase64 = '') {
-  const bridgeMap = globalThis.BSOProductV2?.mapBridge?.state?.result?.preview_png_base64 || '';
-  let mapItems=[];
-  if(!mapPngBase64&&typeof globalThis.BSOProductV2?.mapBridge?.reportPngItems==='function')mapItems=await globalThis.BSOProductV2.mapBridge.reportPngItems();
-  const result = await post('opinion_package', { case: caseSnapshotForOutput(state), map_png_base64: mapPngBase64 || bridgeMap, map_png_items:mapItems });
+  const snapshot = caseSnapshotForOutput(state);
+  const bridge = globalThis.BSOProductV2?.mapBridge;
+  const maps = !mapPngBase64 && typeof bridge?.reportMapsForState === 'function'
+    ? await bridge.reportMapsForState(state)
+    : { map_png_base64:mapPngBase64, map_png_items:[] };
+  const result = await post('opinion_package', { case:snapshot, ...maps });
   downloadBase64(result.file_name, result.content_type, result.docx_base64);
   return result;
 }

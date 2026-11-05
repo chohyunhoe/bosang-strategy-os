@@ -17,6 +17,30 @@ const roleLabel = (role) => ({TARGET:'편입토지',STANDARD:'비교표준지',C
 export function installMapBridgeUi(store) {
   const local = { probe:null, probing:false, result:null, loading:false, error:null };
   const api = { loading:false, result:null, error:null, progress:'', keyDraft:'', basemap:'PHOTO' };
+  // Bind generated maps to both the current case object and its map inputs.
+  // These values stay in this tab; no keys, API responses or fingerprints are persisted.
+  const inputKeys = ['caseInfo','lands','standardLands','transactionCases','appraisalResults','subjectFactorDetails','subjectFactorTotals','standardToCompCaseFactors','otherFactors','comparisonSummaryByLand','publicLandCharacteristics','documentSanity','batchHasHold'];
+  const inputSignature = () => JSON.stringify([store.state.status === 'PROCESSING', ...inputKeys.map((key) => store.state[key])]);
+  let inputOwner = store.state;
+  let signature = inputSignature();
+  let revision = 0;
+  let localBuild = 0;
+  let apiBuild = 0;
+
+  function syncInputs() {
+    const next = inputSignature();
+    if (inputOwner === store.state && signature === next) return;
+    // A restored case may bring its own saved preview. Bind that preview to the
+    // restored inputs, then invalidate it on later edits just like an imported one.
+    const clearContext = inputOwner === store.state && Boolean(store.state.mapContext);
+    inputOwner = store.state; signature = next; revision += 1;
+    localBuild += 1; apiBuild += 1;
+    local.result = null; local.loading = false; local.error = null;
+    api.result = null; api.loading = false; api.error = null; api.progress = '';
+    if (clearContext) store.setMapContext(null);
+  }
+  function current(token) { syncInputs(); return token === revision; }
+  function staleMapError() { return Object.assign(new Error('사건 또는 지도 입력이 바뀌었습니다. 현재 사건에서 지도를 다시 생성하세요.'), { code:'MAP_INPUT_CHANGED' }); }
 
   function ensureStyle() {
     if (document.getElementById('bso-v2-map-bridge-style')) return;
@@ -37,8 +61,11 @@ export function installMapBridgeUi(store) {
   }
 
   async function buildPrecision() {
+    syncInputs();
     if (local.loading) return;
     if (store.state.status==='PROCESSING') { local.error='PDF_BATCH_PROCESSING';recordDiagnosticEvent('MAP_PRECISION_BUILD_FAILED',{error_code:'PDF_BATCH_PROCESSING'});render();return; }
+    const token = revision; const request = ++localBuild;
+    const active = () => current(token) && request === localBuild;
     local.loading = true; local.error = null;recordDiagnosticEvent('MAP_PRECISION_BUILD_STARTED',{source:'LOCAL_BRIDGE'});render();
     try {
       // 승격 게이트에 걸린 문서의 값은 지도 입력에서 제외하고, 남은 값만으로
@@ -49,17 +76,21 @@ export function installMapBridgeUi(store) {
         error.code = eligibility.reason;
         throw error;
       }
-      local.result = await buildLocalMap(store.mapInputState());
+      const result = await buildLocalMap(JSON.parse(JSON.stringify(store.mapInputState())));
+      if (!active()) return;
+      local.result = result;
       if (local.result.map_preview) store.setMapContext(local.result.map_preview);
     } catch (error) {
+      if (!active()) return;
       local.error = `${error.code || 'MAP_BUILD_FAILED'}${error.details?.length ? ` · ${error.details.join(', ')}` : ''}`;
       recordDiagnosticEvent('MAP_PRECISION_BUILD_FAILED',{error_code:diagnosticErrorCode(error,'MAP_BUILD_FAILED')});
     } finally {
-      local.loading = false;if(local.result)recordDiagnosticEvent('MAP_PRECISION_BUILD_COMPLETED',{success:true});render();
+      if (active()) { local.loading = false;if(local.result)recordDiagnosticEvent('MAP_PRECISION_BUILD_COMPLETED',{success:true});render(); }
     }
   }
 
   async function buildApi(triggerSource='UNKNOWN') {
+    syncInputs();
     if (api.loading) return;
     if (store.state.status==='PROCESSING') { api.error='PDF_BATCH_PROCESSING';recordDiagnosticEvent('VWORLD_MAP_BUILD_BLOCKED',{reason_code:'PDF_BATCH_PROCESSING'});render();return; }
     if (!hasSessionVworldKey()) { api.error = 'VWORLD_KEY_REQUIRED';recordDiagnosticEvent('VWORLD_MAP_BUILD_BLOCKED',{reason_code:'VWORLD_KEY_REQUIRED'});render(); return; }
@@ -71,23 +102,29 @@ export function installMapBridgeUi(store) {
       recordDiagnosticEvent('VWORLD_MAP_BUILD_BLOCKED',{reason_code:eligibility.reason,excluded_appraisal_ids:eligibility.excluded_appraisal_ids});
       render(); return;
     }
-    const mapInput = store.mapInputState();
+    const token = revision; const request = ++apiBuild;
+    const active = () => current(token) && request === apiBuild;
+    const mapInput = JSON.parse(JSON.stringify(store.mapInputState()));
     const started=performance.now();api.loading = true; api.error = null; api.progress = 'PNU exact-one 지적형상 자동 수집 중…';recordDiagnosticEvent('VWORLD_MAP_BUILD_STARTED',{source:triggerSource,basemap:api.basemap,land_count:mapInput.lands.length,standard_count:mapInput.standardLands.length,case_count:mapInput.transactionCases.length,excluded_appraisal_ids:eligibility.excluded_appraisal_ids,map_scope:eligibility.reason});render();
     let completed=false;try {
-      api.result = await buildQuickMaps(mapInput, ({index,total,label}) => {
+      const result = await buildQuickMaps(mapInput, ({index,total,label}) => {
+        if (!active()) return;
         api.progress = `${index}/${total} · ${label}`;
         const node = document.querySelector('[data-vworld-api-progress]'); if (node) node.textContent = api.progress;
       }, { basemap:api.basemap });
+      if (!active()) return;
+      api.result = result;
       api.progress = `완료 ${api.result.maps.length}건 · exact-one 폴리곤 ${api.result.exact_one_count}건 · 점 대체 ${api.result.point_count}건 · 미완료 ${api.result.failures.length}건`;
       completed=true;
       recordDiagnosticEvent('VWORLD_MAP_BUILD_COMPLETED',{elapsed_ms:Math.round(performance.now()-started),basemap:api.basemap,exact_one_count:api.result.exact_one_count,point_count:api.result.point_count,failure_count:api.result.failures.length,sheet_count:api.result.render_previews?.length||0,subject_standard_count:api.result.comparison_counts?.subject_standard||0,standard_case_count:api.result.comparison_counts?.standard_case||0});
       const failureCodes=new Map();for(const row of api.result.failures||[]){const code=String(row?.error_code||'VWORLD_ITEM_FAILED');const group=failureCodes.get(code)||[];group.push(String(row?.label||''));failureCodes.set(code,group);}for(const [error_code,item_refs] of failureCodes)recordDiagnosticEvent('VWORLD_ITEM_FAILURE_SUMMARY',{error_code,count:item_refs.length,item_refs});
       const rejectionCodes=new Map();for(const row of api.result.match_rejections||[]){const code=String(row?.reason||'MAP_MATCH_REJECTED');const group=rejectionCodes.get(code)||{count:0,item_refs:[]};group.count+=1;if(row?.item_ref)group.item_refs.push(String(row.item_ref));rejectionCodes.set(code,group);}for(const [reason_code,group] of rejectionCodes)recordDiagnosticEvent('MAP_MATCH_REJECTION_SUMMARY',{reason_code,count:group.count,item_refs:[...new Set(group.item_refs)]});
     } catch (error) {
+      if (!active()) return;
       api.error = `${error?.code || 'VWORLD_MAP_FAILED'}${error?.details?.length ? ` · ${error.details.join(', ')}` : ''}`;
       recordDiagnosticEvent('VWORLD_MAP_BUILD_FAILED',{elapsed_ms:Math.round(performance.now()-started),error_code:diagnosticErrorCode(error,'VWORLD_MAP_FAILED')});
     } finally {
-      api.loading = false;if(completed&&api.result?.map_preview)store.setMapContext(api.result.map_preview);else render();
+      if (active()) { api.loading = false;if(completed&&api.result?.map_preview)store.setMapContext(api.result.map_preview);else render(); }
     }
   }
 
@@ -135,13 +172,25 @@ export function installMapBridgeUi(store) {
   }
 
   async function reportPngItems() {
+    syncInputs();
+    const token = revision; const result = api.result;
     const previews=api.result?.render_previews||[];
     const items=[];
     for(let index=0;index<previews.length&&index<12;index+=1){
       const preview=previews[index];const rendered=await renderMapPreviewPng(preview);
+      if (!current(token) || result !== api.result) throw staleMapError();
       items.push({title:String(preview?.title||`지도 ${index+1}`),map_scope:String(preview?.map_scope||'OVERVIEW'),comparison_index:Number(preview?.comparison_index)||null,png_base64:rendered.png_base64,background_included:Boolean(rendered.background_included)});
     }
     return items;
+  }
+
+  async function reportMapsForState(state) {
+    syncInputs();
+    if (state !== store.state) throw staleMapError();
+    const token = revision; const result = local.result;
+    const items = await reportPngItems();
+    if (!current(token) || state !== store.state || result !== local.result) throw staleMapError();
+    return { map_png_base64:result?.preview_png_base64 || '', map_png_items:items };
   }
 
   function renderPrecisionPanel() {
@@ -157,6 +206,7 @@ export function installMapBridgeUi(store) {
   }
 
   function render() {
+    syncInputs();
     ensureStyle();
     const liveKeyInput = document.querySelector('[data-vworld-api-key]');
     if (liveKeyInput?.value) api.keyDraft = liveKeyInput.value;
@@ -200,7 +250,7 @@ export function installMapBridgeUi(store) {
         const progressNode=document.querySelector('[data-vworld-api-progress]');if(progressNode)progressNode.textContent=api.progress;
       } catch (error) { api.error=error?.code||error?.message||'MAP_PNG_EXPORT_FAILED';recordDiagnosticEvent('MAP_PNG_EXPORT_FAILED',{error_code:diagnosticErrorCode(error,'MAP_PNG_EXPORT_FAILED')});render(); }
     }));
-    document.querySelector('[data-vworld-api-clear]')?.addEventListener('click', () => { clearSessionVworldKey();recordDiagnosticEvent('VWORLD_KEY_CLEARED',{source:'USER_ACTION'});api.keyDraft=''; api.result=null; api.error=null; api.progress=''; render(); });
+    document.querySelector('[data-vworld-api-clear]')?.addEventListener('click', () => { clearSessionVworldKey();apiBuild+=1;api.loading=false;recordDiagnosticEvent('VWORLD_KEY_CLEARED',{source:'USER_ACTION'});api.keyDraft=''; api.result=null; api.error=null; api.progress=''; render(); });
     document.querySelector('[data-map-bridge-probe]')?.addEventListener('click', probe);
     document.querySelector('[data-map-bridge-build]')?.addEventListener('click', buildPrecision);
     document.querySelector('[data-map-bridge-pdf]')?.addEventListener('click', () => downloadMapPdf(local.result.map_pdf_base64, 'bso-subject-vs-standard-map.pdf'));
@@ -209,5 +259,5 @@ export function installMapBridgeUi(store) {
   store.subscribe(render);
   // state는 기존 로컬 QGIS 브리지 공개 계약을 유지한다.
   // API 전용 상태는 별도 apiState로 노출해 기존 소비자와 새 보고서 지도를 함께 지원한다.
-  return { probe, build:buildPrecision, buildApi, reportPngItems, state:local, apiState:api };
+  return { probe, build:buildPrecision, buildApi, reportPngItems, reportMapsForState, state:local, apiState:api };
 }

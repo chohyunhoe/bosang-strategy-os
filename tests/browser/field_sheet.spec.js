@@ -11,7 +11,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { test, expect } = require('@playwright/test');
-const {openFullView}=require('./full_view_helper');
+const { enterLegacyFullScreen } = require('./legacy_navigation');
 
 function collectErrors(page) {
   const errors = [];
@@ -89,7 +89,7 @@ function fieldCase() {
 
 async function loadCase(page, caseData) {
   await page.goto('/');
-  await openFullView(page);
+  await enterLegacyFullScreen(page);
   await page.waitForFunction(() => typeof window.renderFieldSheet === 'function');
   await page.evaluate((payload) => {
     data = payload;
@@ -179,7 +179,8 @@ test('A4 인쇄 레이아웃에서 화면용 UI가 제거된다', async ({ page 
   await page.evaluate(() => showSection('fieldSheet'));
   await page.emulateMedia({ media: 'print' });
 
-  await expect(page.locator('nav:visible')).toHaveCount(0);
+  await expect(page.locator('nav.axis-nav')).toBeHidden();
+  await expect(page.locator('#bsoMobileShellV3 nav')).toBeHidden();
   await expect(page.locator('.bso3-legacybar')).toBeHidden();
   await expect(page.locator('.field-sheet-toolbar')).toBeHidden();
   await expect(page.locator('#outputCenter')).toBeHidden();

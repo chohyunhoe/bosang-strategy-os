@@ -9,7 +9,7 @@
 // 4) 오류 복구·초기화 경로가 모든 화면에 남는지 (G4)
 
 const { test, expect } = require('@playwright/test');
-const {openFullView}=require('./full_view_helper');
+const { enterLegacyFullScreen } = require('./legacy_navigation');
 
 const STAGE_KEYS = ['home', 'workspace', 'data', 'analysis', 'map', 'output'];
 
@@ -74,7 +74,7 @@ function mapPreview() {
 test('실행보드 6단계가 모든 화면에 노출되고 상태에 따라 다음 Action이 전이된다', async ({ page }) => {
   const errors = collectErrors(page);
   await page.goto('/', { waitUntil: 'networkidle' });
-  await openFullView(page);
+  await enterLegacyFullScreen(page);
 
   const bar = page.locator('#lkExecutionBar');
   await expect(bar).toBeVisible();
@@ -94,12 +94,12 @@ test('실행보드 6단계가 모든 화면에 노출되고 상태에 따라 다
   await expect(page.locator('main section > h2[data-step]')).toHaveCount(0);
 
   // 홈(실행보드) 화면은 기존 다음 작업 카드가 있으므로 실행바에 CTA를 중복 노출하지 않는다.
-  await page.locator('nav [data-section="overview"]').click();
+  await page.locator('nav.axis-nav [data-section="overview"]').click();
   await expect(bar.locator('.lk-exec-action-buttons button.primary')).toHaveCount(0);
 
   // 1) 미조회 → 조회하기
   await page.evaluate((fixture) => { window.__releaseMapSession = undefined; data = fixture; renderAll(); }, landsOnlyData());
-  await page.locator('nav [data-section="lands"]').click();
+  await page.locator('nav.axis-nav [data-section="lands"]').click();
   await expect(bar).toContainText('미조회 → 조회하기');
   await expect(bar.locator('.lk-exec-action-buttons button.primary')).toHaveText('공적자료 조회하기');
   await expect(bar.locator('.lk-exec-stage[data-stage="data"]')).toHaveAttribute('data-state', 'NEEDS_REVIEW');
@@ -135,7 +135,7 @@ test('실행보드 6단계가 모든 화면에 노출되고 상태에 따라 다
 
   // 오류 복구·초기화 경로는 모든 화면에서 유지된다.
   for (const section of ['uploadHub', 'publicData', 'workflowLogic', 'reviewQueue']) {
-    await page.locator(`nav [data-section="${section}"]`).click();
+    await page.locator(`nav.axis-nav [data-section="${section}"]`).click();
     await expect(bar.locator('.lk-exec-stage')).toHaveCount(STAGE_KEYS.length);
     await expect(bar).toContainText('사건 초기화');
     await expect(bar).toContainText('원본 추가·교체');
@@ -152,7 +152,7 @@ test('OCR 검수 완료값 JSON 반영이 UI에서 실행되고 평가결과에 
   page.on('dialog', (dialog) => dialog.accept());
 
   await page.goto('/', { waitUntil: 'networkidle' });
-  await openFullView(page);
+  await enterLegacyFullScreen(page);
   await page.evaluate((fixture) => {
     window.__releaseMapSession = undefined;
     data = fixture;
@@ -174,7 +174,7 @@ test('OCR 검수 완료값 JSON 반영이 UI에서 실행되고 평가결과에 
     renderAll();
   }, landsOnlyData());
 
-  await page.locator('nav [data-section="ocrReview"]').click();
+  await page.locator('nav.axis-nav [data-section="ocrReview"]').click();
 
   const toolbar = page.locator('.ocr-review-toolbar-card');
   await expect(toolbar).toBeVisible();
@@ -212,7 +212,7 @@ test('OCR 검수 완료값 JSON 반영이 UI에서 실행되고 평가결과에 
 test('후보 검수가 남아 있으면 실행보드와 다음작업 카드가 같은 단계를 가리킨다', async ({ page }) => {
   const errors = collectErrors(page);
   await page.goto('/', { waitUntil: 'networkidle' });
-  await openFullView(page);
+  await enterLegacyFullScreen(page);
 
   // 실제 게이트 상태 재현: 편입토지·평가행은 이미 있으나 검수 대기 후보가 남아 있는 경우
   await page.evaluate(() => {

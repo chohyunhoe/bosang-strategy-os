@@ -6,7 +6,7 @@ const crypto = require('node:crypto');
 const root = path.resolve(__dirname, '..');
 const release = path.join(root, 'dist', 'release-v1');
 const manifest = JSON.parse(fs.readFileSync(path.join(release, 'product-v2-manifest.json')));
-assert.equal(manifest.release_target, '1.0.0-rc.3');
+assert.equal(manifest.release_target, '1.0.0-rc.4');
 assert.equal(manifest.release_channel, 'windows-pc-release-candidate');
 assert.equal(manifest.production_entry, false);
 assert.equal(manifest.local_gate, 'REAL_CASE_SMOKE_REQUIRED');
@@ -18,7 +18,7 @@ for (const entry of manifest.files) {
 }
 for (const name of ['index.html','app.js','session-diagnostics.js']) {
   const content = fs.readFileSync(path.join(release,name),'utf8');
-  assert.match(content, /Release v1 · 1\.0\.0-rc\.3/);
+  assert.match(content, /Release v1 · 1\.0\.0-rc\.4/);
   assert.doesNotMatch(content, /Product v2 Candidate/);
 }
 for (const name of ['.env','.bso-runtime.json','node_modules','local_only','case.json','graphics-input']) assert.equal(fs.existsSync(path.join(release,name)),false);
