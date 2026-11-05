@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { createHash } = require('node:crypto');
 const { reviewPassed, validateQueueInput, buildQueueResult } = require('../integrations/n8n/lk-execution-contract.cjs');
+const { buildBsoResultPackage } = require('../integrations/n8n/lk-bso-result.cjs');
 
 function patchWorkflow(kind, source) {
   const workflow = JSON.parse(JSON.stringify(source));
@@ -20,7 +21,7 @@ function patchWorkflow(kind, source) {
     } else if (name === 'Validate LK Queue Input') {
       node.parameters.jsCode = validateQueueInput.toString() + "\nconst j=$input.first().json;const sha=v=>require('crypto').createHash('sha256').update(v,'utf8').digest('hex');\nreturn [{json:{...validateQueueInput(j,sha),worker_execution_id:String($execution.id)}}];";
     } else {
-      node.parameters.jsCode = buildQueueResult.toString() + "\nconst r=$input.first().json,j=$('Validate LK Queue Input').first(0).json;const sha=v=>require('crypto').createHash('sha256').update(v,'utf8').digest('hex');\nreturn [{json:buildQueueResult(r,j,$execution.id,sha)}];";
+      node.parameters.jsCode = buildQueueResult.toString() + '\n' + buildBsoResultPackage.toString() + "\nconst r=$input.first().json,j=$('Validate LK Queue Input').first(0).json;const sha=v=>require('crypto').createHash('sha256').update(v,'utf8').digest('hex');\nconst result=buildQueueResult(r,j,$execution.id,sha);if(result.bso_receipt){try{result.bso_result=buildBsoResultPackage(result,sha)}catch(e){result.bso_export_error=e.message}}return [{json:result}];";
     }
   }
   return workflow;

@@ -155,3 +155,23 @@ export function importDocumentExecution(rows, id, source, actor) {
   // AI execution never fills human review checks or changes the approval/submission state.
   validateDocumentWorkflow(next); return next;
 }
+
+export async function importDocumentResult(rows, id, source, actor) {
+  if (Array.isArray(source)) {
+    if (source.length !== 1) throw new Error('결과는 한 건씩 선택하세요.');
+    source = source[0];
+  }
+  if (source?.json) source = source.json;
+  const bundle = source?.bso_result || source;
+  if (bundle?.schema_version !== 'lk-bso-result/1.0') {
+    if (source?.bso_result !== undefined || source?.output !== undefined || String(bundle?.schema_version || '').startsWith('lk-bso-result/')) throw new Error('지원하는 결과 패키지 버전이 아닙니다.');
+    if (source?.schema_version === 'lk-bso-receipt/1.0' || source?.bso_receipt) return { rows: importDocumentExecution(rows, id, source, actor), preview: null };
+    throw new Error('지원하는 실행결과 JSON이 아닙니다.');
+  }
+  const receipt = bundle.bso_receipt;
+  if (typeof bundle.output !== 'string' || bundle.output.length > 100000 || bundle.verification?.human_approved !== false || bundle.verification?.legal_accuracy_approved !== false || bundle.verification?.output_sha256_checked !== true) throw new Error('결과 본문·검증 형식이 올바르지 않습니다.');
+  const digest = await sha256Bytes(new TextEncoder().encode(bundle.output));
+  if (digest !== receipt?.output_sha256 || (receipt?.status === 'BLOCKED' && bundle.output !== '') || (receipt?.status === 'NEEDS_GPT_REVIEW' && (!bundle.output.trim() || bundle.verification.provider_guard_passed !== true))) throw new Error('결과 본문과 실행 지문이 일치하지 않습니다.');
+  const next = importDocumentExecution(rows, id, receipt, actor);
+  return { rows: next, preview: { document_id: id, revision: receipt.revision, job_id: receipt.job_id, output: bundle.output, status: receipt.status } };
+}

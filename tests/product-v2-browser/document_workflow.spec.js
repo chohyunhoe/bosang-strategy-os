@@ -92,3 +92,37 @@ test('파일 지문·n8n 작업요청·실행기록을 연결하고 파일 변�
   await expect(article).toContainText('v2');
   await expect(article).toContainText('작성 중 · PARTIAL');
 });
+
+test('결과 패키지는 본문 지문을 검증하고 HTML을 실행하지 않으며 백업에 본문을 남기지 않는다', async ({ page }) => {
+  await page.goto('/');
+  const bundle = await page.evaluate(async () => {
+    const api = await import('/document-workflow.js'), store = window.BSOProductV2.store;
+    let rows = api.registerDocument([], { title:'합성 결과 검토',purpose:'내부',owner:'A',template_ref:'v1',source_ref:'합성',actor:'A' });
+    rows = api.attachDocumentArtifact(rows, rows[0].id, { name:'test.txt',size:4,sha256:'1'.repeat(64) }, 'A');
+    const request = await api.createDocumentHandoff(rows, rows[0].id, 'Synthetic test only', 'SYNTHETIC', 'A');
+    store.state.documentWorkflow = request.rows; store.setRoute('outputs');
+    const output = '<img src=x onerror="window.__bsoResultXss=1"> 합성 결과';
+    return { schema_version:'lk-bso-result/1.0',bso_receipt:{...request.job.bso_context,schema_version:'lk-bso-receipt/1.0',job_id:request.job.job_id,input_sha256:request.job.input_sha256,output_sha256:await api.sha256Bytes(new TextEncoder().encode(output)),execution_id:'SYNTHETIC_BROWSER_NO_MODEL',status:'NEEDS_GPT_REVIEW',human_approved:false},output,verification:{output_sha256_checked:true,provider_guard_passed:true,human_approved:false,legal_accuracy_approved:false} };
+  });
+  const article = page.locator('[data-doc-id]');
+  await article.locator('summary').filter({ hasText:'파일·n8n 실행 연결' }).click();
+  const form = article.locator('[data-doc-receipt]');
+  await form.locator('[name="actor"]').fill('기록자 A');
+  await form.locator('input[type="file"]').setInputFiles({name:'tampered.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({...bundle,output:'tampered'}))});
+  await form.locator('button').click();
+  await expect(page.locator('[data-doc-message]')).toContainText('지문이 일치하지 않습니다');
+  await expect(article.locator('[data-doc-result-preview]')).toHaveCount(0);
+  await form.locator('input[type="file"]').setInputFiles({name:'result.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(bundle))});
+  await form.locator('button').click();
+  await article.locator('summary').filter({ hasText:'파일·n8n 실행 연결' }).click();
+  await expect(article.locator('[data-doc-result-preview]')).toContainText(bundle.output);
+  await expect(article.locator('[data-doc-result-preview] img')).toHaveCount(0);
+  expect(await page.evaluate(() => window.__bsoResultXss)).toBeUndefined();
+  expect(await page.evaluate(body => JSON.stringify(window.BSOProductV2.store.state).includes(body), bundle.output)).toBe(false);
+  await expect(article).toContainText('작성 중 · PARTIAL');
+  await page.evaluate(() => {
+    const store = window.BSOProductV2.store;
+    return import('/document-workflow.js').then(api => {store.state.documentWorkflow=api.changeDocument(store.state.documentWorkflow,'WORK_DOC_1','REVISE',{actor:'A',reference:'수정'});store.emit();});
+  });
+  await expect(article.locator('[data-doc-result-preview]')).toHaveCount(0);
+});

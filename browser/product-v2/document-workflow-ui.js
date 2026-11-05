@@ -1,4 +1,4 @@
-import { REVIEW_CHECKS, registerDocument, changeDocument, documentProgress, sha256Bytes, attachDocumentArtifact, createDocumentHandoff, importDocumentExecution } from './document-workflow.js';
+import { REVIEW_CHECKS, registerDocument, changeDocument, documentProgress, sha256Bytes, attachDocumentArtifact, createDocumentHandoff, importDocumentResult } from './document-workflow.js';
 
 const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
 const labels = { DRAFT: '작성 중', REVIEWED: '검수 기록 완료', APPROVED: '승인 기록', SUBMITTED: '제출 기록' };
@@ -6,6 +6,8 @@ const checks = { SOURCE: '원본', NUMBERS: '수치', LEGAL: '법률', FORMAT: '
 const field = (name, label, type = 'text') => `<label>${label}<input name="${name}" type="${type}" required maxlength="1000"></label>`;
 
 export function installDocumentWorkflowUi(store) {
+  // Result bodies are displayed only in this session; case backups keep receipt metadata.
+  const previews = new WeakMap();
   function render() {
     document.querySelector('[data-document-workflow]')?.remove();
     if (store.state.route !== 'outputs') return;
@@ -19,6 +21,8 @@ export function installDocumentWorkflowUi(store) {
       ${field('title', '문서명')}${field('purpose', '용도·독자')}${field('owner', '담당자')}${field('template_ref', '기준 서식·버전')}${field('source_ref', '원본·파일 참조')}${field('actor', '기록자')}
       <button class="primary">등록</button></form></details><p role="status" data-doc-message></p>
       ${rows.map((row) => {
+        const preview = previews.get(store.state);
+        const currentPreview = preview?.document_id === row.id && preview.revision === row.revision ? preview : null;
         const progress = documentProgress(row, new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Seoul' }));
         const actions = row.status === 'DRAFT' ? REVIEW_CHECKS.filter((key) => !row.checks[key]).map((key) => [`CHECK:${key}`, `${checks[key]} 검수 기록`]) : row.status === 'REVIEWED' ? [['APPROVE', '승인 기록']] : row.status === 'APPROVED' ? [['SUBMIT', '제출 기록']] : [];
         actions.push(['REVISE', '수정본 시작']);
@@ -29,6 +33,7 @@ export function installDocumentWorkflowUi(store) {
           <form data-doc-handoff class="document-workflow-form">${field('actor', '기록자')}<label>입력 구분<select name="data_class"><option value="SYNTHETIC">합성자료</option><option value="PUBLIC">공개자료</option></select></label><label>공개·합성 작업지시<textarea name="prompt" required maxlength="24000"></textarea></label><button class="secondary">n8n 작업요청 JSON 저장</button></form>
           <form data-doc-receipt class="document-workflow-form">${field('actor', '기록자')}<label>n8n 실행결과 JSON<input name="receipt_file" type="file" accept="application/json,.json" required></label><button class="secondary">실행 기록 가져오기</button></form>
           <p>작업요청 ${(row.handoffs || []).length}건 · 실행 기록 ${(row.execution_receipts || []).length}건. 가져온 실행 기록은 직원 인증이나 사람의 검수·승인을 대신하지 않습니다.</p>
+          ${currentPreview ? `<section data-doc-result-preview><h4>가져온 결과 · v${row.revision} · ${esc(currentPreview.status)}</h4><p>본문 SHA-256과 문서 연결을 대조했습니다. 가져온 JSON의 발급자는 인증하지 않습니다. 본문은 현재 화면에서만 표시하며 사건 저장에는 실행 기록만 보관합니다.</p><pre style="white-space:pre-wrap">${esc(currentPreview.output || '차단된 실행입니다. 검토할 결과 본문이 없습니다.')}</pre></section>` : ''}
           ${(row.execution_receipts || []).map((item) => `<p>v${item.revision} · ${esc(item.job_id)} · ${esc(item.status)} · 실행 ${esc(item.execution_id)}</p>`).join('')}</details>
           <form data-doc-action class="document-workflow-form">${field('actor', '검수·승인·제출 기록자')}${field('reference', '검수보고·승인내역·접수증 등 근거')}<label>작업<select name="action">${actions.map(([value, label]) => `<option value="${value}">${label}</option>`).join('')}</select></label><button class="secondary">기록</button></form>
           <details><summary>후속조치 추가</summary><form data-doc-followup class="document-workflow-form">${field('title', '할 일')}${field('owner', '담당자')}${field('due_date', '기한', 'date')}${field('actor', '기록자')}${field('reference', '조치 근거')}<button class="secondary">추가</button></form></details>
@@ -49,7 +54,7 @@ export function installDocumentWorkflowUi(store) {
       const state = store.state;
       try {
         if (store.state.status === 'PROCESSING') throw new Error('평가서 처리 완료 후 기록하세요.');
-        let next, jobDownload = null;
+        let next, jobDownload = null, resultPreview = null;
         if (form.hasAttribute('data-doc-register')) next = registerDocument(rows, input);
         else {
           const id = form.closest('[data-doc-id]').dataset.docId;
@@ -64,7 +69,8 @@ export function installDocumentWorkflowUi(store) {
           } else if (form.hasAttribute('data-doc-receipt')) {
             const file = input.receipt_file;
             if (!file || file.size > 2 * 1024 * 1024) throw new Error('2MB 이하의 실행결과 JSON을 선택하세요.');
-            next = importDocumentExecution(rows, id, JSON.parse(await file.text()), input.actor);
+            const result = await importDocumentResult(rows, id, JSON.parse(await file.text()), input.actor);
+            next = result.rows; resultPreview = result.preview;
           } else {
             let action = input.action;
             if (form.hasAttribute('data-doc-followup')) action = 'ADD_FOLLOWUP';
@@ -74,6 +80,7 @@ export function installDocumentWorkflowUi(store) {
           }
         }
         if (store.state !== state || store.state.documentWorkflow !== rows) throw new Error('처리 중 사건이나 문서가 변경됐습니다. 현재 사건에서 다시 시도하세요.');
+        if (resultPreview) previews.set(state, resultPreview);
         store.state.documentWorkflow = next; store.emit();
         document.querySelector('[data-doc-message]').textContent = '기록했습니다.';
         if (jobDownload) {
