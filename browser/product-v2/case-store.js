@@ -1,5 +1,6 @@
 import { buildIssueCandidates } from './issue-engine.js';
 import { appraisalResultComplete } from './appraisal-coverage.js';
+import { validateDocumentWorkflow } from './document-workflow.js';
 
 const REVIEW_PENDING = new Set(['NEEDS_REVIEW', 'MISSING', 'LOW_CONFIDENCE', 'OCR_REQUIRED', 'PARSE_FAILED']);
 const FILE_NAME_COMPANY_STOPWORDS = new Set(['감정평가서','평가서','감정평가','세부내역','산출근거','토지','지장물','영업','협의','보상','수용재결','이의재결','재결','수용','이의','초안','최종','사본','요약','검토용','원본','스캔','주','주식회사']);
@@ -181,7 +182,7 @@ function mergeCaseInfo(existing, incoming) {
 function hasCaseInfo(info) { return Boolean(text(info?.case_name)||text(info?.project_name)||text(info?.appraisal_purpose)||text(info?.base_date)||text(info?.price_date)||arr(info?.source_refs).length); }
 
 function freshState() {
-  return {status:'EMPTY',route:'home',error:null,sourceDocuments:[],caseInfo:{},appraisals:[],lands:[],standardLands:[],transactionCases:[],appraisalResults:[],appraisalTotals:[],subjectFactorDetails:[],subjectFactorTotals:[],standardToCompCaseFactors:[],otherFactors:[],comparisonSummaryByLand:[],obstacleRows:[],obstacleSummaries:[],landCharacteristics:[],landCharacteristicCrosscheck:[],publicLandCharacteristics:[],publicLandDataEnrichment:{},publicEnrichment:[],mapContext:null,issueCandidates:[],draftSentences:[],riskWarnings:[],reviewQueue:[],reviewDecisions:{},documentSanity:[],batchHasHold:false,capabilities:{parser:'AVAILABLE',publicData:'NOT_CONNECTED',map:'NOT_CONNECTED',outputCenter:'LOCAL_ONLY'}};
+  return {status:'EMPTY',route:'home',error:null,sourceDocuments:[],documentWorkflow:[],caseInfo:{},appraisals:[],lands:[],standardLands:[],transactionCases:[],appraisalResults:[],appraisalTotals:[],subjectFactorDetails:[],subjectFactorTotals:[],standardToCompCaseFactors:[],otherFactors:[],comparisonSummaryByLand:[],obstacleRows:[],obstacleSummaries:[],landCharacteristics:[],landCharacteristicCrosscheck:[],publicLandCharacteristics:[],publicLandDataEnrichment:{},publicEnrichment:[],mapContext:null,issueCandidates:[],draftSentences:[],riskWarnings:[],reviewQueue:[],reviewDecisions:{},documentSanity:[],batchHasHold:false,capabilities:{parser:'AVAILABLE',publicData:'NOT_CONNECTED',map:'NOT_CONNECTED',outputCenter:'LOCAL_ONLY'}};
 }
 
 const COLLECTION_META = [
@@ -221,6 +222,7 @@ export function validateCaseSnapshot(snapshot) {
     if (Array.isArray(initial) && (!Array.isArray(value) || value.some((row) => !row || typeof row !== 'object' || Array.isArray(row)))) throw new Error('사건 백업의 ' + key + ' 목록 형식이 올바르지 않습니다.');
     if (initial && !Array.isArray(initial) && typeof initial === 'object' && (!value || typeof value !== 'object' || Array.isArray(value))) throw new Error('사건 백업의 ' + key + ' 형식이 올바르지 않습니다.');
   }
+  validateDocumentWorkflow(snapshot.documentWorkflow === undefined ? [] : snapshot.documentWorkflow);
   return true;
 }
 

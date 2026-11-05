@@ -278,7 +278,8 @@ function subjectAddressAnchor(line) {
   if (lotIndex < 2) return null;
   const parcelAddress = normalizeParcelAddress(tokens.slice(1, lotIndex + 1).join(' '));
   let address=parcelAddress;
-  if (!looksLikeParcelAddress(address)) {
+  const upperCellFragmented=tokens.slice(1,lotIndex).some(token=>/^(?:도|시|군|구)$/.test(token));
+  if (!looksLikeParcelAddress(address) || upperCellFragmented) {
     const prefix=tokens.slice(1,lotIndex);
     let dong=prefix.pop()||'';
     if(/^(?:동|리|읍|면)$/.test(dong)){

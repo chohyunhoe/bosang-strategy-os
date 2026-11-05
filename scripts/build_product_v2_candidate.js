@@ -16,6 +16,8 @@ const files = [
   ['browser/product-v2/map-preview.css', 'map-preview.css'],
   ['browser/product-v2/app.js', 'app.js'],
   ['browser/product-v2/case-store.js', 'case-store.js'],
+  ['browser/product-v2/document-workflow.js', 'document-workflow.js'],
+  ['browser/product-v2/document-workflow-ui.js', 'document-workflow-ui.js'],
   ['browser/product-v2/case-registry.js', 'case-registry.js'],
   ['browser/product-v2/case-registry-ui.js', 'case-registry-ui.js'],
   ['browser/product-v2/session-diagnostics.js', 'session-diagnostics.js'],

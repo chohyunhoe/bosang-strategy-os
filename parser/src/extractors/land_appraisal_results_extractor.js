@@ -39,7 +39,8 @@ function administrativeRank(token) {
 }
 
 function canonicalizeAdministrativePrefix(prefix) {
-  const tokens = String(prefix || '').split(/\s+/).filter(Boolean);
+  // A bare upper-jurisdiction suffix has no place name and is not location evidence.
+  const tokens = String(prefix || '').split(/\s+/).filter(Boolean).filter(token=>!/^(?:도|시|군|구)$/.test(token));
   if (tokens.length === 0 || tokens.some((token) => /[^가-힣]/.test(token))) return tokens.join(' ');
 
   const administrative = tokens.filter((token) => administrativeRank(token) >= 0);

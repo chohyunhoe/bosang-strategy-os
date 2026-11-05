@@ -56,3 +56,11 @@ assert.equal(interleaved.individual_factor_total,null);
 assert.equal(interleaved.other_factor,null);
 assert.equal(interleaved.calculated_unit_price,556600);
 assert.equal(interleaved.unit_price,556000);
+
+assert.equal(normalizeParcelAddress('시 표본동 0015-0002'),'표본동 15-2');
+assert.equal(normalizeParcelAddress('갑시 표본동 0015-0002'),'갑시 표본동 15-2');
+assert.equal(normalizeParcelAddress('을시 표본동 0015-0002'),'을시 표본동 15-2');
+assert.notEqual(normalizeParcelAddress('갑시 표본동 15-2'),normalizeParcelAddress('을시 표본동 15-2'),'explicit higher jurisdictions must remain distinct');
+
+const fragmentedUpper=parseAppraisalPages([{page_no:1,text:adjacentSources[0].text.replace('익명시 잘못 홍시','합성도 시 흠시')},adjacentSources[1]],{});
+assert.equal(fragmentedUpper.lands[0].parcel_address,'표본동 15-2','do not promote the remaining upper-cell fragment to a named jurisdiction');

@@ -1,4 +1,5 @@
 import './app.js';
+import { installDocumentWorkflowUi } from './document-workflow-ui.js';
 import { SessionCaseRegistry } from './case-registry.js';
 import { installMapBridgeUi } from './map-bridge-ui.js';
 import { installPnuResolverUi } from './pnu-resolver-ui.js';
@@ -18,6 +19,7 @@ runtime.pnuResolver = installPnuResolverUi(store);
 runtime.reviewWorkbench = installReviewWorkbench(store);
 runtime.workOps = installWorkOpsUi(store);
 runtime.diagnostics = installSessionDiagnostics(store);
+runtime.documentWorkflow = installDocumentWorkflowUi(store);
 
 const esc = (value) => String(value == null ? '' : value).replace(/[&<>"']/g, (ch) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[ch]));
 
