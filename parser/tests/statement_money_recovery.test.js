@@ -6,7 +6,7 @@ const path = require('node:path');
 // Exercise the actual browser module without adding a browser or OCR dependency.
 (async () => {
   const source = fs.readFileSync(path.join(__dirname, '../../browser/product-v2/ocr-source.js'), 'utf8');
-  const { recoverStatementMoney } = await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'));
+  const { recoverStatementMoney, mergeTableOcrWords, ocrWordLines, ocrPdfDocument } = await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'));
   const crop = { serial: '201', lot: '0015-0002' };
   const candidate = '201 익명시 15-2 답 답 120.000 * 1/2 180,000 10,800,000';
   const original = '201 AEA 15-2 답 답 120.000 * 12 180000 1800000';
@@ -48,5 +48,39 @@ const path = require('node:path');
   preserved(ownerOriginal,ownerCandidate+' 9999','candidate third numeric cell remains rejected');
   preserved(ownerOriginal.replace('(1/1)','(1/2)'),ownerCandidate,'independent owner-share conflict must remain unchanged');
   preserved(ownerOriginal,ownerCandidate.replace('(1/1)','(1/2)'),'candidate owner-share conflict must fail closed');
+  const word=(str,x,y,width=40,height=12)=>({str,x,y,width,height,confidence:90});
+  const tableCrop={x:0,y:80,width:600,height:160};
+  const firstPass=[word('원본',0,20),word('1',10,100),word('15-2',100,100),word('180,000',400,100),word('2',10,160),word('16-3',100,160),word('200,000',400,160),word('바닥글',0,260)];
+  const detailPass=[word('1',10,100),word('15-2',100,100),word('190,000',400,100)];
+  const merged=mergeTableOcrWords(firstPass,detailPass,tableCrop);
+  assert.equal(ocrWordLines(merged),'원본\n1 15-2 190,000\n2 16-3 200,000\n바닥글','an omitted OCR row must survive a partial detail pass');checks++;
+  assert.ok(!merged.some(item=>item.str==='180,000'),'a reread row must not mix conflicting old and new money');checks++;
+  assert.equal(merged.filter(item=>item.str==='2').length,1,'an omitted row is retained exactly once');checks++;
+  assert.equal(merged.find(item=>item.str==='200,000'),firstPass[6],'retained evidence keeps original coordinates and confidence');checks++;
+  const shifted=mergeTableOcrWords(firstPass,[...detailPass,word('2',10,164),word('16-3',100,164),word('210,000',400,164)],tableCrop);
+  assert.ok(!shifted.some(item=>item.str==='200,000'),'small baseline shifts must not preserve superseded row values');checks++;
+  assert.equal(ocrWordLines(mergeTableOcrWords(firstPass,[],tableCrop)),ocrWordLines(firstPass),'an empty detail pass must not erase page evidence');checks++;
+  const dongPass=[...firstPass,word('표본동',60,160)];
+  const withDong=mergeTableOcrWords(dongPass,detailPass,tableCrop);
+  assert.equal(withDong.filter(item=>item.str==='표본동').length,1,'preserved administrative text must not be duplicated');checks++;
+  const staggered=[word('1',10,100),word('15-2',100,100),word('180,000',400,107)];
+  const shiftedDetail=[word('1',10,96),word('15-2',100,96),word('190,000',400,96)];
+  assert.equal(ocrWordLines(mergeTableOcrWords(staggered,shiftedDetail,tableCrop)),'1 15-2 190,000','a staggered row must be replaced as one band without a stale money tail');checks++;
+  const previousWindow=globalThis.window,previousDocument=globalThis.document;
+  const fullPageModes=[];let mode='3',terminated=false;
+  const data={text:'(주) 감정평가법인 새봄',blocks:[{paragraphs:[{lines:[{text:'(주) 감정평가법인 새봄',bbox:{x0:10,y0:10,x1:100,y1:30},words:[]}]}]}]};
+  const worker={setParameters:async parameters=>{mode=parameters.tessedit_pageseg_mode;},recognize:async canvas=>{if(canvas.kind==='page')fullPageModes.push(mode);return{data};},terminate:async()=>{terminated=true;}};
+  globalThis.window={Tesseract:{OEM:{LSTM_ONLY:1},createWorker:async()=>worker}};
+  globalThis.document={createElement:()=>{const canvas={width:0,height:0,kind:'detail'};canvas.getContext=()=>({canvas,clearRect(){},drawImage(){canvas.kind='detail';}});return canvas;}};
+  try{
+    const doc={numPages:3,getPage:async()=>({getViewport:({scale})=>({width:100*scale,height:100*scale}),render:({canvasContext})=>{canvasContext.canvas.kind='page';return{promise:Promise.resolve()};}})};
+    await ocrPdfDocument(doc,()=>{},{workerCount:1});
+    assert.deepEqual(fullPageModes,['3','3','3'],'focused company/table segmentation must not leak into the next full page');checks++;
+    assert.equal(terminated,true,'the worker must be terminated after the multi-page run');checks++;
+  }finally{
+    if(previousWindow===undefined)delete globalThis.window;else globalThis.window=previousWindow;
+    if(previousDocument===undefined)delete globalThis.document;else globalThis.document=previousDocument;
+  }
   console.log(`Statement money recovery safety regressions: ${checks} passed.`);
 })().catch(error => { console.error(error); process.exitCode = 1; });
+

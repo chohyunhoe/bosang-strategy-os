@@ -90,10 +90,20 @@ export function mergeTableOcrWords(original,detail,crop) {
     const prior=original.find(word=>/^(?:산)?\d{1,5}-\d{1,5}$/.test(word.str)&&word.str.replace('-','')===item.str&&Math.abs(word.x-item.x)<Math.max(word.width,item.width)&&Math.abs(word.y-item.y)<Math.max(word.height,item.height));
     return prior||item;
   });
-  return [...outside,...preservedDong,...corrected];
+  // Sparse/table OCR may omit a whole row that the page pass read. Preserve
+  // that original evidence only when the detail pass has no overlapping row
+  // band. Within a reread band, keep the existing replacement policy so old
+  // and new monetary/address cells are not mixed into a synthetic row.
+  const sameBand=(a,b)=>{
+    const height=Math.max(1,Math.min(a.height,b.height));
+    const overlap=Math.min(a.y+a.height,b.y+b.height)-Math.max(a.y,b.y);
+    return overlap>=height*.25||Math.abs(a.y+a.height/2-b.y-b.height/2)<=Math.max(4,height*.65);
+  };
+  const omittedRows=ocrWordRows(original).filter(row=>!row.items.some(item=>detail.some(word=>sameBand(item,word)))).flatMap(row=>row.items.filter(item=>!outside.includes(item)&&!preservedDong.includes(item)));
+  return [...outside,...preservedDong,...omittedRows,...corrected];
 }
 
-export function ocrWordLines(items) {
+function ocrWordRows(items) {
   const rows=[];
   for(const item of [...items].sort((a,b)=>(a.y+a.height/2)-(b.y+b.height/2)||a.x-b.x)){
     const center=item.y+item.height/2;const row=rows.at(-1);
@@ -101,7 +111,11 @@ export function ocrWordLines(items) {
     if(row&&(overlap>=Math.min(row.height,item.height)*.25||Math.abs(center-row.y)<=Math.max(4,Math.min(row.height,item.height)*.65))){row.items.push(item);row.top=Math.min(row.top,item.y);row.bottom=Math.max(row.bottom,item.y+item.height);}
     else rows.push({y:center,height:item.height,top:item.y,bottom:item.y+item.height,items:[item]});
   }
-  return rows.map(row=>row.items.sort((a,b)=>a.x-b.x).map(item=>item.str).join(' ')).join('\n');
+  return rows;
+}
+
+export function ocrWordLines(items) {
+  return ocrWordRows(items).map(row=>row.items.sort((a,b)=>a.x-b.x).map(item=>item.str).join(' ')).join('\n');
 }
 
 // Read sparse statement rows independently: multi-line address cells otherwise
@@ -192,6 +206,9 @@ export async function ocrPdfDocument(pdfDocument, onProgress = () => {}, options
     const canvas=document.createElement('canvas');const context=canvas.getContext('2d',{willReadFrequently:true});if(!context)throw new Error('CANVAS_2D_UNAVAILABLE');
     const page=await pdfDocument.getPage(pageNo);const base=page.getViewport({scale:1});const scale=Math.min(2.2,Math.max(1.35,1800/Math.max(1,base.width)));const viewport=page.getViewport({scale});
     canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);context.clearRect(0,0,canvas.width,canvas.height);await page.render({canvasContext:context,viewport}).promise;
+    // Each reused worker starts a new page with automatic page segmentation.
+    // Detail/identity passes below use different modes and must not leak them.
+    await worker.setParameters?.({tessedit_pageseg_mode:'3'});
     const result=await worker.recognize(canvas,{}, {text:true,blocks:true});let value=String(result?.data?.text||'').trim();let items=wordBoxes(result?.data);
     const initialItems=items;
     const tableLike=/(?:토\s*지\s*(?:평\s*가\s*조\s*서|가\s*격\s*산\s*출)|비\s*교\s*표\s*준\s*지|공\s*시\s*지\s*가|개\s*별\s*요\s*인)/.test(value);
@@ -264,3 +281,4 @@ export async function ocrPdfDocument(pdfDocument, onProgress = () => {}, options
     await Promise.all(workers.map(async(worker)=>{try{await worker.terminate();}catch(error){}}));
   }
 }
+
