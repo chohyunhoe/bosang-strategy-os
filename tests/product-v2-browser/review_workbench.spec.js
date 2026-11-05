@@ -257,3 +257,13 @@ test('검색 입력 중 단축키는 확정하지 않고 차단 항목도 우회
   await page.evaluate(()=>window.BSOProductV2.store.setStatus('PROCESSING'));
   await expect(page.locator('[data-review-workbench]')).toHaveCount(0);
 });
+
+
+test('단순 미검수 상태와 명시적 보완 대상을 구분한다',async({page})=>{
+  await page.goto('/');await inject(page);await page.locator('[data-review-workbench-launch]').click();
+  await page.locator('[data-review-filter="attention"]').click();
+  await expect(page.locator('.review-group-select option[value="GROUP:lands"]')).toHaveCount(0);
+  await expect(page.locator('.review-group-select option[value="GROUP:issueCandidates"]')).toHaveCount(1);
+  await page.locator('[data-review-filter="active"]').click();
+  await expect(page.locator('.review-group-select option[value="GROUP:lands"]')).toHaveCount(1);
+});
