@@ -90,7 +90,17 @@ export function mergeTableOcrWords(original,detail,crop) {
     const prior=original.find(word=>/^(?:산)?\d{1,5}-\d{1,5}$/.test(word.str)&&word.str.replace('-','')===item.str&&Math.abs(word.x-item.x)<Math.max(word.width,item.width)&&Math.abs(word.y-item.y)<Math.max(word.height,item.height));
     return prior||item;
   });
-  return [...outside,...preservedDong,...corrected];
+  // Sparse/table OCR may omit a whole row that the page pass read. Preserve
+  // that original evidence only when the detail pass has no overlapping row
+  // band. Within a reread band, keep the existing replacement policy so old
+  // and new monetary/address cells are not mixed into a synthetic row.
+  const sameBand=(a,b)=>{
+    const height=Math.max(1,Math.min(a.height,b.height));
+    const overlap=Math.min(a.y+a.height,b.y+b.height)-Math.max(a.y,b.y);
+    return overlap>=height*.25||Math.abs(a.y+a.height/2-b.y-b.height/2)<=Math.max(4,height*.65);
+  };
+  const omittedRows=original.filter(item=>!outside.includes(item)&&!preservedDong.includes(item)&&!detail.some(word=>sameBand(item,word)));
+  return [...outside,...preservedDong,...omittedRows,...corrected];
 }
 
 export function ocrWordLines(items) {
@@ -264,3 +274,4 @@ export async function ocrPdfDocument(pdfDocument, onProgress = () => {}, options
     await Promise.all(workers.map(async(worker)=>{try{await worker.terminate();}catch(error){}}));
   }
 }
+
