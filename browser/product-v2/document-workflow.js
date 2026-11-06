@@ -136,7 +136,7 @@ export async function createDocumentHandoff(rows, id, prompt, dataClass, actor) 
   const inputHash = await sha256Bytes(new TextEncoder().encode(prompt));
   const job = { schema_version: 'lk-bso-job/1.0', job_id: `BSO_${globalThis.crypto.randomUUID().replaceAll('-', '')}`, status: 'READY', attempts: 0, data_class: dataClass, prompt, input_sha256: inputHash, bso_context: { schema_version: 'lk-bso-job/1.0', document_id: row.id, revision: row.revision, artifact_sha256: row.artifact.sha256 } };
   // Keep only metadata in the case backup; prompt and file bytes are not retained here.
-  row.handoffs = [...(row.handoffs || []), { job_id: job.job_id, revision: row.revision, artifact_sha256: row.artifact.sha256, input_sha256: inputHash }];
+  row.handoffs = [...(row.handoffs || []), { job_id: job.job_id, revision: row.revision, artifact_sha256: row.artifact.sha256, input_sha256: inputHash, data_class: dataClass }];
   row.history.push({ action: 'HANDOFF_REQUEST', ...evidence(actor, job.job_id, row.revision) });
   validateDocumentWorkflow(next); return { rows: next, job };
 }
