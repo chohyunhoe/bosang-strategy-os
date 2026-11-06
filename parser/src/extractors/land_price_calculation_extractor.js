@@ -80,6 +80,8 @@ function parseCalculationRowText(text) {
     official_price: parseNumber(tokens[anchorIndex - 1]),
     time_correction: parseNumber(tokens[anchorIndex]),
     regional_factor: regionalFactor,
+    ...(trailing.length === 11 && tokens.slice(anchorIndex + 1).every(token => parseNumber(token) !== null)
+      && trailing.slice(1, 7).every(isFactor) ? { explicit_six_factors: trailing.slice(1, 7) } : {}),
     individual_factor_total: factorColumnsAmbiguous ? null : individualFactorTotal,
     other_factor: factorColumnsAmbiguous ? null : otherFactor,
     ...(factorColumnsAmbiguous ? {factor_columns_ambiguous:true} : {}),
@@ -165,6 +167,13 @@ function attachLandPriceCalculations(lines, appraisalResults, context = {}) {
     }
 
     const sourceRef = sourceRefFor(row.lines, context);
+    const header = lines.filter(line => line.page_no === row.lines[0].page_no && line.line_no < row.lines[0].line_no)
+      .map(line => line.normalized_text).join(' ').replace(/\s+/g, ' ');
+    if (row.parsed.explicit_six_factors && /가로 접근 환경 획지 행정 기타 계/.test(header)) {
+      enriched.individual_factor_details = ['가로조건', '접근조건', '환경조건', '획지조건', '행정적조건', '기타조건']
+        .map((category, index) => ({ category, item: category, factor_value: row.parsed.explicit_six_factors[index],
+          source_refs: sourceRef ? [sourceRef] : [], review_status_code: 'NEEDS_REVIEW', auto_confirmed: false }));
+    }
     const sourceRefs = sourceRef ? [...(enriched.source_refs || []), sourceRef] : (enriched.source_refs || []);
     const missingFields = ENRICHED_FIELDS
       .concat(['amount'])

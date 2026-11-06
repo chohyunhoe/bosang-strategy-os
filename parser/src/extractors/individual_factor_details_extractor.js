@@ -130,7 +130,7 @@ function attachIndividualFactorDetails(lines, appraisalResults, context = {}) {
   const results = Array.isArray(appraisalResults) ? appraisalResults : [];
   return results.map((result) => {
     const candidateLines = candidateLinesForResult(lines, result, results);
-    const details = extractDetailsFromLines(candidateLines, context);
+    const details = result.individual_factor_details?.length ? result.individual_factor_details : extractDetailsFromLines(candidateLines, context);
     return {
       ...result,
       individual_factor_details: details,

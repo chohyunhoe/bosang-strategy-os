@@ -95,7 +95,7 @@ test('혼합 PDF 읽기 경로는 본문을 보존하고 이미지 토지표 OCR
   const result=await page.evaluate(async()=>{
     const recognized=[];let destroyed=false;
     window.Tesseract={OEM:{LSTM_ONLY:1},createWorker:async()=>({recognize:async()=>{recognized.push(5);return{data:{text:'토지평가조서\n101 익명동 1-1 전 100 20,000 2,000,000',blocks:[]}};},terminate:async()=>{}})};
-    window.__mixedPdfDocument={numPages:6,getPage:async(number)=>({getTextContent:async()=>({items:number<=4?[{str:'본문 설명 '.repeat(60),transform:[12,0,0,12,20,700],width:500,height:12}]:[]}),getOperatorList:async()=>({fnArray:number===5?[85]:[]}),getViewport:({scale})=>({width:600*scale,height:800*scale}),render:()=>({promise:Promise.resolve()})}),destroy:async()=>{destroyed=true;}};
+    window.__mixedPdfDocument={numPages:6,getPage:async(number)=>({getAnnotations:async()=>[],getTextContent:async()=>({items:number<=4?[{str:'본문 설명 '.repeat(60),transform:[12,0,0,12,20,700],width:500,height:12}]:[]}),getOperatorList:async()=>({fnArray:number===5?[85]:[]}),getViewport:({scale})=>({width:600*scale,height:800*scale}),render:()=>({promise:Promise.resolve()})}),destroy:async()=>{destroyed=true;}};
     const {loadPdfPageModel,parserPagesFromPageModel}=await import('/pdf-source.js');
     const progress=[];const pages=await loadPdfPageModel({arrayBuffer:async()=>new Uint8Array([1]).buffer},event=>progress.push(event));
     return{recognized,destroyed,sources:pages.map(p=>p.source_type),body:pages[0].text,table:parserPagesFromPageModel(pages)[4].text,ocrRequired:progress.find(p=>p.phase==='text-completed').ocr_required};
