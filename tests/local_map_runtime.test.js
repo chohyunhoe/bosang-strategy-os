@@ -25,7 +25,8 @@ try {
   assert.equal(candidates[0].command,path.join(install,'bin/python3.exe'));
   assert.equal(candidates[0].env.PYTHONHOME,path.join(install,'apps/Python312'));
   assert.equal(candidates[0].env.PYTHONPATH,path.join(install,'apps/qgis-ltr/python'));
-  assert.equal(candidates[0].env.QT_QPA_PLATFORM,'offscreen');
+  assert.equal(candidates[0].env.QT_QPA_PLATFORM,'windows');
+  assert.equal(windowsQgisCandidates({...original,QT_QPA_PLATFORM:'offscreen'},'win32')[0].env.QT_QPA_PLATFORM,'offscreen');
   assert.equal(candidates[0].env.Path,undefined);
   assert.equal(JSON.stringify(original),snapshot,'report environment must stay unchanged');
   assert.equal(windowsQgisCandidates(original,'linux').length,0);
