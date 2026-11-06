@@ -36,6 +36,7 @@ const OFFICIAL_LAND_CATEGORIES = Object.freeze([
 // 부호는 "사", "주", "차", "원" 처럼 흔한 한 글자와 겹치므로 지목 컬럼이 구조적으로
 // 확정된 표 문맥에서만 opt-in으로 허용한다.
 const LAND_CATEGORY_ABBREVIATIONS = Object.freeze({
+  대지: '대',
   전: '전',
   답: '답',
   과: '과수원',

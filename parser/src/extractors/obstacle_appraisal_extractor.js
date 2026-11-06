@@ -96,7 +96,7 @@ function parseObstacleRowText(text) {
   };
 }
 
-function buildSourceRef(groupLines, context) {
+function buildSourceRef(groupLines, context, sourceLabel = '감정평가 세부내역(지장물)') {
   const sorted = [...groupLines].sort((a, b) => a.page_no - b.page_no || a.line_no - b.line_no);
   const first = sorted[0];
   const last = sorted[sorted.length - 1];
@@ -106,7 +106,7 @@ function buildSourceRef(groupLines, context) {
     pageNo: first.page_no,
     lineStart: first.line_no,
     lineEnd: last.line_no,
-    sourceLabel: '감정평가 세부내역(지장물)',
+    sourceLabel,
     rawTextExcerpt: sorted.map((line) => line.raw_text).join(' / '),
   });
 }
@@ -217,9 +217,43 @@ function findStatedObstacleTotal(lines) {
   return null;
 }
 
+// Building appraisal statements have a member index and a lump-sum column,
+// unlike compensation obstacle tables. Do not invent a per-square-metre price.
+function collectBuildingRows(lines, appraisal, context) {
+  const starts = new Map();
+  for (const line of lines) {
+    if (/건\s*물\s*평\s*가\s*조\s*서/.test(line.normalized_text || '')) starts.set(line.page_no, line.line_no);
+  }
+  const rows = [];
+  for (const line of lines) {
+    if (!starts.has(line.page_no) || line.line_no <= starts.get(line.page_no)) continue;
+    const text = String(line.normalized_text || '').replace(/\s+/g, ' ').trim();
+    const match = text.match(/^(\d{3,7}) (\d{1,6}(?:-\d{1,4})?) ([가-힣0-9· ]+(?:동|리|읍|면)) ((?:산)?\d{1,5}(?:-\d{1,5})?) (\S+) (\S+) (\S+) (\d+(?:\.\d+)?) (일괄|\d{1,3}(?:,\d{3})+) (\d{1,3}(?:,\d{3})+)(?: |$)/);
+    if (!match) continue;
+    const [, serial, member, address, lot, buildingUnit, usage, structure, area, unit, amount] = match;
+    if (!(Number(area) > 0) || !(parseNumber(amount) > 0)) continue;
+    if (rows.some(row => row.serial_no === serial && row.parcel_address === `${address} ${lot}`)) continue;
+    rows.push({
+      obstacle_result_id: `BLD_${context.appraisalId || 'APP_001'}_${serial}`,
+      appraisal_id: context.appraisalId || 'APP_001',
+      appraisal_company: appraisal?.appraisal_company || '',
+      asset_class: 'BUILDING', serial_no: serial, member_no: member,
+      parcel_address: `${address} ${lot}`, legal_dong: address.split(' ').at(-1), lot_number: lot,
+      building_unit: buildingUnit, item_type: usage, specification: structure,
+      quantity: Number(area), quantity_unit: '㎡', unit_price: unit === '일괄' ? null : parseNumber(unit),
+      valuation_unit_label: unit === '일괄' ? '일괄' : '원/㎡', amount: parseNumber(amount),
+      source_refs: [buildSourceRef([line], context, '건물평가조서')].filter(Boolean),
+      confidence_level: 'HIGH', review_status_code: REVIEW_STATUS.NEEDS_REVIEW, auto_confirmed: false,
+      parser_notes: '건물평가조서 기재값입니다. 일괄 금액을 면적당 단가로 환산하지 않았으며 손실보상액으로 확정하지 않습니다.',
+    });
+  }
+  return rows;
+}
+
 function extractObstacleAppraisal(lines, appraisal, context = {}) {
-  const rows = collectObstacleRows(lines, appraisal, context);
-  const stated = findStatedObstacleTotal(lines);
+  const rows = [...collectObstacleRows(lines, appraisal, context), ...collectBuildingRows(lines, appraisal, context)];
+  // A separate obstacle total cannot crosscheck a mixed building/obstacle sum.
+  const stated = rows.some(row => row.asset_class === 'BUILDING') ? null : findStatedObstacleTotal(lines);
   const rowSum = rows.reduce((sum, row) => sum + (Number(row.amount) || 0), 0);
   const summary = [];
   if (rows.length || stated) {

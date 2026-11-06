@@ -84,7 +84,7 @@ function renderBand(items) {
   return value.replace(/\s+/g, ' ').trim();
 }
 
-function groupIntoLines(rawItems) {
+export function groupIntoLines(rawItems) {
   const items = dropOverprintDuplicates(rawItems);
   if (!items.length) return [];
   const lineHeight = medianHeight(items);
@@ -127,6 +127,40 @@ function textQuality(pages) {
 // Text-rich reports can still have raster-only land and standard tables.
 // Inspect sparse pages separately instead of treating document-level text volume as table coverage.
 const SPARSE_IMAGE_PAGE_CHARS = 160;
+// getTextContent also returns text underneath opaque annotations. Never parse
+// those bytes merely because they exist in the PDF; inspect the rendered page.
+export async function visiblePdfItems(page, content, pdfjs) {
+  const items = positionalItems(content);
+  let annotations;
+  try { annotations = await page.getAnnotations({ intent: 'display' }); }
+  catch (_) { return { items: [], hidden_text_items: items.length, requires_visual_ocr: true }; }
+  const covers = annotations.filter(a => ['Square','Redact'].includes(a.subtype) && a.hasAppearance && !(a.annotationFlags & 35) && Array.isArray(a.rect));
+  const overlaps = item => covers.some(a => item.x < a.rect[2] && item.x + item.width > a.rect[0] && item.y < a.rect[3] && item.y + item.height > a.rect[1]);
+  if (!items.some(overlaps)) return { items, hidden_text_items: 0, requires_visual_ocr: false };
+  const viewport = page.getViewport({ scale: 1.5 }), canvas = document.createElement('canvas');
+  canvas.width = Math.ceil(viewport.width); canvas.height = Math.ceil(viewport.height);
+  let uncertain = false, removed = 0;
+  try {
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    await page.render({ canvasContext: context, viewport, annotationMode: pdfjs.AnnotationMode.ENABLE }).promise;
+    const visible = items.filter(item => {
+      if (!overlaps(item)) return true;
+      const box = viewport.convertToViewportRectangle([item.x, item.y - item.height * 0.2, item.x + item.width, item.y + item.height]);
+      const left = Math.max(0, Math.floor(Math.min(box[0], box[2]))), top = Math.max(0, Math.floor(Math.min(box[1], box[3])));
+      const width = Math.min(canvas.width - left, Math.ceil(Math.abs(box[2] - box[0]))), height = Math.min(canvas.height - top, Math.ceil(Math.abs(box[3] - box[1])));
+      if (width < 1 || height < 1) { uncertain = true; removed++; return false; }
+      const pixels = context.getImageData(left, top, width, height).data;
+      let white = true;
+      for (let i = 0; i < pixels.length; i += 4) if (pixels[i] < 245 || pixels[i+1] < 245 || pixels[i+2] < 245) { white = false; break; }
+      // Non-white/partly covered/outlined annotations are resolved by visual OCR,
+      // never by guessing whether their underlying text is still visible.
+      if (!white) uncertain = true;
+      removed++; return false;
+    });
+    return { items: visible, hidden_text_items: removed, requires_visual_ocr: uncertain };
+  } catch (_) { return { items: items.filter(item => !overlaps(item)), hidden_text_items: items.filter(overlaps).length, requires_visual_ocr: true }; }
+  finally { canvas.width = 0; canvas.height = 0; }
+}
 async function containsRasterImage(page, pdfjs) {
   try {
     const operators = await page.getOperatorList();
@@ -145,7 +179,7 @@ export function selectOcrPageNumbers(pages) {
   const weak = pages.filter((page) => String(page.text || '').replace(/\s/g, '').length < 40);
   const sparseImages = pages.filter((page) => page.has_raster_image === true && String(page.text || '').replace(/\s/g, '').length < SPARSE_IMAGE_PAGE_CHARS);
   const selected = documentNeedsOcr ? (weak.length ? [...weak, ...sparseImages] : pages) : sparseImages;
-  return [...new Set(selected.map((page) => page.page_no))].sort((a,b) => a-b);
+  return [...new Set([...selected, ...pages.filter(page => page.requires_visual_ocr)].map((page) => page.page_no))].sort((a,b) => a-b);
 }
 
 export async function loadPdfPageModel(file, onProgress = () => {}) {
@@ -161,7 +195,8 @@ export async function loadPdfPageModel(file, onProgress = () => {}) {
     onProgress({ phase: 'page-loaded', page: pageNo, total: pdfDocument.numPages });
     const content = await page.getTextContent();
     onProgress({ phase: 'text-content-loaded', page: pageNo, total: pdfDocument.numPages, item_count: content.items?.length || 0 });
-    const items = positionalItems(content);
+    const visibility = await visiblePdfItems(page, content, pdfjs);
+    const items = visibility.items;
     const lines = groupIntoLines(items);
     const sparse = lines.join('').replace(/\s/g, '').length < SPARSE_IMAGE_PAGE_CHARS;
     const hasRaster = sparse ? await containsRasterImage(page, pdfjs) : false;
@@ -171,6 +206,8 @@ export async function loadPdfPageModel(file, onProgress = () => {}) {
       items,
       line_count: lines.length,
       has_raster_image: hasRaster,
+      hidden_text_items: visibility.hidden_text_items,
+      requires_visual_ocr: visibility.requires_visual_ocr,
       source_type: 'PDFJS_TEXT',
       extraction_method: 'PDF.js textContent + positional PageModel',
       auto_confirmed: false,
@@ -195,6 +232,10 @@ export async function loadPdfPageModel(file, onProgress = () => {}) {
     let actualParallelCount=parallelCount;const ocrProgress=(event)=>{if(event?.phase==='ocr-workers-ready'||event?.phase==='ocr-worker-fallback')actualParallelCount=Number(event.parallel_count)||1;onProgress(event);};
     const ocrPages=await ocrPdfDocument(pdfDocument,ocrProgress,{pageNumbers:selectedPageNumbers,workerCount:parallelCount});
     const ocrByPage=new Map(ocrPages.map((page)=>[page.page_no,page]));
+    for (const page of textPages.filter(p => p.requires_visual_ocr)) {
+      const recovered = ocrByPage.get(page.page_no);
+      if (!recovered || (!String(recovered.text || '').trim() && !recovered.ruled_tables?.length)) throw Error('PDF_VISIBLE_CONTENT_OCR_REQUIRED');
+    }
     const merged=textPages.map((page)=>{const ocrPage=ocrByPage.get(page.page_no);return ocrPage&&(String(ocrPage.text||'').trim()||ocrPage.ruled_tables?.length)?ocrPage:page;});
     onProgress({phase:'ocr-completed',page_count:pdfDocument.numPages,selected_count:selectedPageNumbers.length,parallel_count:actualParallelCount,elapsed_ms:Math.round(performance.now()-ocrStarted)});
     return merged;

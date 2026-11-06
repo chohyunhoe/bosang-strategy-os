@@ -341,7 +341,12 @@ function parseFlexibleLandResultText(text, diag = null) {
     return null;
   }
   const landNo = startsWithAddress ? 'LAND_CANDIDATE' : tokens[0];
-  const parcelAddress = normalizeParcelAddress(startsWithAddress ? tokens.slice(0, categoryIndex).join(' ') : tokens.slice(1, categoryIndex).join(' '));
+  const addressTokens = startsWithAddress ? tokens.slice(0, categoryIndex) : tokens.slice(1, categoryIndex);
+  let parcelAddress = normalizeParcelAddress(addressTokens.join(' '));
+  if (!startsWithAddress && !looksLikeParcelAddress(parcelAddress) && addressTokens.length > 1
+      && /^\d{1,6}(?:-\d{1,4})?$/.test(addressTokens[0])) {
+    parcelAddress = normalizeParcelAddress(addressTokens.slice(1).join(' '));
+  }
   const area = numericAfterCategory[0];
   const valuationNumbers = numericCandidates.slice(1)
     .map((item) => parseAppraisalMoney(item.token))
