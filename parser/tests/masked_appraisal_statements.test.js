@@ -39,3 +39,16 @@ const mixed=extractObstacleAppraisal([
 assert.equal(mixed.rows.length,2);assert.equal(mixed.summary[0].stated_total_amount,null);
 assert.equal(mixed.summary[0].total_crosscheck_status,'NOT_CHECKED');
 console.log('masked_appraisal_statements.test.js passed');
+(async()=>{
+  const {CaseStore}=await import('../../browser/product-v2/case-store.js');
+  const store=new CaseStore();store.ingestDocument({fileMeta:{name:'synthetic.pdf'},pageModel:pages,parsed:result});
+  assert.equal(store.state.lands.length,2,'separate equal-area ownership rows survive runtime ingestion');
+  assert.equal(new Set(store.state.appraisalResults.map(row=>row.land_id)).size,2);
+  assert.equal(store.state.obstacleRows.length,2);
+  const ambiguous=structuredClone(result);
+  ambiguous.appraisals=ambiguous.appraisals.map(row=>({...row,appraisal_id:'APP_SECOND'}));
+  ambiguous.land_appraisal_results=ambiguous.land_appraisal_results.map(row=>({...row,appraisal_id:'APP_SECOND'}));
+  store.ingestDocument({fileMeta:{name:'second-synthetic.pdf'},pageModel:pages,parsed:ambiguous});
+  assert.equal(store.state.lands.length,4,'ambiguous cross-document ownership correspondence must not be guessed');
+  console.log('ownership row runtime preservation passed');
+})().catch(error=>{console.error(error);process.exitCode=1;});

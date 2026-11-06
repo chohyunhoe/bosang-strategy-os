@@ -283,6 +283,11 @@ export class CaseStore {
     incomingLands.forEach((source)=>{
       const compatible=this.state.lands.filter(row=>compatibleParcelLocation(row,source)
         && numberKey(row.area)===numberKey(source.area)
+        // Equal areas can be separate ownership rows within one appraisal.
+        // Distinct explicit row numbers must not collapse into one subject.
+        && (!arr(row.source_appraisal_ids).includes(appraisalId)
+          || !text(row.land_no || row.serial_no) || !text(source.land_no || source.serial_no)
+          || text(row.land_no || row.serial_no)===text(source.land_no || source.serial_no))
         && (categoryKey(row.land_category)===categoryKey(source.land_category)
           || (Number(source.area)>0 && !arr(row.source_appraisal_ids).includes(appraisalId) && (!categoryKey(row.land_category)||!categoryKey(source.land_category))))
         // Look ahead within this PDF too: the first full address must not claim
