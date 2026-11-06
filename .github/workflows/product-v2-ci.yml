@@ -12,6 +12,8 @@ on:
       - 'scripts/output_bridge.js'
       - 'scripts/public_data_bridge.*'
       - 'scripts/map_bridge.js'
+      - 'scripts/local_map_runtime.js'
+      - 'tests/local_map_runtime.test.js'
       - 'scripts/serve_product_v2.js'
       - 'tests/product_v2_candidate.test.js'
       - 'tests/product_v2_public_bridge.test.js'
@@ -28,7 +30,7 @@ permissions:
 
 jobs:
   product-v2-gate:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -45,7 +47,9 @@ jobs:
       - name: Install Output Center dependencies
         run: python -m pip install -r brief_output/requirements.txt
       - name: Parser and Product v2 static gates
-        run: npm run parser:test
+        run: |
+          node tests/local_map_runtime.test.js
+          npm run parser:test
       - name: Install browser engines
         run: npx playwright install --with-deps chromium webkit
       - name: Product v2 desktop/mobile E2E
