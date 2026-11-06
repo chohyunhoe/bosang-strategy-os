@@ -5,19 +5,88 @@ const labels = { DRAFT: '작성 중', REVIEWED: '검수 기록 완료', APPROVED
 const checks = { SOURCE: '원본', NUMBERS: '수치', LEGAL: '법률', FORMAT: '서식' };
 const field = (name, label, type = 'text') => `<label>${label}<input name="${name}" type="${type}" required maxlength="1000"></label>`;
 
-export function installDocumentWorkflowUi(store) {
+export function installDocumentWorkflowUi(store, { pollIntervalMs = 15000, now = Date.now } = {}) {
   // Result bodies are displayed only in this session; case backups keep receipt metadata.
-  const previews = new WeakMap();
-  let busy = false;
-  async function transport(action, body) {
+  const previews = new WeakMap(), delivery = new WeakMap();
+  let busy = false, polling = false, destroyed = false, paused = false, dirty = false, epoch = 0, activePoll = null;
+  function keepPreview(state, preview) {
+    if (!previews.has(state)) previews.set(state, new Map());
+    previews.get(state).set(preview.document_id, preview);
+  }
+  function deliveryMap(state) {
+    if (!delivery.has(state)) delivery.set(state, new Map());
+    return delivery.get(state);
+  }
+  function pending(rows) {
+    return rows.flatMap(doc => (doc.handoffs || []).filter(h => h.revision === doc.revision && h.artifact_sha256 === doc.artifact?.sha256 && !(doc.execution_receipts || []).some(r => r.job_id === h.job_id)).map(h => ({ ...h, document_id: doc.id })));
+  }
+  function paintDelivery() {
+    if (store.state.route !== 'outputs' || destroyed) return;
+    const statuses = deliveryMap(store.state), requests = pending(store.state.documentWorkflow || []);
+    const note = document.querySelector('[data-doc-auto-status]');
+    if (note) note.textContent = paused ? '자동 수신 일시정지' : dirty ? '입력 내용 보호를 위해 자동 수신을 잠시 멈췄습니다. 입력을 기록하거나 비운 뒤 다시 확인하세요.' : `자동 수신 켜짐 · 대기 ${requests.length}건 · 이 화면이 열려 있을 때 15초마다 확인합니다.`;
+    for (const el of document.querySelectorAll('[data-doc-delivery]')) {
+      const jobs = requests.filter(r => r.document_id === el.dataset.docDelivery);
+      el.textContent = jobs.map(r => {
+        const s = statuses.get(r.job_id);
+        const label = s?.phase === 'ERROR' ? '결과 확인 실패 · 자동 재확인 예정' : s?.firstAt != null && now() - s.firstAt >= 300000 ? '5분 이상 결과 미수신' : '결과 대기';
+        return `${r.job_id}: ${label}`;
+      }).join(' / ') || '미수신 작업 없음';
+    }
+  }
+  async function transport(action, body, signal = AbortSignal.timeout(15000)) {
     let response;
-    try { response = await fetch('/__bso_transport/' + action, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-BSO-Transport': '1' }, body: JSON.stringify(body), signal: AbortSignal.timeout(15000) }); }
+    try { response = await fetch('/__bso_transport/' + action, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-BSO-Transport': '1' }, body: JSON.stringify(body), signal }); }
     catch (_) { throw Error('전송 연결을 확인하세요. 같은 지시문으로 다시 전송하면 기존 요청을 재사용합니다.'); }
     const value = await response.json().catch(() => ({}));
     if (!response.ok || value.ok !== true) throw Error('연결 처리 실패: ' + (value.code || 'LOCAL_BRIDGE_UNAVAILABLE'));
     return value;
   }
+  async function checkResults() {
+    if (destroyed || polling || busy || paused || dirty || document.hidden || store.state.route !== 'outputs' || store.state.status === 'PROCESSING') return;
+    const state = store.state, rows = state.documentWorkflow || [], capturedEpoch = epoch, statuses = deliveryMap(state);
+    const jobs = pending(rows).filter(h => (statuses.get(h.job_id)?.nextAt || 0) <= now()).sort((a,b) => (statuses.get(a.job_id)?.lastAt || 0) - (statuses.get(b.job_id)?.lastAt || 0)).slice(0,3);
+    if (!jobs.length) { paintDelivery(); return; }
+    polling = true; activePoll = new AbortController();
+    const valid = () => !destroyed && !busy && !dirty && !paused && !document.hidden && store.state === state && state.documentWorkflow === rows && state.route === 'outputs' && epoch === capturedEpoch;
+    let next = rows; const received = [];
+    try {
+      for (const h of jobs) {
+        if (!valid()) return;
+        const status = statuses.get(h.job_id) || { firstAt: now(), failures: 0 };
+        status.lastAt = now(); statuses.set(h.job_id, status);
+        try {
+          const response = await transport('result', { job_id: h.job_id, document_id: h.document_id, revision: h.revision, input_sha256: h.input_sha256, artifact_sha256: h.artifact_sha256 }, AbortSignal.any([activePoll.signal, AbortSignal.timeout(15000)]));
+          if (!valid()) return;
+          if (response.status === 'WAITING') { status.phase = 'WAITING'; status.failures = 0; }
+          else if (response.status === 'RESULT_READY') {
+            const result = await importDocumentResult(next, h.document_id, response.result, 'BSO 자동 수신');
+            if (!valid()) return;
+            next = result.rows; received.push(result.preview); status.phase = 'RECEIVED'; status.failures = 0;
+          } else throw Error('UNEXPECTED_RESULT_STATUS');
+          status.nextAt = now() + pollIntervalMs;
+        } catch (_) {
+          if (!valid()) return;
+          status.phase = 'ERROR'; status.failures = Math.min(6, status.failures + 1);
+          status.nextAt = now() + Math.min(300000, pollIntervalMs * 2 ** status.failures);
+        }
+      }
+      if (!valid()) return;
+      if (received.length) {
+        for (const preview of received) keepPreview(state, preview);
+        state.documentWorkflow = next; store.emit();
+        const message = document.querySelector('[data-doc-message]');
+        if (message) message.textContent = `결과 ${received.length}건을 자동 수신했습니다. 문서·버전·본문 지문을 대조했으며 검수·승인 상태는 유지했습니다. 사건 저장으로 실행 기록을 보관하세요.`;
+        for (const preview of received) {
+          const article = [...document.querySelectorAll('[data-doc-id]')].find(el => el.dataset.docId === preview.document_id);
+          if (article?.querySelector('details')) article.querySelector('details').open = true;
+        }
+      }
+      paintDelivery();
+    } finally { polling = false; activePoll = null; }
+  }
   function render() {
+    epoch++; activePoll?.abort(); dirty = false;
     document.querySelector('[data-document-workflow]')?.remove();
     if (store.state.route !== 'outputs') return;
     const main = document.querySelector('main');
@@ -29,14 +98,15 @@ export function installDocumentWorkflowUi(store) {
       <details><summary>문서 등록</summary><form data-doc-register class="document-workflow-form">
       ${field('title', '문서명')}${field('purpose', '용도·독자')}${field('owner', '담당자')}${field('template_ref', '기준 서식·버전')}${field('source_ref', '원본·파일 참조')}${field('actor', '기록자')}
       <button class="primary">등록</button></form></details><p role="status" data-doc-message></p>
+      <p data-doc-auto-status></p><p>결과 확인은 AI를 호출하지 않습니다. 결과 대기만으로 n8n 접수·실행 여부를 확정할 수 없습니다.</p><button type="button" class="secondary" data-doc-auto-toggle>${paused ? '자동 수신 재개' : '자동 수신 일시정지'}</button>
       ${rows.map((row) => {
-        const preview = previews.get(store.state);
+        const preview = previews.get(store.state)?.get(row.id);
         const currentPreview = preview?.document_id === row.id && preview.revision === row.revision ? preview : null;
         const progress = documentProgress(row, new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Seoul' }));
         const actions = row.status === 'DRAFT' ? REVIEW_CHECKS.filter((key) => !row.checks[key]).map((key) => [`CHECK:${key}`, `${checks[key]} 검수 기록`]) : row.status === 'REVIEWED' ? [['APPROVE', '승인 기록']] : row.status === 'APPROVED' ? [['SUBMIT', '제출 기록']] : [];
         actions.push(['REVISE', '수정본 시작']);
         return `<article class="card section" data-doc-id="${esc(row.id)}"><h3>${esc(row.title)} · v${row.revision}</h3><p>${labels[row.status]} · ${progress.status} · 후속조치 ${progress.pending} · 기한경과 ${progress.overdue}</p><p>${esc(row.purpose)} · 담당 ${esc(row.owner)}<br>서식: ${esc(row.template_ref)}<br>원본: ${esc(row.source_ref)}</p><p>${REVIEW_CHECKS.map((key) => `${checks[key]} ${row.checks[key] ? '✓' : '대기'}`).join(' · ')}</p>
-          <details><summary>파일·n8n 실행 연결</summary><p>파일은 이 브라우저에서 SHA-256 지문만 계산합니다. 파일 내용이 바뀌면 수정본으로 전환하고 검수·승인을 다시 기록합니다.</p><p>${row.artifact ? `${esc(row.artifact.name)} · ${row.artifact.size} bytes<br>SHA-256 ${esc(row.artifact.sha256)}` : '파일 지문 미등록'}</p>
+          <p data-doc-delivery="${esc(row.id)}"></p><details><summary>파일·n8n 실행 연결</summary><p>파일은 이 브라우저에서 SHA-256 지문만 계산합니다. 파일 내용이 바뀌면 수정본으로 전환하고 검수·승인을 다시 기록합니다.</p><p>${row.artifact ? `${esc(row.artifact.name)} · ${row.artifact.size} bytes<br>SHA-256 ${esc(row.artifact.sha256)}` : '파일 지문 미등록'}</p>
           <form data-doc-artifact class="document-workflow-form">${field('actor', '기록자')}<label>문서 파일(최대 50MB)<input name="artifact_file" type="file" required></label><button class="secondary">파일 지문 등록</button></form>
           <p>작업요청 JSON은 공개·합성 지시문과 파일 지문을 포함합니다. 접수함 전송은 연결된 Google Drive 폴더에 지시문과 지문을 저장합니다. 실제 원본 파일은 전송하지 않습니다. AI 실행은 n8n에서 별도로 승인합니다.</p>
           <form data-doc-handoff class="document-workflow-form">${field('actor', '기록자')}<label>입력 구분<select name="data_class"><option value="SYNTHETIC">합성자료</option><option value="PUBLIC">공개자료</option></select></label><label>공개·합성 작업지시<textarea name="prompt" required maxlength="24000"></textarea></label><button class="primary" name="transport" value="send">n8n 접수함에 전송</button><button class="secondary">n8n 작업요청 JSON 저장</button></form>
@@ -56,6 +126,16 @@ export function installDocumentWorkflowUi(store) {
       document.head.appendChild(style);
     }
     main.appendChild(panel);
+    const markEditing = () => {
+      dirty = [...panel.querySelectorAll('input,textarea,select')].some(el => el.type === 'file' ? el.files.length > 0 : el.tagName === 'SELECT' ? el.selectedIndex > 0 : Boolean(el.value));
+      if (dirty) { epoch++; activePoll?.abort(); } paintDelivery();
+    };
+    panel.addEventListener('input', markEditing); panel.addEventListener('change', markEditing);
+    panel.querySelector('[data-doc-auto-toggle]').addEventListener('click', event => {
+      paused = !paused; epoch++; if (paused) activePoll?.abort();
+      event.target.textContent = paused ? '자동 수신 재개' : '자동 수신 일시정지'; paintDelivery();
+    });
+    paintDelivery();
     panel.addEventListener('submit', async (event) => {
       event.preventDefault();
       if (busy) return;
@@ -104,7 +184,7 @@ export function installDocumentWorkflowUi(store) {
           }
         }
         if (store.state !== state || store.state.documentWorkflow !== rows) throw new Error('처리 중 사건이나 문서가 변경됐습니다. 현재 사건에서 다시 시도하세요.');
-        if (resultPreview) previews.set(state, resultPreview);
+        if (resultPreview) keepPreview(state, resultPreview);
         store.state.documentWorkflow = next; store.emit();
         if (jobSend) {
           // Persist the request ID before network I/O so retries cannot create another queue item.
@@ -125,5 +205,6 @@ export function installDocumentWorkflowUi(store) {
     });
   }
   const unsubscribe = store.subscribe(render); render();
-  return { destroy() { unsubscribe(); document.querySelector('[data-document-workflow]')?.remove(); } };
+  const timer = setInterval(() => { void checkResults(); }, pollIntervalMs); timer.unref?.();
+  return { checkResults, destroy() { destroyed = true; clearInterval(timer); activePoll?.abort(); unsubscribe(); document.querySelector('[data-document-workflow]')?.remove(); } };
 }
