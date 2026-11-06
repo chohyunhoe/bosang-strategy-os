@@ -1,0 +1,35 @@
+'use strict';
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const {loadLocalMapEnv, windowsQgisCandidates} = require('../scripts/local_map_runtime');
+const root=fs.mkdtempSync(path.join(os.tmpdir(),'bso-map-runtime-test-'));
+try {
+  fs.writeFileSync(path.join(root,'.env'),'VWORLD_API_KEY="SYNTHETIC_SECRET"\nVWORLD_API_DOMAIN=http://localhost\nBSO_GRAPHICS_CRS=EPSG:5186\nNODE_OPTIONS=untrusted\n');
+  const env={VWORLD_API_KEY:'EXISTING_SECRET'};
+  loadLocalMapEnv(root,env);
+  assert.equal(env.VWORLD_API_KEY,'EXISTING_SECRET');
+  assert.equal(env.VWORLD_DOMAIN,'http://localhost');
+  assert.equal(env.BSO_GRAPHICS_CRS,'EPSG:5186');
+  assert.equal(env.NODE_OPTIONS,undefined);
+  const programFiles=path.join(root,'Program Files');
+  const install=path.join(programFiles,'QGIS 3.44.15');
+  for(const dir of ['bin','apps/Python312/Scripts','apps/qgis-ltr/python/qgis','apps/Qt5/bin']) fs.mkdirSync(path.join(install,dir),{recursive:true});
+  fs.writeFileSync(path.join(install,'bin/python3.exe'),'');
+  fs.writeFileSync(path.join(install,'apps/qgis-ltr/python/qgis/__init__.py'),'');
+  const original={ProgramFiles:programFiles,Path:'ORIGINAL_PATH',PYTHONHOME:'REPORT_HOME',PYTHONPATH:'REPORT_PATH'};
+  const snapshot=JSON.stringify(original);
+  const candidates=windowsQgisCandidates(original,'win32');
+  assert.equal(candidates.length,1);
+  assert.equal(candidates[0].command,path.join(install,'bin/python3.exe'));
+  assert.equal(candidates[0].env.PYTHONHOME,path.join(install,'apps/Python312'));
+  assert.equal(candidates[0].env.PYTHONPATH,path.join(install,'apps/qgis-ltr/python'));
+  assert.equal(candidates[0].env.QT_QPA_PLATFORM,'offscreen');
+  assert.equal(candidates[0].env.Path,undefined);
+  assert.equal(JSON.stringify(original),snapshot,'report environment must stay unchanged');
+  assert.equal(windowsQgisCandidates(original,'linux').length,0);
+  fs.rmSync(path.join(install,'bin/python3.exe'));
+  assert.equal(windowsQgisCandidates(original,'win32').length,0,'incomplete installs must be skipped');
+  console.log('local_map_runtime.test.js passed');
+} finally { fs.rmSync(root,{recursive:true,force:true}); }
