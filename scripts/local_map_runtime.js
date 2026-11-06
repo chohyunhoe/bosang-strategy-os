@@ -44,7 +44,7 @@ function windowsQgisCandidates(env = process.env, platform = process.platform) {
       PYTHONUTF8:'1', PYTHONIOENCODING:'utf-8',
       QGIS_PREFIX_PATH:qgis.replace(/\\/g,'/'),
       QT_PLUGIN_PATH:[path.join(qgis,'qtplugins'),path.join(qt,'plugins')].join(';'),
-      QT_QPA_PLATFORM:'offscreen',
+      QT_QPA_PLATFORM:env.QT_QPA_PLATFORM || 'windows',
       GDAL_DATA:path.join(apps,'gdal','share','gdal'),
       GDAL_DRIVER_PATH:path.join(apps,'gdal','lib','gdalplugins'),
       PROJ_DATA:path.join(root,'share','proj'),
