@@ -15,6 +15,9 @@ on:
       - 'scripts/local_map_runtime.js'
       - 'tests/local_map_runtime.test.js'
       - 'scripts/serve_product_v2.js'
+      - 'scripts/bso_transport_bridge.js'
+      - 'scripts/build_n8n_bso_transport.js'
+      - 'tests/bso_transport*.test.js'
       - 'tests/product_v2_candidate.test.js'
       - 'tests/product_v2_public_bridge.test.js'
       - 'tests/product_v2_map_bridge.test.js'
@@ -46,6 +49,8 @@ jobs:
       - run: npm ci
       - name: Install Output Center dependencies
         run: python -m pip install -r brief_output/requirements.txt
+      - name: Desktop sync transport contracts
+        run: node --test tests/bso_transport*.test.js
       - name: Parser and Product v2 static gates
         run: |
           node tests/local_map_runtime.test.js
@@ -58,3 +63,4 @@ jobs:
         run: |
           test -f dist/product-v2-candidate/product-v2-manifest.json
           ! grep -R "mobile-review-p0\|mobile-review-router\|stable16" dist/product-v2-candidate --exclude=parser-bundle.js
+

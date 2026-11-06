@@ -75,7 +75,7 @@ test('파일 지문·n8n 작업요청·실행기록을 연결하고 파일 변�
   await requestForm.locator('[name="actor"]').fill('기록자 A');
   await requestForm.locator('[name="prompt"]').fill('Synthetic instructions only');
   const downloadPromise=page.waitForEvent('download');
-  await requestForm.locator('button').click();
+  await requestForm.getByRole('button', {name:'n8n 작업요청 JSON 저장',exact:true}).click();
   const downloaded=await downloadPromise;
   const job=JSON.parse(await fs.readFile(await downloaded.path(),'utf8'));
   expect(job.status).toBe('READY');expect(job.bso_context.artifact_sha256).toBe(hash);

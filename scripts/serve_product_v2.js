@@ -6,6 +6,7 @@ const path = require('node:path');
 const { handleOutputBridgeRequest } = require('./output_bridge.js');
 const { handlePublicDataBridgeRequest } = require('./public_data_bridge.js');
 const { handleMapBridgeRequest } = require('./map_bridge.js');
+const { handleBsoTransportRequest } = require('./bso_transport_bridge.js');
 
 const root = path.resolve(process.argv[2] || 'dist/product-v2-candidate');
 const port = Number(process.argv[3] || process.env.BSO_V2_PORT || 4174);
@@ -42,6 +43,7 @@ const server = http.createServer((request, response) => {
   if (handleOutputBridgeRequest(request, response, url.pathname)) return;
   if (handlePublicDataBridgeRequest(request, response, url.pathname)) return;
   if (handleMapBridgeRequest(request, response, url.pathname)) return;
+  if (handleBsoTransportRequest(request, response, url.pathname)) return;
   if (!['GET','HEAD'].includes(request.method || 'GET')) { response.writeHead(405); response.end('method not allowed'); return; }
   staticRequest(request, response, url.pathname);
 });

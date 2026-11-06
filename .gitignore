@@ -77,3 +77,6 @@ live_case_bundle.json
 
 # Live n8n exports may contain internal credential references.
 n8n-private/
+
+# Desktop Drive transport machine configuration
+.bso-transport.json

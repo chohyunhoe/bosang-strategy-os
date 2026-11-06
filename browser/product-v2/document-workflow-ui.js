@@ -8,6 +8,15 @@ const field = (name, label, type = 'text') => `<label>${label}<input name="${nam
 export function installDocumentWorkflowUi(store) {
   // Result bodies are displayed only in this session; case backups keep receipt metadata.
   const previews = new WeakMap();
+  let busy = false;
+  async function transport(action, body) {
+    let response;
+    try { response = await fetch('/__bso_transport/' + action, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-BSO-Transport': '1' }, body: JSON.stringify(body), signal: AbortSignal.timeout(15000) }); }
+    catch (_) { throw Error('전송 연결을 확인하세요. 같은 지시문으로 다시 전송하면 기존 요청을 재사용합니다.'); }
+    const value = await response.json().catch(() => ({}));
+    if (!response.ok || value.ok !== true) throw Error('연결 처리 실패: ' + (value.code || 'LOCAL_BRIDGE_UNAVAILABLE'));
+    return value;
+  }
   function render() {
     document.querySelector('[data-document-workflow]')?.remove();
     if (store.state.route !== 'outputs') return;
@@ -29,8 +38,9 @@ export function installDocumentWorkflowUi(store) {
         return `<article class="card section" data-doc-id="${esc(row.id)}"><h3>${esc(row.title)} · v${row.revision}</h3><p>${labels[row.status]} · ${progress.status} · 후속조치 ${progress.pending} · 기한경과 ${progress.overdue}</p><p>${esc(row.purpose)} · 담당 ${esc(row.owner)}<br>서식: ${esc(row.template_ref)}<br>원본: ${esc(row.source_ref)}</p><p>${REVIEW_CHECKS.map((key) => `${checks[key]} ${row.checks[key] ? '✓' : '대기'}`).join(' · ')}</p>
           <details><summary>파일·n8n 실행 연결</summary><p>파일은 이 브라우저에서 SHA-256 지문만 계산합니다. 파일 내용이 바뀌면 수정본으로 전환하고 검수·승인을 다시 기록합니다.</p><p>${row.artifact ? `${esc(row.artifact.name)} · ${row.artifact.size} bytes<br>SHA-256 ${esc(row.artifact.sha256)}` : '파일 지문 미등록'}</p>
           <form data-doc-artifact class="document-workflow-form">${field('actor', '기록자')}<label>문서 파일(최대 50MB)<input name="artifact_file" type="file" required></label><button class="secondary">파일 지문 등록</button></form>
-          <p>작업요청 JSON은 공개·합성 지시문과 파일 지문을 포함합니다. 다운로드 후 n8n 대기열에서 접수·실행해야 하며 여기서 자동 전송하거나 AI를 호출하지 않습니다.</p>
-          <form data-doc-handoff class="document-workflow-form">${field('actor', '기록자')}<label>입력 구분<select name="data_class"><option value="SYNTHETIC">합성자료</option><option value="PUBLIC">공개자료</option></select></label><label>공개·합성 작업지시<textarea name="prompt" required maxlength="24000"></textarea></label><button class="secondary">n8n 작업요청 JSON 저장</button></form>
+          <p>작업요청 JSON은 공개·합성 지시문과 파일 지문을 포함합니다. 접수함 전송은 연결된 Google Drive 폴더에 지시문과 지문을 저장합니다. 실제 원본 파일은 전송하지 않습니다. AI 실행은 n8n에서 별도로 승인합니다.</p>
+          <form data-doc-handoff class="document-workflow-form">${field('actor', '기록자')}<label>입력 구분<select name="data_class"><option value="SYNTHETIC">합성자료</option><option value="PUBLIC">공개자료</option></select></label><label>공개·합성 작업지시<textarea name="prompt" required maxlength="24000"></textarea></label><button class="primary" name="transport" value="send">n8n 접수함에 전송</button><button class="secondary">n8n 작업요청 JSON 저장</button></form>
+          <form data-doc-sync-result class="document-workflow-form">${field('actor', '기록자')}<label>수신할 작업<select name="job_id" required>${(row.handoffs || []).filter(h => h.revision === row.revision).map(h => `<option value="${esc(h.job_id)}">${esc(h.job_id)}</option>`).join('')}</select></label><button class="secondary">완료 결과 수신</button></form>
           <form data-doc-receipt class="document-workflow-form">${field('actor', '기록자')}<label>n8n 실행결과 JSON<input name="receipt_file" type="file" accept="application/json,.json" required></label><button class="secondary">실행 기록 가져오기</button></form>
           <p>작업요청 ${(row.handoffs || []).length}건 · 실행 기록 ${(row.execution_receipts || []).length}건. 가져온 실행 기록은 직원 인증이나 사람의 검수·승인을 대신하지 않습니다.</p>
           ${currentPreview ? `<section data-doc-result-preview><h4>가져온 결과 · v${row.revision} · ${esc(currentPreview.status)}</h4><p>본문 SHA-256과 문서 연결을 대조했습니다. 가져온 JSON의 발급자는 인증하지 않습니다. 본문은 현재 화면에서만 표시하며 사건 저장에는 실행 기록만 보관합니다.</p><pre style="white-space:pre-wrap">${esc(currentPreview.output || '차단된 실행입니다. 검토할 결과 본문이 없습니다.')}</pre></section>` : ''}
@@ -48,13 +58,15 @@ export function installDocumentWorkflowUi(store) {
     main.appendChild(panel);
     panel.addEventListener('submit', async (event) => {
       event.preventDefault();
+      if (busy) return;
+      busy = true;
       const form = event.target;
       const input = Object.fromEntries(new FormData(form));
       const message = panel.querySelector('[data-doc-message]');
       const state = store.state;
       try {
         if (store.state.status === 'PROCESSING') throw new Error('평가서 처리 완료 후 기록하세요.');
-        let next, jobDownload = null, resultPreview = null, reopened = false;
+        let next, jobDownload = null, jobSend = null, resultPreview = null, reopened = false;
         if (form.hasAttribute('data-doc-register')) next = registerDocument(rows, input);
         else {
           const id = form.closest('[data-doc-id]').dataset.docId;
@@ -65,7 +77,19 @@ export function installDocumentWorkflowUi(store) {
             next = attachDocumentArtifact(rows, id, { name: file.name, size: file.size, sha256: hash }, input.actor);
           } else if (form.hasAttribute('data-doc-handoff')) {
             const result = await createDocumentHandoff(rows, id, input.prompt, input.data_class, input.actor);
-            next = result.rows; jobDownload = result.job;
+            if (event.submitter?.value === 'send') {
+              // Reuse an identical request, including after an ambiguous network failure or page reload.
+              const old = rows.find(r => r.id === id).handoffs?.find(h => h.revision === result.job.bso_context.revision && h.artifact_sha256 === result.job.bso_context.artifact_sha256 && h.input_sha256 === result.job.input_sha256 && h.data_class === result.job.data_class);
+              next = old ? rows : result.rows;
+              jobSend = { ...result.job, job_id: old?.job_id || result.job.job_id };
+            } else { next = result.rows; jobDownload = result.job; }
+          } else if (form.hasAttribute('data-doc-sync-result')) {
+            const doc = rows.find(r => r.id === id), handoff = doc.handoffs?.find(h => h.job_id === input.job_id && h.revision === doc.revision);
+            if (!handoff) throw Error('현재 문서 버전의 작업요청을 먼저 생성하세요.');
+            const response = await transport('result', { job_id: handoff.job_id, document_id: id, revision: handoff.revision, input_sha256: handoff.input_sha256, artifact_sha256: handoff.artifact_sha256 });
+            if (response.status === 'WAITING') throw Error('결과 파일 동기화를 기다리고 있습니다. AI 실행 승인·완료 여부도 확인하세요.');
+            const result = await importDocumentResult(rows, id, response.result, input.actor);
+            next = result.rows; resultPreview = result.preview; reopened = result.reopened === true;
           } else if (form.hasAttribute('data-doc-receipt')) {
             const file = input.receipt_file;
             if (!file || file.size > 2 * 1024 * 1024) throw new Error('2MB 이하의 실행결과 JSON을 선택하세요.');
@@ -82,13 +106,22 @@ export function installDocumentWorkflowUi(store) {
         if (store.state !== state || store.state.documentWorkflow !== rows) throw new Error('처리 중 사건이나 문서가 변경됐습니다. 현재 사건에서 다시 시도하세요.');
         if (resultPreview) previews.set(state, resultPreview);
         store.state.documentWorkflow = next; store.emit();
+        if (jobSend) {
+          // Persist the request ID before network I/O so retries cannot create another queue item.
+          const response = await transport('send', jobSend);
+          if (store.state !== state || store.state.documentWorkflow !== next) return;
+          const target = document.querySelector('[data-doc-message]');
+          if (target) target.textContent = response.duplicate ? '기존 요청 파일을 확인했습니다. n8n 접수·실행 상태는 별도로 확인하세요.' : '동기화 폴더에 저장했습니다. 클라우드 접수 확인 전이며 AI 실행은 별도 승인 대상입니다.';
+          return;
+        }
         document.querySelector('[data-doc-message]').textContent = reopened ? '기존 실행 기록과 일치하는 결과 본문을 다시 표시했습니다.' : '기록했습니다.';
         if (jobDownload) {
           const url = URL.createObjectURL(new Blob([JSON.stringify(jobDownload, null, 2)], { type: 'application/json' }));
           const anchor = document.createElement('a'); anchor.href = url; anchor.download = `${jobDownload.job_id}.json`; anchor.click();
           setTimeout(() => URL.revokeObjectURL(url), 30000);
         }
-      } catch (error) { message.textContent = error.message; }
+      } catch (error) { if (store.state === state) { const target = document.querySelector('[data-doc-message]') || message; target.textContent = error.message; } }
+      finally { busy = false; }
     });
   }
   const unsubscribe = store.subscribe(render); render();
