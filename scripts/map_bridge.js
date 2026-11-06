@@ -6,6 +6,8 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
 const ROOT = path.resolve(__dirname, '..');
+const { loadLocalMapEnv, windowsQgisCandidates } = require('./local_map_runtime');
+loadLocalMapEnv(ROOT);
 const PREFIX = '/__map_bridge';
 const MAX_BODY_BYTES = 24 * 1024 * 1024;
 const MAX_VWORLD_IMAGE_BYTES = 16 * 1024 * 1024;
@@ -75,6 +77,7 @@ function configuredCrs() {
 function qgisCandidates() {
   const candidates = [];
   if (process.env.BSO_QGIS_PYTHON) candidates.push({ command:process.env.BSO_QGIS_PYTHON, args:[] });
+  candidates.push(...windowsQgisCandidates());
   if (process.env.BSO_PYTHON) candidates.push({ command:process.env.BSO_PYTHON, args:[] });
   candidates.push({ command:'python', args:[] }, { command:'python3', args:[] }, { command:'py', args:['-3'] });
   return candidates;
@@ -84,7 +87,7 @@ function probeQgis() {
   cachedQgis = null;
   for (const candidate of qgisCandidates()) {
     try {
-      const result = spawnSync(candidate.command, [...candidate.args, '-c', 'from qgis.core import QgsApplication; print("QGIS_OK")'], { cwd:ROOT, encoding:'utf8', timeout:30_000, windowsHide:true });
+      const result = spawnSync(candidate.command, [...candidate.args, '-c', 'from qgis.core import QgsApplication; print("QGIS_OK")'], { cwd:ROOT, encoding:'utf8', timeout:30_000, windowsHide:true, env:candidate.env || process.env });
       if (result.status === 0 && String(result.stdout || '').includes('QGIS_OK')) { cachedQgis = candidate; break; }
     } catch (_error) {}
   }
@@ -149,7 +152,7 @@ function sanitizeMessage(value, workspace, archive) {
   for (const secret of [workspace, archive, process.env.VWORLD_API_KEY]) if (secret) text = text.split(String(secret)).join('[REDACTED]');
   return text;
 }
-function runQgis(candidate, script, args, cwd) { return spawnSync(candidate.command, [...candidate.args, script, ...args], { cwd, encoding:'utf8', timeout:RUN_TIMEOUT_MS, windowsHide:true, env:{...process.env} }); }
+function runQgis(candidate, script, args, cwd) { return spawnSync(candidate.command, [...candidate.args, script, ...args], { cwd, encoding:'utf8', timeout:RUN_TIMEOUT_MS, windowsHide:true, env:candidate.env || {...process.env} }); }
 function mapPreviewFromResult(result, crs, workspace, archive) {
   const layers = [];
   for (const file of list(result.selected_geometry)) {
