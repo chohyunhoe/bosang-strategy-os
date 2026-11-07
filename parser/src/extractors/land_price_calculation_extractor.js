@@ -157,23 +157,22 @@ function attachLandPriceCalculations(lines, appraisalResults, context = {}) {
   const lands = Array.isArray(context.lands) ? context.lands : [];
   if (results.length === 0 || lands.length === 0) return results;
 
-  const landNoByLandId = new Map();
-  for (const land of lands) {
-    if (!land || !land.land_id || !land.land_no) continue;
-    if (landNoByLandId.has(land.land_id)) continue;
-    landNoByLandId.set(land.land_id, String(land.land_no));
-  }
-
   const rows = extractCalculationRows(lines);
   if (rows.size === 0) return results;
 
   return results.map((result) => {
-    const landNo = landNoByLandId.get(result.land_id);
+    const land=lands.find(land=>land.land_id===result.land_id);
+    if(!land)return result;
+    // land_no is the row's first token, which may be a member number. Only an
+    // explicitly identified serial column may join a member-bearing statement.
+    const landNo = String((land.ownership_identity_status || land.member_no
+      ? land.statement_serial_no : land.land_no) || '');
     let row = landNo ? rows.get(landNo) : null;
+    if(row && ((row.parsed.parcel_address && row.parsed.parcel_address!==normalizeParcelAddress(land.parcel_address))
+      || (row.parsed.area && row.parsed.area!==Number(land.area))
+      || (result.unit_price!=null && row.parsed.unit_price!==result.unit_price))) row=null;
     let groupRows=null;
     if(!row){
-      const land=lands.find(land=>land.land_id===result.land_id);
-      if(!land)return result;
       const address=normalizeParcelAddress(land.parcel_address),area=Number(land.area);
       const matching=[...rows.values()].filter(candidate=>candidate.parsed.parcel_address===address&&candidate.parsed.area===area);
       const subjects=lands.filter(candidate=>normalizeParcelAddress(candidate.parcel_address)===address&&Number(candidate.area)===area);
@@ -208,7 +207,7 @@ function attachLandPriceCalculations(lines, appraisalResults, context = {}) {
         .map((category, index) => ({ category, item: category, factor_value: row.parsed.explicit_six_factors[index],
           source_refs: detailRefs, review_status_code: 'NEEDS_REVIEW', auto_confirmed: false }));
     }
-    const sourceRefs = [...(enriched.source_refs || []), ...calculationRefs];
+    const sourceRefs = [...(enriched.source_refs || []), ...calculationRefs, ...(land.member_no_source_refs || [])];
     const missingFields = ENRICHED_FIELDS
       .concat(['amount'])
       .filter((field) => enriched[field] === null || enriched[field] === undefined || enriched[field] === '');
