@@ -193,3 +193,29 @@ test('표지 법인명은 확대 OCR의 완전한 기재를 우선하며 누락 
   const cells=await page.locator('table').first().locator('tbody tr').first().locator('td').allTextContents();
   expect(cells).toContain('—');expect(cells).toContain('0');
 });
+
+test('표 테두리 오인식은 제목이 누락된 경우에만 희소 OCR을 재시도한다',async({page})=>{
+  await page.goto('/');
+  const result=await page.evaluate(async()=>{
+    const {needsSparseStatementPass,ocrWordLines}=await import('/ocr-source.js');
+    const words=Array.from({length:3},(_,i)=>({text:' ',bbox:{x0:10+i*80,y0:100,x1:11+i*80,y1:250}}));
+    const data={text:'100,000\n200,000',blocks:[{paragraphs:[{lines:[{words}]}]}]};
+    return {missing:needsSparseStatementPass(data,800,1000),known:needsSparseStatementPass({...data,text:'건 물 평 가 조 서'},800,1000),plain:needsSparseStatementPass({text:'plain'},800,1000),lines:ocrWordLines([
+      {str:'근',x:0,y:10,width:15,height:20},{str:'생',x:17,y:10,width:15,height:20},{str:'/',x:34,y:10,width:7,height:20},{str:'주택',x:43,y:10,width:30,height:20},
+      {str:'100',x:100,y:10,width:30,height:20},{str:'200',x:132,y:10,width:30,height:20},{str:' ',x:80,y:1,width:1,height:100},
+    ])};
+  });
+  expect(result).toEqual({missing:true,known:false,plain:false,lines:'근생/주택 100 200'});
+});
+
+test('중간의 데이터 행은 더 긴 여백 뒤의 로고보다 먼저 확대한다',async({page})=>{
+  await page.goto('/');
+  const crop=await page.evaluate(async()=>{
+    const {sparseTableCrop}=await import('/ocr-source.js');
+    const c=document.createElement('canvas');c.width=800;c.height=1000;const ctx=c.getContext('2d');
+    ctx.fillStyle='white';ctx.fillRect(0,0,800,1000);ctx.fillStyle='black';ctx.font='22px sans-serif';
+    ctx.fillText('TABLE HEADER',40,180);ctx.fillText('101 12-3 100.00 200,000',40,410);ctx.fillText('102 12-4 100.00 200,000',40,450);ctx.fillText('COMPANY LOGO',40,930);
+    return sparseTableCrop(c,ctx,true);
+  });
+  expect(crop.y).toBeGreaterThan(350);expect(crop.y).toBeLessThan(410);expect(crop.y+crop.height).toBeLessThan(550);
+});
