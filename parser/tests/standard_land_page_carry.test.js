@@ -82,3 +82,13 @@ assert.deepEqual(
 );
 
 console.log('standard_land_page_carry.test.js passed');
+
+const repeatedReportPages = [
+ {page_no:1,text:'감정평가액 산출근거 및 그 결정에 관한 의견\nAB2401-01-1001 감정평가서\nⅤ. 토지가액 산출 내역\n1. 비교표준지 선정\n기호 소재지 지목 이용상황 용도지역 접면 형상 공시지가\nA 표본동 10-1 대 상업용 준주거 중로각지 가장형 200,000'},
+ {page_no:2,text:'감정평가액 산출근거 및 그 결정에 관한 의견\nAB2401-01-1001 감정평가서\nⅤ. 토지가액 산출 내역\n기호 소재지 지목 이용상황 용도지역 접면 형상 공시지가\n도로 지세\nB 표본동 20-1 대 상업용 준주거 중로각지 가장형 300,000'},
+];
+const repeatedStandards=extractStandardLands(segmentLines(normalizePages(repeatedReportPages)),{appraisalId:'APP_REPEATED',fileName:'synthetic.pdf'});
+assert.deepEqual(repeatedStandards.map(r=>r.standard_land_symbol),['A','B']);
+const breakPages=structuredClone(repeatedReportPages);
+breakPages[1].text=breakPages[1].text.replace('기호 소재지','2. 시점수정\n기호 소재지');
+assert.deepEqual(extractStandardLands(segmentLines(normalizePages(breakPages)),{appraisalId:'APP_BREAK',fileName:'synthetic.pdf'}).map(r=>r.standard_land_symbol),['A']);
