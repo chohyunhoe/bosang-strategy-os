@@ -38,6 +38,16 @@ const mixed=extractObstacleAppraisal([
 ],{},{});
 assert.equal(mixed.rows.length,2);assert.equal(mixed.summary[0].stated_total_amount,null);
 assert.equal(mixed.summary[0].total_crosscheck_status,'NOT_CHECKED');
+const blankUnit=extractObstacleAppraisal([
+ line(1,'건물평가조서'),line(2,'201 600-1 표본동 11-2 근생/주택 철콘/벽돌 80.5000 일괄 32,000,000 익명'),
+],{},{});
+assert.equal(blankUnit.rows.length,1);
+assert.equal(blankUnit.rows[0].building_unit,'');
+assert.equal(blankUnit.rows[0].amount,32000000);
+assert.equal(blankUnit.rows[0].unit_price,null);
+assert.equal(extractObstacleAppraisal([
+ line(1,'건물평가조서'),line(2,'201 600-1 표본동 11-2 불명 불명 80.5000 일괄 32,000,000 익명'),
+],{},{}).rows.length,0,'unknown missing unit layouts stay unparsed');
 console.log('masked_appraisal_statements.test.js passed');
 (async()=>{
   const {CaseStore}=await import('../../browser/product-v2/case-store.js');

@@ -228,9 +228,12 @@ function collectBuildingRows(lines, appraisal, context) {
   for (const line of lines) {
     if (!starts.has(line.page_no) || line.line_no <= starts.get(line.page_no)) continue;
     const text = String(line.normalized_text || '').replace(/\s+/g, ' ').trim();
-    const match = text.match(/^(\d{3,7}) (\d{1,6}(?:-\d{1,4})?) ([가-힣0-9· ]+(?:동|리|읍|면)) ((?:산)?\d{1,5}(?:-\d{1,5})?) (\S+) (\S+) (\S+) (\d+(?:\.\d+)?) (일괄|\d{1,3}(?:,\d{3})+) (\d{1,3}(?:,\d{3})+)(?: |$)/);
+    const match = text.match(/^(\d{3,7}) (\d{1,6}(?:-\d{1,4})?) ([가-힣0-9· ]+(?:동|리|읍|면)) ((?:산)?\d{1,5}(?:-\d{1,5})?) (?:(\S+) )?(\S+) (\S+) (\d+(?:\.\d+)?) (일괄|\d{1,3}(?:,\d{3})+) (\d{1,3}(?:,\d{3})+)(?: |$)/);
     if (!match) continue;
     const [, serial, member, address, lot, buildingUnit, usage, structure, area, unit, amount] = match;
+    // A blank unit cell is allowed only when the two remaining cells explicitly
+    // identify a building use and structure. Do not shift unknown columns.
+    if (!buildingUnit && (!/(?:주택|근생|상가|공장|창고|사무소)/.test(usage) || !/(?:조|철콘|벽돌|콘크리트|목|철골)/.test(structure))) continue;
     if (!(Number(area) > 0) || !(parseNumber(amount) > 0)) continue;
     if (rows.some(row => row.serial_no === serial && row.parcel_address === `${address} ${lot}`)) continue;
     rows.push({
@@ -239,7 +242,7 @@ function collectBuildingRows(lines, appraisal, context) {
       appraisal_company: appraisal?.appraisal_company || '',
       asset_class: 'BUILDING', serial_no: serial, member_no: member,
       parcel_address: `${address} ${lot}`, legal_dong: address.split(' ').at(-1), lot_number: lot,
-      building_unit: buildingUnit, item_type: usage, specification: structure,
+      building_unit: buildingUnit || '', item_type: usage, specification: structure,
       quantity: Number(area), quantity_unit: '㎡', unit_price: unit === '일괄' ? null : parseNumber(unit),
       valuation_unit_label: unit === '일괄' ? '일괄' : '원/㎡', amount: parseNumber(amount),
       source_refs: [buildSourceRef([line], context, '건물평가조서')].filter(Boolean),

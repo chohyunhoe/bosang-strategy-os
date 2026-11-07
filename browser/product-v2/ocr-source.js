@@ -33,7 +33,7 @@ async function tesseract() {
 function wordBoxes(data) {
   const words = [];
   for (const block of data?.blocks || []) for (const paragraph of block?.paragraphs || []) for (const line of paragraph?.lines || []) for (const word of line?.words || []) {
-    if (!word?.text || !word?.bbox) continue;
+    if (!String(word?.text || '').trim() || !word?.bbox) continue;
     words.push({
       str: String(word.text),
       x: Number(word.bbox.x0) || 0,
@@ -68,7 +68,7 @@ export function sparseTableCrop(canvas, context, tableLike = false) {
   let gapStart=null,best=null;
   for(const row of active){
     if(row.ink<8){if(gapStart===null)gapStart=row.y;continue;}
-    if(gapStart!==null){const length=row.y-gapStart;if(gapStart>height*.15&&row.y>height*.45&&row.y<height*.94&&length>=height*.08&&active.filter(next=>next.y>=row.y&&next.ink>=8).length>=3&&(!best||length>best.length))best={y:Math.max(0,row.y-18),length};}
+    if(gapStart!==null){const length=row.y-gapStart;if(gapStart>height*.15&&row.y>height*.25&&row.y<height*.85&&length>=height*.08&&active.filter(next=>next.y>=row.y&&next.ink>=8).length>=3&&(!best||length>best.length))best={y:Math.max(0,row.y-18),length};}
     gapStart=null;
   }
   if(!best){
@@ -77,7 +77,12 @@ export function sparseTableCrop(canvas, context, tableLike = false) {
     if(!tableLike&&last>=height*.6)return null;
     return{x:0,y:Math.max(0,first-18),width,height:Math.min(height-Math.max(0,first-18),last-first+42)};
   }
-  const tail=active.filter(row=>row.y>=best.y&&row.ink>=8);if(tail.length<3)return null;
+  const tail=[];
+  for(const row of active.filter(row=>row.y>=best.y&&row.ink>=8)){
+    if(tail.length&&row.y-tail.at(-1).y>height*.08)break;
+    tail.push(row);
+  }
+  if(tail.length<3)return null;
   return{x:0,y:best.y,width,height:Math.min(height-best.y,tail.at(-1).y-best.y+24)};
 }
 
@@ -116,7 +121,30 @@ function ocrWordRows(items) {
 }
 
 export function ocrWordLines(items) {
-  return ocrWordRows(items).map(row=>row.items.sort((a,b)=>a.x-b.x).map(item=>item.str).join(' ')).join('\n');
+  return ocrWordRows(items.filter(item=>String(item.str||'').trim())).map(row=>{
+    let previous=null,value='';
+    for(const item of row.items.sort((a,b)=>a.x-b.x)){
+      // Tesseract emits Korean syllables separately even within a single cell.
+      // Join only adjacent Korean/slash tokens; never join numeric cells.
+      const joined=previous&&/^[가-힣/]+$/.test(previous.str)&&/^[가-힣/]+$/.test(item.str)
+        &&item.x-previous.x-previous.width<=Math.min(previous.height,item.height)*.45;
+      value+=(previous&&!joined?' ':'')+item.str;previous=item;
+    }
+    return value;
+  }).join('\n');
+}
+
+const statementHeading=text=>/(?:토지(?:평가조서|가격산출근거|가액산출근거)|건물평가조서)/.test(String(text||'').replace(/\s/g,''));
+
+export function needsSparseStatementPass(data,width,height) {
+  if(statementHeading(data?.text))return false;
+  let borders=0;
+  for(const block of data?.blocks||[])for(const para of block?.paragraphs||[])for(const line of para?.lines||[])for(const word of line?.words||[]){
+    if(String(word?.text||'').trim()||!word?.bbox)continue;
+    const w=word.bbox.x1-word.bbox.x0,h=word.bbox.y1-word.bbox.y0;
+    if((w>width*.2&&h<10)||(h>height*.04&&w<10))borders++;
+  }
+  return borders>=3;
 }
 
 // Read sparse statement rows independently: multi-line address cells otherwise
@@ -211,6 +239,15 @@ export async function ocrPdfDocument(pdfDocument, onProgress = () => {}, options
     // Detail/identity passes below use different modes and must not leak them.
     await worker.setParameters?.({tessedit_pageseg_mode:'3'});
     const result=await worker.recognize(canvas,{}, {text:true,blocks:true});let value=String(result?.data?.text||'').trim();let items=wordBoxes(result?.data);
+    if(needsSparseStatementPass(result?.data,canvas.width,canvas.height)){
+      await worker.setParameters?.({tessedit_pageseg_mode:'11'});
+      const sparse=await worker.recognize(canvas,{}, {text:true,blocks:true});
+      const sparseItems=wordBoxes(sparse?.data);
+      if(statementHeading(sparse?.data?.text)&&sparseItems.some(item=>/^(?:산)?\d{1,5}-\d{1,5}$/.test(item.str))){
+        value=String(sparse.data.text||'').trim();items=sparseItems;
+        onProgress({phase:'ocr-sparse-statement-completed',page:pageNo});
+      }
+    }
     const initialItems=items;
     const tableLike=/(?:토\s*지\s*(?:평\s*가\s*조\s*서|가\s*격\s*산\s*출)|비\s*교\s*표\s*준\s*지|공\s*시\s*지\s*가|개\s*별\s*요\s*인)/.test(value);
     const compactText=value.replace(/\s/g,'');
