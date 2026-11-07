@@ -1,0 +1,885 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:lk-cross-review-job:1.0",
+  "title": "LK independent cross-review job; runtime validates hashes, exact scope and decimal budgets",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "job_id",
+    "case_id",
+    "task_type",
+    "profile",
+    "data_class",
+    "approval_scope",
+    "budget",
+    "funding",
+    "input_refs",
+    "snapshot_id",
+    "manifest_hash",
+    "snapshot",
+    "artifact_version",
+    "artifact_hash",
+    "artifact_text",
+    "prompt_version",
+    "model_config",
+    "rule_input"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "lk-cross-review-job/1.0"
+    },
+    "job_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,128}$"
+    },
+    "case_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,128}$"
+    },
+    "task_type": {
+      "type": "string",
+      "minLength": 1
+    },
+    "profile": {
+      "enum": [
+        "QUICK",
+        "INDEPENDENT",
+        "CRITICAL"
+      ]
+    },
+    "data_class": {
+      "enum": [
+        "PUBLIC",
+        "SYNTHETIC"
+      ]
+    },
+    "approval_scope": {
+      "type": "object",
+      "required": [
+        "case_id",
+        "doc_ids",
+        "providers",
+        "purpose",
+        "accounts",
+        "currency",
+        "limit",
+        "allow_revision"
+      ],
+      "properties": {
+        "case_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,128}$"
+        },
+        "doc_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,128}$"
+          }
+        },
+        "providers": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "anthropic",
+              "google",
+              "openai"
+            ]
+          }
+        },
+        "purpose": {
+          "type": "string",
+          "minLength": 1
+        },
+        "accounts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "limit": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]+)?$"
+        },
+        "allow_revision": {
+          "type": "boolean"
+        }
+      }
+    },
+    "budget": {
+      "type": "object",
+      "required": [
+        "limit",
+        "currency",
+        "max_attempts"
+      ],
+      "properties": {
+        "limit": {
+          "type": "string",
+          "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]+)?$"
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "max_attempts": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10
+        }
+      }
+    },
+    "funding": {
+      "type": "object",
+      "required": [
+        "mode"
+      ],
+      "properties": {
+        "mode": {
+          "const": "FREE_CREDITS_ONLY"
+        },
+        "accounts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "required": [
+              "paid_fallback"
+            ],
+            "properties": {
+              "provider": {
+                "enum": [
+                  "anthropic",
+                  "google",
+                  "openai"
+                ]
+              },
+              "currency": {
+                "type": "string",
+                "pattern": "^[A-Z]{3}$"
+              },
+              "available": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]+)?$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "verified_at": {
+                "type": "string",
+                "minLength": 1
+              },
+              "expires_at": {
+                "type": "string",
+                "minLength": 1
+              },
+              "paid_fallback": {
+                "const": false
+              },
+              "source": {
+                "enum": [
+                  "MOCK",
+                  "OPERATOR_VERIFIED"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "input_refs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "doc_id",
+          "sha256"
+        ],
+        "properties": {
+          "doc_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,128}$"
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          }
+        }
+      }
+    },
+    "snapshot_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "manifest_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "snapshot": {
+      "type": "object",
+      "required": [
+        "snapshot_id",
+        "manifest_hash",
+        "documents"
+      ],
+      "properties": {
+        "snapshot_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "manifest_hash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "documents": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "doc_id",
+              "sha256",
+              "file_name",
+              "page_count",
+              "original_location",
+              "ocr_version",
+              "extraction_version",
+              "pages"
+            ],
+            "properties": {
+              "doc_id": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,128}$"
+              },
+              "sha256": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "file_name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "page_count": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "original_location": {
+                "type": "string",
+                "minLength": 1
+              },
+              "ocr_version": {
+                "type": "string",
+                "minLength": 1
+              },
+              "extraction_version": {
+                "type": "string",
+                "minLength": 1
+              },
+              "evidence_version": {
+                "type": "integer"
+              },
+              "source_content": {
+                "type": "string"
+              },
+              "source_bytes_b64": {
+                "type": "string",
+                "contentEncoding": "base64"
+              },
+              "pages": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "pdf_page",
+                    "printed_page",
+                    "text"
+                  ],
+                  "properties": {
+                    "pdf_page": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "printed_page": {
+                      "type": [
+                        "string",
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "text": {
+                      "type": "string"
+                    },
+                    "text_sha256": {
+                      "type": "string",
+                      "pattern": "^[a-f0-9]{64}$"
+                    },
+                    "image_sha256": {
+                      "type": "string",
+                      "pattern": "^[a-f0-9]{64}$"
+                    },
+                    "requires_image_review": {
+                      "type": "boolean"
+                    },
+                    "cropped": {
+                      "type": "boolean"
+                    },
+                    "missing": {
+                      "type": "boolean"
+                    },
+                    "unreadable": {
+                      "type": "boolean"
+                    },
+                    "masked_required_values": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            },
+            "anyOf": [
+              {
+                "required": [
+                  "source_content"
+                ]
+              },
+              {
+                "required": [
+                  "source_bytes_b64"
+                ]
+              }
+            ]
+          }
+        }
+      }
+    },
+    "artifact_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "artifact_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "artifact_text": {
+      "type": "string",
+      "minLength": 1
+    },
+    "prompt_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "model_config": {
+      "type": "object",
+      "properties": {
+        "claude": {
+          "type": "object",
+          "required": [
+            "provider",
+            "model_id",
+            "credential_ref",
+            "account_ref",
+            "max_output_tokens",
+            "reserve_cost",
+            "price_as_of",
+            "input_per_million",
+            "output_per_million"
+          ],
+          "properties": {
+            "provider": {
+              "enum": [
+                "anthropic",
+                "google",
+                "openai"
+              ]
+            },
+            "model_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "credential_ref": {
+              "type": "string",
+              "minLength": 1
+            },
+            "account_ref": {
+              "type": "string",
+              "minLength": 1
+            },
+            "max_output_tokens": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "reserve_cost": {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]+)?$"
+            },
+            "price_as_of": {
+              "type": "string",
+              "minLength": 1
+            },
+            "input_per_million": {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]+)?$"
+            },
+            "output_per_million": {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]+)?$"
+            },
+            "allowed_actual_models": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+              }
+            },
+            "max_input_bytes": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "cached_input_per_million": {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]+)?$"
+            },
+            "cache_creation_per_million": {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]+)?$"
+            }
+          },
+          "additionalProperties": false
+        },
+        "gemini": {
+          "type": "object",
+          "required": [
+            "provider",
+            "model_id",
+            "credential_ref",
+            "account_ref",
+            "max_output_tokens",
+            "reserve_cost",
+            "price_as_of",
+            "input_per_million",
+            "output_per_million"
+          ],
+          "properties": {
+            "provider": {
+              "enum": [
+                "anthropic",
+                "google",
+                "openai"
+              ]
+            },
+            "model_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "credential_ref": {
+              "type": "string",
+              "minLength": 1
+            },
+            "account_ref": {
+              "type": "string",
+              "minLength": 1
+            },
+            "max_output_tokens": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "reserve_cost": {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]+)?$"
+            },
+            "price_as_of": {
+              "type": "string",
+              "minLength": 1
+            },
+            "input_per_million": {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]+)?$"
+            },
+            "output_per_million": {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]+)?$"
+            },
+            "allowed_actual_models": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+              }
+            },
+            "max_input_bytes": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "cached_input_per_million": {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]+)?$"
+            },
+            "cache_creation_per_million": {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]+)?$"
+            }
+          },
+          "additionalProperties": false
+        },
+        "gpt": {
+          "type": "object",
+          "required": [
+            "provider",
+            "model_id",
+            "credential_ref",
+            "account_ref",
+            "max_output_tokens",
+            "reserve_cost",
+            "price_as_of",
+            "input_per_million",
+            "output_per_million"
+          ],
+          "properties": {
+            "provider": {
+              "enum": [
+                "anthropic",
+                "google",
+                "openai"
+              ]
+            },
+            "model_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "credential_ref": {
+              "type": "string",
+              "minLength": 1
+            },
+            "account_ref": {
+              "type": "string",
+              "minLength": 1
+            },
+            "max_output_tokens": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "reserve_cost": {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]+)?$"
+            },
+            "price_as_of": {
+              "type": "string",
+              "minLength": 1
+            },
+            "input_per_million": {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]+)?$"
+            },
+            "output_per_million": {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]+)?$"
+            },
+            "allowed_actual_models": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+              }
+            },
+            "max_input_bytes": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "cached_input_per_million": {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]+)?$"
+            },
+            "cache_creation_per_million": {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]+)?$"
+            }
+          },
+          "additionalProperties": false
+        }
+      }
+    },
+    "rule_input": {
+      "type": "object",
+      "required": [
+        "evidence_version",
+        "parse_status"
+      ],
+      "properties": {
+        "evidence_version": {
+          "type": "integer"
+        },
+        "parse_status": {
+          "type": "string"
+        },
+        "reference_rows": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "doc_id",
+              "owner_id_type",
+              "owner_id",
+              "property_id",
+              "appraisal_id",
+              "amount",
+              "unit",
+              "factors",
+              "evidence"
+            ],
+            "properties": {
+              "doc_id": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,128}$"
+              },
+              "owner_id_type": {
+                "enum": [
+                  "member_number",
+                  "statement_number"
+                ]
+              },
+              "owner_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "property_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "appraisal_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "amount": {
+                "type": "string",
+                "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]+)?$"
+              },
+              "unit": {
+                "enum": [
+                  "원",
+                  "천원"
+                ]
+              },
+              "factors": {
+                "type": "object"
+              },
+              "evidence": {
+                "type": "object",
+                "required": [
+                  "doc_id",
+                  "sha256",
+                  "pdf_page"
+                ],
+                "properties": {
+                  "doc_id": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9_-]{1,128}$"
+                  },
+                  "sha256": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{64}$"
+                  },
+                  "pdf_page": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "coordinates": {
+                    "type": "array",
+                    "minItems": 4,
+                    "maxItems": 4,
+                    "items": {
+                      "type": "number"
+                    }
+                  }
+                }
+              },
+              "source_quote": {
+                "type": "string",
+                "minLength": 1
+              },
+              "verified_by": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        "candidate_rows": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "doc_id",
+              "owner_id_type",
+              "owner_id",
+              "property_id",
+              "appraisal_id",
+              "amount",
+              "unit",
+              "factors",
+              "evidence"
+            ],
+            "properties": {
+              "doc_id": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,128}$"
+              },
+              "owner_id_type": {
+                "enum": [
+                  "member_number",
+                  "statement_number"
+                ]
+              },
+              "owner_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "property_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "appraisal_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "amount": {
+                "type": "string",
+                "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]+)?$"
+              },
+              "unit": {
+                "enum": [
+                  "원",
+                  "천원"
+                ]
+              },
+              "factors": {
+                "type": "object"
+              },
+              "evidence": {
+                "type": "object",
+                "required": [
+                  "doc_id",
+                  "sha256",
+                  "pdf_page"
+                ],
+                "properties": {
+                  "doc_id": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9_-]{1,128}$"
+                  },
+                  "sha256": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{64}$"
+                  },
+                  "pdf_page": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "coordinates": {
+                    "type": "array",
+                    "minItems": 4,
+                    "maxItems": 4,
+                    "items": {
+                      "type": "number"
+                    }
+                  }
+                }
+              },
+              "source_quote": {
+                "type": "string",
+                "minLength": 1
+              },
+              "verified_by": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        "calculations": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "image_checks": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "legal_sources": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        }
+      }
+    },
+    "bso_context": {
+      "type": "object"
+    },
+    "legacy_input_sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "bso_mapping": {
+      "type": "object"
+    },
+    "artifact_format": {
+      "enum": [
+        "lk-owner-comparison/1.0",
+        "text/plain"
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "profile": {
+            "const": "QUICK"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "model_config": {
+            "required": [
+              "claude"
+            ]
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "model_config": {
+            "required": [
+              "claude",
+              "gemini",
+              "gpt"
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "additionalProperties": false
+}

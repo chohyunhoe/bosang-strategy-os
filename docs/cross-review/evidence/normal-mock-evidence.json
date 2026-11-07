@@ -1,0 +1,440 @@
+{
+  "evidence_mode": "MOCK",
+  "actual_provider_calls": 0,
+  "actual_bso_auto_writes": 0,
+  "actual_free_credit_balances": "UNVERIFIED",
+  "actual_billed_cost": null,
+  "summary": {
+    "job_id": "BSO_SYNTHETIC_NORMAL",
+    "case_id": "SYN_CASE",
+    "artifact_version": 1,
+    "artifact_hash": "08bd627641b88e278d4dababd281d8bc084d699e18c24ff0770ba4bfbdb5b5df",
+    "snapshot_id": "SNAP_06c85145678d1dc2f3acc3aef4cfb90620b403b240e99301171eab054fcbdfc3",
+    "manifest_hash": "06c85145678d1dc2f3acc3aef4cfb90620b403b240e99301171eab054fcbdfc3",
+    "state": "READY_FOR_HUMAN",
+    "status": "DONE",
+    "completion_target": "MOCK_VERIFICATION",
+    "evidence_mode": "MOCK",
+    "independent_cross_review": true,
+    "concurrent_review": true,
+    "provided_scope": "EXTRACTED_TEXT_ONLY",
+    "source_scope": [
+      {
+        "doc_id": "SYN_DOC",
+        "sha256": "8ab2e183a0b1b65238951bea4d31bc4dc17f78e09128019e91a72dd7365ccfa3",
+        "pages": [
+          1
+        ]
+      }
+    ],
+    "coverage": [
+      {
+        "doc_id": "SYN_DOC",
+        "sha256": "8ab2e183a0b1b65238951bea4d31bc4dc17f78e09128019e91a72dd7365ccfa3",
+        "pages": [
+          1
+        ]
+      }
+    ],
+    "actual_reviewers": [],
+    "reviewer_completion": {
+      "claude": "COMPLETED",
+      "gemini": "COMPLETED",
+      "gpt": "COMPLETED"
+    },
+    "important_differences": [],
+    "rule_results": {
+      "artifact_hash": "08bd627641b88e278d4dababd281d8bc084d699e18c24ff0770ba4bfbdb5b5df",
+      "calculations": [],
+      "coverage": [
+        {
+          "doc_id": "SYN_DOC",
+          "images_verified": false,
+          "pages": [
+            1
+          ],
+          "sha256": "8ab2e183a0b1b65238951bea4d31bc4dc17f78e09128019e91a72dd7365ccfa3",
+          "source_mode": "text_original"
+        }
+      ],
+      "issues": [],
+      "owner_comparison": [
+        {
+          "candidate_amount": "1000",
+          "candidate_factors": {
+            "individual": "0.90"
+          },
+          "candidate_unit": "원",
+          "evidence": [
+            {
+              "doc_id": "SYN_DOC",
+              "pdf_page": 1,
+              "sha256": "8ab2e183a0b1b65238951bea4d31bc4dc17f78e09128019e91a72dd7365ccfa3"
+            },
+            {
+              "doc_id": "SYN_DOC",
+              "pdf_page": 1,
+              "sha256": "8ab2e183a0b1b65238951bea4d31bc4dc17f78e09128019e91a72dd7365ccfa3"
+            }
+          ],
+          "original_amount": "1000",
+          "original_factors": {
+            "individual": "0.90"
+          },
+          "original_unit": "원",
+          "subject_key": [
+            "SYN_DOC",
+            "member_number",
+            "M1",
+            "PROPERTY_1",
+            "APPRAISAL_A"
+          ]
+        },
+        {
+          "candidate_amount": "2000",
+          "candidate_factors": {
+            "individual": "1.10"
+          },
+          "candidate_unit": "원",
+          "evidence": [
+            {
+              "doc_id": "SYN_DOC",
+              "pdf_page": 1,
+              "sha256": "8ab2e183a0b1b65238951bea4d31bc4dc17f78e09128019e91a72dd7365ccfa3"
+            },
+            {
+              "doc_id": "SYN_DOC",
+              "pdf_page": 1,
+              "sha256": "8ab2e183a0b1b65238951bea4d31bc4dc17f78e09128019e91a72dd7365ccfa3"
+            }
+          ],
+          "original_amount": "2000",
+          "original_factors": {
+            "individual": "1.10"
+          },
+          "original_unit": "원",
+          "subject_key": [
+            "SYN_DOC",
+            "member_number",
+            "M2",
+            "PROPERTY_1",
+            "APPRAISAL_A"
+          ]
+        }
+      ],
+      "passed": true,
+      "rule_input_hash": "774cb421cbff124de81781013fb9dbf67761c3f6a767239ce8c68ba8647e8948",
+      "source_manifest_hash": "06c85145678d1dc2f3acc3aef4cfb90620b403b240e99301171eab054fcbdfc3"
+    },
+    "key_differences": [],
+    "unresolved": [],
+    "owner_comparison": [
+      {
+        "candidate_amount": "1000",
+        "candidate_factors": {
+          "individual": "0.90"
+        },
+        "candidate_unit": "원",
+        "evidence": [
+          {
+            "doc_id": "SYN_DOC",
+            "pdf_page": 1,
+            "sha256": "8ab2e183a0b1b65238951bea4d31bc4dc17f78e09128019e91a72dd7365ccfa3"
+          },
+          {
+            "doc_id": "SYN_DOC",
+            "pdf_page": 1,
+            "sha256": "8ab2e183a0b1b65238951bea4d31bc4dc17f78e09128019e91a72dd7365ccfa3"
+          }
+        ],
+        "original_amount": "1000",
+        "original_factors": {
+          "individual": "0.90"
+        },
+        "original_unit": "원",
+        "subject_key": [
+          "SYN_DOC",
+          "member_number",
+          "M1",
+          "PROPERTY_1",
+          "APPRAISAL_A"
+        ]
+      },
+      {
+        "candidate_amount": "2000",
+        "candidate_factors": {
+          "individual": "1.10"
+        },
+        "candidate_unit": "원",
+        "evidence": [
+          {
+            "doc_id": "SYN_DOC",
+            "pdf_page": 1,
+            "sha256": "8ab2e183a0b1b65238951bea4d31bc4dc17f78e09128019e91a72dd7365ccfa3"
+          },
+          {
+            "doc_id": "SYN_DOC",
+            "pdf_page": 1,
+            "sha256": "8ab2e183a0b1b65238951bea4d31bc4dc17f78e09128019e91a72dd7365ccfa3"
+          }
+        ],
+        "original_amount": "2000",
+        "original_factors": {
+          "individual": "1.10"
+        },
+        "original_unit": "원",
+        "subject_key": [
+          "SYN_DOC",
+          "member_number",
+          "M2",
+          "PROPERTY_1",
+          "APPRAISAL_A"
+        ]
+      }
+    ],
+    "source_locations": [
+      {
+        "doc_id": "SYN_DOC",
+        "original_location": "synthetic://fixture/document"
+      }
+    ],
+    "duration_seconds": 5.0,
+    "adjudication": {
+      "artifact_hash": "08bd627641b88e278d4dababd281d8bc084d699e18c24ff0770ba4bfbdb5b5df",
+      "artifact_version": 1,
+      "coverage": [
+        {
+          "doc_id": "SYN_DOC",
+          "pages": [
+            1
+          ],
+          "sha256": "8ab2e183a0b1b65238951bea4d31bc4dc17f78e09128019e91a72dd7365ccfa3"
+        }
+      ],
+      "decisions": [],
+      "findings": [],
+      "job_id": "BSO_SYNTHETIC_NORMAL",
+      "manifest_hash": "06c85145678d1dc2f3acc3aef4cfb90620b403b240e99301171eab054fcbdfc3",
+      "missing_pages": [],
+      "reviewer": "gpt",
+      "revision_needed": false,
+      "schema_version": "lk-cross-review-response/1.0",
+      "snapshot_id": "SNAP_06c85145678d1dc2f3acc3aef4cfb90620b403b240e99301171eab054fcbdfc3"
+    },
+    "error_code": "",
+    "reviewers": {
+      "claude": {
+        "status": "COMPLETED",
+        "receipt": {
+          "actual_cost": "0.01",
+          "artifact_hash": "08bd627641b88e278d4dababd281d8bc084d699e18c24ff0770ba4bfbdb5b5df",
+          "artifact_version": 1,
+          "currency": "USD",
+          "evidence_mode": "MOCK",
+          "finished_at": "1970-01-01T00:16:43+00:00",
+          "input_hash": "8e1fb66e037acb385cf23dbc8f392381ee43f9188a956eb2a7bef1883d96b091",
+          "manifest_hash": "06c85145678d1dc2f3acc3aef4cfb90620b403b240e99301171eab054fcbdfc3",
+          "model_id": "mock-claude",
+          "n8n_execution_id": "MOCK_CHILD_0_0",
+          "prompt_version": "lk-independent/1.0",
+          "provided_scope": "EXTRACTED_TEXT_ONLY",
+          "provider": "anthropic",
+          "provider_response_hash": null,
+          "request_id": "MOCK_18892237-246f-4ed5-b255-6bf082523c68",
+          "response_hash": "f15133e196e3a86dd2d5b6da0b15d922cfb212c081f7a0fb73b2a8df20027d32",
+          "snapshot_id": "SNAP_06c85145678d1dc2f3acc3aef4cfb90620b403b240e99301171eab054fcbdfc3",
+          "started_at": "1970-01-01T00:16:41+00:00",
+          "usage": {
+            "input_tokens": 1,
+            "output_tokens": 1
+          }
+        },
+        "ticket_id": "18892237-246f-4ed5-b255-6bf082523c68",
+        "actual_cost": "0.01",
+        "cost_reconciliation": null
+      },
+      "gemini": {
+        "status": "COMPLETED",
+        "receipt": {
+          "actual_cost": "0.01",
+          "artifact_hash": "08bd627641b88e278d4dababd281d8bc084d699e18c24ff0770ba4bfbdb5b5df",
+          "artifact_version": 1,
+          "currency": "USD",
+          "evidence_mode": "MOCK",
+          "finished_at": "1970-01-01T00:16:44+00:00",
+          "input_hash": "0a08e8cc2c9e4a409c7ce8387313c6fc3ffde59bd9dc8498e444bf0cec1ddc68",
+          "manifest_hash": "06c85145678d1dc2f3acc3aef4cfb90620b403b240e99301171eab054fcbdfc3",
+          "model_id": "mock-gemini",
+          "n8n_execution_id": "MOCK_CHILD_0_1",
+          "prompt_version": "lk-independent/1.0",
+          "provided_scope": "EXTRACTED_TEXT_ONLY",
+          "provider": "google",
+          "provider_response_hash": null,
+          "request_id": "MOCK_dd2c3c6f-9a8b-4a5c-8f12-d6799ce17564",
+          "response_hash": "65bc2b12e020e56cc901892b7c5c17899ad313f7a4853e2872f399b106e1ab1e",
+          "snapshot_id": "SNAP_06c85145678d1dc2f3acc3aef4cfb90620b403b240e99301171eab054fcbdfc3",
+          "started_at": "1970-01-01T00:16:42+00:00",
+          "usage": {
+            "input_tokens": 1,
+            "output_tokens": 1
+          }
+        },
+        "ticket_id": "dd2c3c6f-9a8b-4a5c-8f12-d6799ce17564",
+        "actual_cost": "0.01",
+        "cost_reconciliation": null
+      },
+      "gpt": {
+        "status": "COMPLETED",
+        "receipt": {
+          "actual_cost": "0.01",
+          "artifact_hash": "08bd627641b88e278d4dababd281d8bc084d699e18c24ff0770ba4bfbdb5b5df",
+          "artifact_version": 1,
+          "currency": "USD",
+          "evidence_mode": "MOCK",
+          "finished_at": "1970-01-01T00:16:46+00:00",
+          "input_hash": "385048a7c2f4116c98a07d90e6a64a155ef81f088f3f0846ef638886f1d1d244",
+          "manifest_hash": "06c85145678d1dc2f3acc3aef4cfb90620b403b240e99301171eab054fcbdfc3",
+          "model_id": "mock-gpt",
+          "n8n_execution_id": "MOCK_CHILD_1_0",
+          "prompt_version": "lk-independent/1.0",
+          "provided_scope": "EXTRACTED_TEXT_ONLY",
+          "provider": "openai",
+          "provider_response_hash": null,
+          "request_id": "MOCK_dcb6ab5a-62a1-48a4-8997-0e3b55936177",
+          "response_hash": "8dd39906e2b817b326d627ce2355d31e446639cec63a1ff96b4dec7e61dbd79f",
+          "snapshot_id": "SNAP_06c85145678d1dc2f3acc3aef4cfb90620b403b240e99301171eab054fcbdfc3",
+          "started_at": "1970-01-01T00:16:45+00:00",
+          "usage": {
+            "input_tokens": 1,
+            "output_tokens": 1
+          }
+        },
+        "ticket_id": "dcb6ab5a-62a1-48a4-8997-0e3b55936177",
+        "actual_cost": "0.01",
+        "cost_reconciliation": null
+      }
+    },
+    "cost": {
+      "spent": "0.03",
+      "reserved": "0.00",
+      "currency": "USD",
+      "unconfirmed": false,
+      "final_invoice_verified": false,
+      "cost_basis": "SIMULATED",
+      "funding": "FREE_CREDITS_ONLY",
+      "simulated": true
+    },
+    "approval_status": "PENDING",
+    "submission_status": "NOT_SUBMITTED",
+    "bso_status": "NOT_RECORDED",
+    "next_action": "사람의 해당 버전 검토 필요"
+  },
+  "bso_export": {
+    "status": "EXPORTED_READBACK_CONFIRMED",
+    "package_sha256": "c74aac22541c29d22ba425bc657bc11bea91b4524eaaaa58876089dcb1f2f64a",
+    "bso_reflected": false,
+    "human_approved": false,
+    "external_model_calls": 0
+  },
+  "source_hashes": [
+    {
+      "doc_id": "SYN_DOC",
+      "sha256": "8ab2e183a0b1b65238951bea4d31bc4dc17f78e09128019e91a72dd7365ccfa3"
+    }
+  ],
+  "artifact_versions": [
+    {
+      "version": 1,
+      "sha256": "08bd627641b88e278d4dababd281d8bc084d699e18c24ff0770ba4bfbdb5b5df"
+    }
+  ],
+  "simulated_receipts": [
+    {
+      "ticket_id": "18892237-246f-4ed5-b255-6bf082523c68",
+      "reviewer": "claude",
+      "artifact_version": 1,
+      "receipt": {
+        "actual_cost": "0.01",
+        "artifact_hash": "08bd627641b88e278d4dababd281d8bc084d699e18c24ff0770ba4bfbdb5b5df",
+        "artifact_version": 1,
+        "currency": "USD",
+        "evidence_mode": "MOCK",
+        "finished_at": "1970-01-01T00:16:43+00:00",
+        "input_hash": "8e1fb66e037acb385cf23dbc8f392381ee43f9188a956eb2a7bef1883d96b091",
+        "manifest_hash": "06c85145678d1dc2f3acc3aef4cfb90620b403b240e99301171eab054fcbdfc3",
+        "model_id": "mock-claude",
+        "n8n_execution_id": "MOCK_CHILD_0_0",
+        "prompt_version": "lk-independent/1.0",
+        "provided_scope": "EXTRACTED_TEXT_ONLY",
+        "provider": "anthropic",
+        "provider_response_hash": null,
+        "request_id": "MOCK_18892237-246f-4ed5-b255-6bf082523c68",
+        "response_hash": "f15133e196e3a86dd2d5b6da0b15d922cfb212c081f7a0fb73b2a8df20027d32",
+        "snapshot_id": "SNAP_06c85145678d1dc2f3acc3aef4cfb90620b403b240e99301171eab054fcbdfc3",
+        "started_at": "1970-01-01T00:16:41+00:00",
+        "usage": {
+          "input_tokens": 1,
+          "output_tokens": 1
+        }
+      }
+    },
+    {
+      "ticket_id": "dd2c3c6f-9a8b-4a5c-8f12-d6799ce17564",
+      "reviewer": "gemini",
+      "artifact_version": 1,
+      "receipt": {
+        "actual_cost": "0.01",
+        "artifact_hash": "08bd627641b88e278d4dababd281d8bc084d699e18c24ff0770ba4bfbdb5b5df",
+        "artifact_version": 1,
+        "currency": "USD",
+        "evidence_mode": "MOCK",
+        "finished_at": "1970-01-01T00:16:44+00:00",
+        "input_hash": "0a08e8cc2c9e4a409c7ce8387313c6fc3ffde59bd9dc8498e444bf0cec1ddc68",
+        "manifest_hash": "06c85145678d1dc2f3acc3aef4cfb90620b403b240e99301171eab054fcbdfc3",
+        "model_id": "mock-gemini",
+        "n8n_execution_id": "MOCK_CHILD_0_1",
+        "prompt_version": "lk-independent/1.0",
+        "provided_scope": "EXTRACTED_TEXT_ONLY",
+        "provider": "google",
+        "provider_response_hash": null,
+        "request_id": "MOCK_dd2c3c6f-9a8b-4a5c-8f12-d6799ce17564",
+        "response_hash": "65bc2b12e020e56cc901892b7c5c17899ad313f7a4853e2872f399b106e1ab1e",
+        "snapshot_id": "SNAP_06c85145678d1dc2f3acc3aef4cfb90620b403b240e99301171eab054fcbdfc3",
+        "started_at": "1970-01-01T00:16:42+00:00",
+        "usage": {
+          "input_tokens": 1,
+          "output_tokens": 1
+        }
+      }
+    },
+    {
+      "ticket_id": "dcb6ab5a-62a1-48a4-8997-0e3b55936177",
+      "reviewer": "gpt",
+      "artifact_version": 1,
+      "receipt": {
+        "actual_cost": "0.01",
+        "artifact_hash": "08bd627641b88e278d4dababd281d8bc084d699e18c24ff0770ba4bfbdb5b5df",
+        "artifact_version": 1,
+        "currency": "USD",
+        "evidence_mode": "MOCK",
+        "finished_at": "1970-01-01T00:16:46+00:00",
+        "input_hash": "385048a7c2f4116c98a07d90e6a64a155ef81f088f3f0846ef638886f1d1d244",
+        "manifest_hash": "06c85145678d1dc2f3acc3aef4cfb90620b403b240e99301171eab054fcbdfc3",
+        "model_id": "mock-gpt",
+        "n8n_execution_id": "MOCK_CHILD_1_0",
+        "prompt_version": "lk-independent/1.0",
+        "provided_scope": "EXTRACTED_TEXT_ONLY",
+        "provider": "openai",
+        "provider_response_hash": null,
+        "request_id": "MOCK_dcb6ab5a-62a1-48a4-8997-0e3b55936177",
+        "response_hash": "8dd39906e2b817b326d627ce2355d31e446639cec63a1ff96b4dec7e61dbd79f",
+        "snapshot_id": "SNAP_06c85145678d1dc2f3acc3aef4cfb90620b403b240e99301171eab054fcbdfc3",
+        "started_at": "1970-01-01T00:16:45+00:00",
+        "usage": {
+          "input_tokens": 1,
+          "output_tokens": 1
+        }
+      }
+    }
+  ]
+}

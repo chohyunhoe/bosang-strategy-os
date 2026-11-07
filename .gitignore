@@ -80,3 +80,8 @@ n8n-private/
 
 # Desktop Drive transport machine configuration
 .bso-transport.json
+
+# Private cross-review originals, ledgers, billing proofs and credential references
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm

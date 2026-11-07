@@ -1,0 +1,626 @@
+{
+  "name": "LK Cross Review Provider Child | UNVALIDATED_INSTALL",
+  "active": false,
+  "nodes": [
+    {
+      "id": "867caf7b-cc9c-84f3-6ab0-637c0ac8bb76",
+      "name": "Review task trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "inputSource": "passthrough"
+      }
+    },
+    {
+      "id": "186c1c97-0d5c-9d1b-069f-86bc434edffa",
+      "name": "Check installed credential binding",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        300,
+        0
+      ],
+      "parameters": {
+        "jsCode": "function authorizeTaskBinding(task, expectedBindings) {\n  const expected = task && expectedBindings && expectedBindings[task.provider];\n  const providers = { claude: 'anthropic', gemini: 'google', gpt: 'openai', reviser: 'anthropic' };\n  if (!expected || typeof expected.credential_ref !== 'string' || typeof expected.account_ref !== 'string' ||\n      /^(SELECT_EXISTING_|UNCONFIGURED_)/.test(expected.credential_ref) ||\n      /^(SELECT_EXISTING_|UNCONFIGURED_)/.test(expected.account_ref) ||\n      providers[task.reviewer] !== task.provider || task.credential_ref !== expected.credential_ref ||\n      task.account_ref !== expected.account_ref || typeof task.model_id !== 'string' ||\n      !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(task.model_id)) {\n    throw Error('INSTALLED_CREDENTIAL_ACCOUNT_BINDING_REQUIRED');\n  }\n}\nconst expectedBindings={\"anthropic\":{\"credential_ref\":\"SELECT_EXISTING_ANTHROPIC_HEADER_AUTH\",\"account_ref\":\"UNCONFIGURED_ACCOUNT\"},\"google\":{\"credential_ref\":\"SELECT_EXISTING_GEMINI_HEADER_AUTH\",\"account_ref\":\"UNCONFIGURED_ACCOUNT\"},\"openai\":{\"credential_ref\":\"SELECT_EXISTING_OPENAI_HEADER_AUTH\",\"account_ref\":\"UNCONFIGURED_ACCOUNT\"},\"runner\":{\"credential_ref\":\"SELECT_EXISTING_LK_RUNNER_HEADER_AUTH\",\"account_ref\":\"UNCONFIGURED_ACCOUNT\"}};\nif($input.all().length!==1)throw Error('ONE_TICKET_PER_CHILD_REQUIRED');\nauthorizeTaskBinding($input.first().json,expectedBindings);return $input.all();"
+      }
+    },
+    {
+      "id": "fd363ca9-2384-004f-185a-af92f0ae992c",
+      "name": "Authorize call start",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        600,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:8791/start",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ticket_id:$json.ticket_id,execution_id:String($execution.id)}) }}",
+        "options": {
+          "timeout": 15000,
+          "redirect": {
+            "redirect": {
+              "followRedirects": false
+            }
+          },
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "SELECT_EXISTING_LK_RUNNER_HEADER_AUTH"
+        }
+      },
+      "retryOnFail": false
+    },
+    {
+      "id": "91953f47-2323-c3a5-3438-7c0be20d8b22",
+      "name": "Use authoritative started task",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        0
+      ],
+      "parameters": {
+        "jsCode": "function authorizeTaskBinding(task, expectedBindings) {\n  const expected = task && expectedBindings && expectedBindings[task.provider];\n  const providers = { claude: 'anthropic', gemini: 'google', gpt: 'openai', reviser: 'anthropic' };\n  if (!expected || typeof expected.credential_ref !== 'string' || typeof expected.account_ref !== 'string' ||\n      /^(SELECT_EXISTING_|UNCONFIGURED_)/.test(expected.credential_ref) ||\n      /^(SELECT_EXISTING_|UNCONFIGURED_)/.test(expected.account_ref) ||\n      providers[task.reviewer] !== task.provider || task.credential_ref !== expected.credential_ref ||\n      task.account_ref !== expected.account_ref || typeof task.model_id !== 'string' ||\n      !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(task.model_id)) {\n    throw Error('INSTALLED_CREDENTIAL_ACCOUNT_BINDING_REQUIRED');\n  }\n}\nfunction authorizeStartedTask(startResponse, triggerTask, now, expectedBindings) {\n  const task = startResponse && startResponse.task;\n  if (!task || task.ticket_id !== triggerTask.ticket_id || typeof task.ticket_id !== 'string' ||\n      !task.ticket_id ||\n      !task.request || !task.request.body || typeof task.request.body !== 'object' ||\n      Array.isArray(task.request.body)) throw Error('RUNNER_START_BINDING_REQUIRED');\n  authorizeTaskBinding(task, expectedBindings);\n  return { ...task, call_started_at: now };\n}\nconst expectedBindings={\"anthropic\":{\"credential_ref\":\"SELECT_EXISTING_ANTHROPIC_HEADER_AUTH\",\"account_ref\":\"UNCONFIGURED_ACCOUNT\"},\"google\":{\"credential_ref\":\"SELECT_EXISTING_GEMINI_HEADER_AUTH\",\"account_ref\":\"UNCONFIGURED_ACCOUNT\"},\"openai\":{\"credential_ref\":\"SELECT_EXISTING_OPENAI_HEADER_AUTH\",\"account_ref\":\"UNCONFIGURED_ACCOUNT\"},\"runner\":{\"credential_ref\":\"SELECT_EXISTING_LK_RUNNER_HEADER_AUTH\",\"account_ref\":\"UNCONFIGURED_ACCOUNT\"}};\nif($input.all().length!==1||$('Review task trigger').all().length!==1)throw Error('ONE_TICKET_PER_CHILD_REQUIRED');\nreturn [{json:authorizeStartedTask($input.first().json,$('Review task trigger').first().json,new Date().toISOString(),expectedBindings)}];"
+      }
+    },
+    {
+      "id": "f93d0018-8d36-143a-1f2c-6a0a7de0ec16",
+      "name": "Route fixed provider",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        1200,
+        0
+      ],
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.provider }}",
+                    "rightValue": "anthropic",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "anthropic"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.provider }}",
+                    "rightValue": "google",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "google"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.provider }}",
+                    "rightValue": "openai",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "openai"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra"
+        }
+      }
+    },
+    {
+      "id": "bd9035e4-843f-2378-167b-9f78938db90c",
+      "name": "Call anthropic",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        0,
+        240
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.request.body) }}",
+        "options": {
+          "timeout": 120000,
+          "redirect": {
+            "redirect": {
+              "followRedirects": false
+            }
+          },
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            }
+          ]
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "SELECT_EXISTING_ANTHROPIC_HEADER_AUTH"
+        }
+      },
+      "retryOnFail": false,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "2443de55-3607-8a07-fe0f-d4cf96c2ab6c",
+      "name": "Call google",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        300,
+        240
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ \"https://generativelanguage.googleapis.com/v1beta/models/\" + $json.model_id + \":generateContent\" }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.request.body) }}",
+        "options": {
+          "timeout": 120000,
+          "redirect": {
+            "redirect": {
+              "followRedirects": false
+            }
+          },
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "SELECT_EXISTING_GEMINI_HEADER_AUTH"
+        }
+      },
+      "retryOnFail": false,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "cab33481-c34c-7cb5-aa19-e5d220b04065",
+      "name": "Call openai",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        600,
+        240
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/responses",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.request.body) }}",
+        "options": {
+          "timeout": 120000,
+          "redirect": {
+            "redirect": {
+              "followRedirects": false
+            }
+          },
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "SELECT_EXISTING_OPENAI_HEADER_AUTH"
+        }
+      },
+      "retryOnFail": false,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "d93862cc-8fb9-2a85-8808-46ed25afb309",
+      "name": "Build trusted HTTP callback",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        240
+      ],
+      "parameters": {
+        "jsCode": "function completionEnvelope(providerResponse, startedTask, executionId, now) {\n  const raw = providerResponse || {};\n  if (!Number.isInteger(raw.statusCode) || raw.statusCode < 100 || raw.statusCode > 599 ||\n      raw.body === undefined) throw Error('PROVIDER_HTTP_ENVELOPE_REQUIRED');\n  // Request auth headers and error objects never enter callbacks or logs.\n  const headers = {};\n  const allowed = new Set(['request-id', 'x-request-id', 'x-goog-request-id', 'content-type', 'retry-after']);\n  for (const [key, value] of Object.entries(raw.headers || {})) {\n    const normalized = key.toLowerCase();\n    if (allowed.has(normalized) && typeof value === 'string') headers[normalized] = value;\n  }\n  return {\n    ticket_id: startedTask.ticket_id, execution_id: String(executionId),\n    provider_response: { body: raw.body, headers, status_code: raw.statusCode },\n    started_at: startedTask.call_started_at, finished_at: now,\n  };\n}\nreturn [{json:completionEnvelope($input.first().json,$('Use authoritative started task').first().json,$execution.id,new Date().toISOString())}];"
+      }
+    },
+    {
+      "id": "b36826f4-2eec-8e55-6ca1-3be953946ae8",
+      "name": "Persist provider completion",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1200,
+        240
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:8791/complete",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "timeout": 15000,
+          "redirect": {
+            "redirect": {
+              "followRedirects": false
+            }
+          },
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "SELECT_EXISTING_LK_RUNNER_HEADER_AUTH"
+        }
+      },
+      "retryOnFail": false
+    },
+    {
+      "id": "6d96d251-31c9-33c2-09e7-a99f2cc0a222",
+      "name": "Record uncertain transport failure",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        0,
+        480
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:8791/fail",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ticket_id:$('Review task trigger').first().json.ticket_id,execution_id:String($execution.id),error_code:'PROVIDER_TRANSPORT_UNCERTAIN',uncertain:true}) }}",
+        "options": {
+          "timeout": 15000,
+          "redirect": {
+            "redirect": {
+              "followRedirects": false
+            }
+          },
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "SELECT_EXISTING_LK_RUNNER_HEADER_AUTH"
+        }
+      },
+      "retryOnFail": false
+    },
+    {
+      "id": "08515803-6f4e-2fa4-3af7-456c721c4df1",
+      "name": "Record unsupported provider",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        300,
+        480
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:8791/fail",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ticket_id:$('Review task trigger').first().json.ticket_id,execution_id:String($execution.id),error_code:'UNSUPPORTED_PROVIDER',uncertain:false}) }}",
+        "options": {
+          "timeout": 15000,
+          "redirect": {
+            "redirect": {
+              "followRedirects": false
+            }
+          },
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "SELECT_EXISTING_LK_RUNNER_HEADER_AUTH"
+        }
+      },
+      "retryOnFail": false
+    },
+    {
+      "id": "0dde6f12-3b5e-2e8a-8ba7-2f422918d010",
+      "name": "Installation gate",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        600,
+        480
+      ],
+      "parameters": {
+        "content": "**UNVALIDATED_INSTALL — inactive template**\n\nGenerate private bindings to the existing credential names and exact account references before import. Default placeholder bindings block /start. The generated checks and HTTP credential selections must remain consistent. Select existing header credentials only: Anthropic x-api-key; Gemini x-goog-api-key; OpenAI Authorization (Bearer); runner local authorization header. Credential values never belong in this JSON. /start must succeed and return the authoritative task with matching account and credential references before any provider node executes. HTTP failures are recorded without retry. A timeout remains blocked for reconciliation; keep the watchdog independent.\n\nConfirm installed n8n version, runner reachability, existing credential/account mapping, and FREE_CREDITS_ONLY balances before activation. No paid fallback. No actual API or concurrency evidence is implied by this export.",
+        "height": 300,
+        "width": 600
+      }
+    }
+  ],
+  "connections": {
+    "Route fixed provider": {
+      "main": [
+        [
+          {
+            "node": "Call anthropic",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Call google",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Call openai",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Record unsupported provider",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call anthropic": {
+      "main": [
+        [
+          {
+            "node": "Build trusted HTTP callback",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Record uncertain transport failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call google": {
+      "main": [
+        [
+          {
+            "node": "Build trusted HTTP callback",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Record uncertain transport failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call openai": {
+      "main": [
+        [
+          {
+            "node": "Build trusted HTTP callback",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Record uncertain transport failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Review task trigger": {
+      "main": [
+        [
+          {
+            "node": "Check installed credential binding",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check installed credential binding": {
+      "main": [
+        [
+          {
+            "node": "Authorize call start",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Authorize call start": {
+      "main": [
+        [
+          {
+            "node": "Use authoritative started task",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Use authoritative started task": {
+      "main": [
+        [
+          {
+            "node": "Route fixed provider",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build trusted HTTP callback": {
+      "main": [
+        [
+          {
+            "node": "Persist provider completion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Seoul",
+    "callerPolicy": "workflowsFromSameOwner",
+    "saveDataErrorExecution": "none",
+    "saveDataSuccessExecution": "none",
+    "saveExecutionProgress": false,
+    "saveManualExecutions": false,
+    "availableInMCP": false
+  },
+  "pinData": {},
+  "tags": [],
+  "meta": {
+    "lkCrossReview": {
+      "installation_verified": false,
+      "credential_bindings": {
+        "anthropic": {
+          "credential_ref": "SELECT_EXISTING_ANTHROPIC_HEADER_AUTH",
+          "account_ref": "UNCONFIGURED_ACCOUNT"
+        },
+        "google": {
+          "credential_ref": "SELECT_EXISTING_GEMINI_HEADER_AUTH",
+          "account_ref": "UNCONFIGURED_ACCOUNT"
+        },
+        "openai": {
+          "credential_ref": "SELECT_EXISTING_OPENAI_HEADER_AUTH",
+          "account_ref": "UNCONFIGURED_ACCOUNT"
+        },
+        "runner": {
+          "credential_ref": "SELECT_EXISTING_LK_RUNNER_HEADER_AUTH",
+          "account_ref": "UNCONFIGURED_ACCOUNT"
+        }
+      },
+      "funding_mode": "FREE_CREDITS_ONLY",
+      "source_delivery": "EXTRACTED_TEXT_ONLY"
+    }
+  }
+}

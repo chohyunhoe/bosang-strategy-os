@@ -1,0 +1,120 @@
+{
+  "name": "LK Cross Review Error Handler | UNVALIDATED_INSTALL",
+  "active": false,
+  "nodes": [
+    {
+      "id": "6382b628-1ccd-efff-2991-2e6d13efa5f9",
+      "name": "Workflow failed",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "338c44df-15d0-459c-1ff8-03faaba319bd",
+      "name": "Inspect durable recovery state",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        300,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:8791/watchdog",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({owner:String($execution.id)}) }}",
+        "options": {
+          "timeout": 15000,
+          "redirect": {
+            "redirect": {
+              "followRedirects": false
+            }
+          },
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "SELECT_EXISTING_LK_RUNNER_HEADER_AUTH"
+        }
+      },
+      "retryOnFail": false
+    },
+    {
+      "id": "edd9c8d8-8840-29d2-cfaf-a5e63c38c2bb",
+      "name": "Installation gate",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        600,
+        0
+      ],
+      "parameters": {
+        "content": "**UNVALIDATED_INSTALL — inactive template**\n\nSelect this workflow in n8n error settings after import. Do not send raw execution error objects, headers, or source contents. This invokes durable reconciliation inspection; it never replays uncertain calls.\n\nConfirm installed n8n version, runner reachability, existing credential/account mapping, and FREE_CREDITS_ONLY balances before activation. No paid fallback. No actual API or concurrency evidence is implied by this export.",
+        "height": 300,
+        "width": 600
+      }
+    }
+  ],
+  "connections": {
+    "Workflow failed": {
+      "main": [
+        [
+          {
+            "node": "Inspect durable recovery state",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Seoul",
+    "callerPolicy": "workflowsFromSameOwner",
+    "saveDataErrorExecution": "none",
+    "saveDataSuccessExecution": "none",
+    "saveExecutionProgress": false,
+    "saveManualExecutions": false,
+    "availableInMCP": false
+  },
+  "pinData": {},
+  "tags": [],
+  "meta": {
+    "lkCrossReview": {
+      "installation_verified": false,
+      "credential_bindings": {
+        "anthropic": {
+          "credential_ref": "SELECT_EXISTING_ANTHROPIC_HEADER_AUTH",
+          "account_ref": "UNCONFIGURED_ACCOUNT"
+        },
+        "google": {
+          "credential_ref": "SELECT_EXISTING_GEMINI_HEADER_AUTH",
+          "account_ref": "UNCONFIGURED_ACCOUNT"
+        },
+        "openai": {
+          "credential_ref": "SELECT_EXISTING_OPENAI_HEADER_AUTH",
+          "account_ref": "UNCONFIGURED_ACCOUNT"
+        },
+        "runner": {
+          "credential_ref": "SELECT_EXISTING_LK_RUNNER_HEADER_AUTH",
+          "account_ref": "UNCONFIGURED_ACCOUNT"
+        }
+      },
+      "funding_mode": "FREE_CREDITS_ONLY",
+      "source_delivery": "EXTRACTED_TEXT_ONLY"
+    }
+  }
+}

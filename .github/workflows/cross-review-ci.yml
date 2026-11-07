@@ -1,0 +1,51 @@
+name: LK independent cross-review contracts
+
+on:
+  pull_request:
+    paths:
+      - 'integrations/n8n/**'
+      - 'tests/cross_review/**'
+      - 'tests/lk_cross_review*.test.js'
+      - 'scripts/build_n8n_cross_review.js'
+      - 'scripts/run_cross_review_mock.py'
+      - '.github/workflows/cross-review-ci.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'integrations/n8n/**'
+      - 'tests/cross_review/**'
+      - 'tests/lk_cross_review*.test.js'
+      - 'scripts/build_n8n_cross_review.js'
+      - 'scripts/run_cross_review_mock.py'
+      - '.github/workflows/cross-review-ci.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  offline-contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Synthetic runner, contracts, concurrency and HTTP gates (zero provider calls)
+        run: python -u -m unittest discover -s tests/cross_review -v
+      - name: Reproduce normal and revised synthetic execution evidence
+        run: python -u scripts/run_cross_review_mock.py "$RUNNER_TEMP/lk-cross-review-evidence"
+      - name: Inactive n8n exports and existing BSO importer
+        run: |
+          node tests/lk_cross_review_workflows.test.js
+          node tests/lk_cross_review_bso.test.js
+          node --test tests/lk_bso_intake.test.js tests/lk_bso_result.test.js tests/lk_execution_contract.test.js tests/document_execution_handoff.test.js
+      - name: Existing owner identity regression and static boundary
+        run: |
+          node parser/tests/member_identity_factors.test.js
+          node parser/tests/ownership_column_order.test.js
+          node tests/validate_static_site.js
+          node tests/privacy_purge_guard.test.js
+          git diff --check

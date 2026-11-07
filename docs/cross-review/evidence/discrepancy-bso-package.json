@@ -1,0 +1,34 @@
+{
+  "schema_version": "lk-bso-result/1.0",
+  "bso_receipt": {
+    "schema_version": "lk-bso-receipt/1.0",
+    "artifact_sha256": "c4562318034fb9a774b4c4910d19c705f1f4b53c4cee132a2c622f5813090e8a",
+    "document_id": "WORK_DOC_1",
+    "input_sha256": "a6d5d41b3a07699e18d18b4e93e26220aeebfd2da661652045e71751b08e4aef",
+    "job_id": "BSO_SYNTHETIC_REVISED",
+    "revision": 2,
+    "output_sha256": "8d021acf6b221f1c261c2bf2a3f0e813815e3798fe6348ab79e620b66be305dc",
+    "execution_id": "CROSS_REPORT_1b13ee439b6760e5161844e18db8e745",
+    "status": "NEEDS_GPT_REVIEW",
+    "human_approved": false
+  },
+  "output": "{\n  \"case_id\": \"SYN_CASE\",\n  \"artifact_version\": 2,\n  \"state\": \"READY_FOR_HUMAN\",\n  \"evidence_mode\": \"MOCK\",\n  \"actual_reviewers\": [],\n  \"reviewer_completion\": {\n    \"claude\": \"COMPLETED\",\n    \"gemini\": \"COMPLETED\",\n    \"gpt\": \"COMPLETED\"\n  },\n  \"coverage\": [\n    {\n      \"doc_id\": \"SYN_DOC\",\n      \"sha256\": \"8ab2e183a0b1b65238951bea4d31bc4dc17f78e09128019e91a72dd7365ccfa3\",\n      \"pages\": [\n        1\n      ]\n    }\n  ],\n  \"key_differences\": [],\n  \"owner_comparison\": [\n    {\n      \"candidate_amount\": \"1000\",\n      \"candidate_factors\": {\n        \"individual\": \"0.90\"\n      },\n      \"candidate_unit\": \"원\",\n      \"evidence\": [\n        {\n          \"doc_id\": \"SYN_DOC\",\n          \"pdf_page\": 1,\n          \"sha256\": \"8ab2e183a0b1b65238951bea4d31bc4dc17f78e09128019e91a72dd7365ccfa3\"\n        },\n        {\n          \"doc_id\": \"SYN_DOC\",\n          \"pdf_page\": 1,\n          \"sha256\": \"8ab2e183a0b1b65238951bea4d31bc4dc17f78e09128019e91a72dd7365ccfa3\"\n        }\n      ],\n      \"original_amount\": \"1000\",\n      \"original_factors\": {\n        \"individual\": \"0.90\"\n      },\n      \"original_unit\": \"원\",\n      \"subject_key\": [\n        \"SYN_DOC\",\n        \"member_number\",\n        \"M1\",\n        \"PROPERTY_1\",\n        \"APPRAISAL_A\"\n      ]\n    },\n    {\n      \"candidate_amount\": \"2000\",\n      \"candidate_factors\": {\n        \"individual\": \"1.10\"\n      },\n      \"candidate_unit\": \"원\",\n      \"evidence\": [\n        {\n          \"doc_id\": \"SYN_DOC\",\n          \"pdf_page\": 1,\n          \"sha256\": \"8ab2e183a0b1b65238951bea4d31bc4dc17f78e09128019e91a72dd7365ccfa3\"\n        },\n        {\n          \"doc_id\": \"SYN_DOC\",\n          \"pdf_page\": 1,\n          \"sha256\": \"8ab2e183a0b1b65238951bea4d31bc4dc17f78e09128019e91a72dd7365ccfa3\"\n        }\n      ],\n      \"original_amount\": \"2000\",\n      \"original_factors\": {\n        \"individual\": \"1.10\"\n      },\n      \"original_unit\": \"원\",\n      \"subject_key\": [\n        \"SYN_DOC\",\n        \"member_number\",\n        \"M2\",\n        \"PROPERTY_1\",\n        \"APPRAISAL_A\"\n      ]\n    }\n  ],\n  \"unresolved\": [],\n  \"source_locations\": [\n    {\n      \"doc_id\": \"SYN_DOC\",\n      \"original_location\": \"synthetic://fixture/document\"\n    }\n  ],\n  \"cost\": {\n    \"spent\": \"0.07\",\n    \"reserved\": \"0.00\",\n    \"currency\": \"USD\",\n    \"unconfirmed\": false,\n    \"final_invoice_verified\": false,\n    \"cost_basis\": \"SIMULATED\",\n    \"funding\": \"FREE_CREDITS_ONLY\",\n    \"simulated\": true\n  },\n  \"duration_seconds\": 13.0,\n  \"next_action\": \"사람의 해당 버전 검토 필요\"\n}",
+  "verification": {
+    "output_sha256_checked": true,
+    "provider_guard_passed": true,
+    "human_approved": false,
+    "legal_accuracy_approved": false
+  },
+  "evidence_source": "CROSS_REVIEW_RUNNER_EXPORT_NOT_AUTHENTICATED_BY_BSO",
+  "cross_review": {
+    "job_id": "BSO_SYNTHETIC_DISCREPANCY",
+    "snapshot_id": "SNAP_06c85145678d1dc2f3acc3aef4cfb90620b403b240e99301171eab054fcbdfc3",
+    "artifact_version": 2,
+    "artifact_hash": "c4562318034fb9a774b4c4910d19c705f1f4b53c4cee132a2c622f5813090e8a",
+    "evidence_mode": "MOCK",
+    "report_reference_is_provider_evidence": false,
+    "bso_reflected": false,
+    "approval_status": "PENDING",
+    "submission_status": "NOT_SUBMITTED"
+  }
+}
