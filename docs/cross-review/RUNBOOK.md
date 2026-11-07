@@ -17,7 +17,9 @@
 - 사업자별 무료 크레딧 잔액의 확인 시각·만료일·통화, 허용 모델과 가격표 기준일. 잔액을 확인할 수 없는 계정은 호출하지 않는다.
 - BSO 계약, 사건 ID, 원본·초안 버전과 SHA-256. 동일 지번·면적·비슷한 이름을 소유자 식별자 대신 사용하지 않는다.
 
-`hhjo-ThinkPad`는 이번 확인에서 오프라인이었다. 최근 연결 시각은 현재 전원 상태·배포 커밋·프로세스 가동의 증거가 아니다. 호스트가 복구되면 적용 커밋, n8n 버전, 활성 흐름, 실제 합성 작업 결과를 새로 확인한다. 호스트 이전이나 queue mode 도입은 이 변경에 포함하지 않는다.
+사용자가 제공한 n8n Cloud 주소는 HTTPS 200과 로그인 화면까지 직접 확인했다. 현재 작업 브라우저에 인증 세션이 없으며 관리 API는 인증 없이 401을 반환한다. 주소·비공개 연결 관측은 Git 제외 운영 기록에 남긴다. 관리 로그인 후 설치 버전·플랜·활성 흐름·실제 계정 참조를 읽기 확인하고 변경 전 백업을 만든다.
+
+`hhjo-ThinkPad`의 오프라인 상태는 n8n Cloud 편집기 접속을 막는 조건이 아니다. 별도 Python/SQLite 원장 호스트의 가용성과 n8n Cloud에서의 연결 가능성은 각각 검증한다. 호스트 이전이나 queue mode 도입은 이 변경에 포함하지 않는다.
 
 ## 2. 변경 전 백업
 
@@ -80,7 +82,9 @@ node scripts/build_n8n_cross_review.js
 node scripts/build_n8n_cross_review.js n8n-private/cross-review n8n-private/cross-review-bindings.json
 ```
 
-binding 파일은 정확히 `runner`·`anthropic`·`google`·`openai` 네 키를 사용한다. 각 값은 기존 `httpHeaderAuth` 이름인 `credential_ref`와 `account_ref`이며 runner의 계정 참조는 생략할 수 있다. 실제 인증값을 넣지 않는다. private 출력은 `n8n-private/` 아래만 허용하며 symlink를 거부하고 파일 권한을 제한한다. `/start` 전후에 계정·자격증명 참조를 다시 대조하므로, 노드에서 선택한 실제 자격증명과 runner 설정의 참조가 정확히 일치해야 한다.
+binding 파일은 정확히 `runner`·`anthropic`·`google`·`openai` 네 키를 사용한다. 각 값은 기존 `httpHeaderAuth` 이름인 `credential_ref`와 `account_ref`이며 runner의 계정 참조는 생략할 수 있다. Cloud 연결에는 `runner.base_url`로 실제 승인된 HTTPS 원장 주소를 지정한다. 생략한 기본값은 self-hosted용 `http://127.0.0.1:8791`이다. 외부 주소에 인증값·query·fragment·사설/IP 호스트를 넣지 않는다. 실제 인증값을 설정 JSON에 넣지 않는다. private 출력은 `n8n-private/` 아래만 허용하며 symlink를 거부하고 파일 권한을 제한한다. `/start` 전후에 계정·자격증명 참조를 다시 대조하므로, 노드에서 선택한 실제 자격증명과 runner 설정의 참조가 정확히 일치해야 한다.
+
+n8n Cloud에서는 현재 Python/SQLite 서버를 Code 노드나 Execute Command로 실행할 수 있다고 가정하지 않는다. 이미 비용 없이 이용할 수 있음이 확인된 상시 호스트·영속 디스크와 인증된 HTTPS reverse proxy를 먼저 확보해야 한다. 원장 서버는 loopback 바인딩을 유지하며 프록시는 upstream `Host`를 정확히 `127.0.0.1:8791`로 설정하고 `X-LK-Runner-Token`을 전달한다. `base_url`에 경로 접두사가 있으면 프록시에서 이를 제거해 `/dispatch`·`/start` 등의 원래 경로로 전달한다. 실제 DNS·TLS·접근 경로는 활성화 전에 별도 확인한다. 원문·인증 헤더의 프록시 로그 저장을 차단한다. 모든 원장 HTTP 노드는 redirect를 따르지 않는다. 세션용 작업 환경을 영구 운영 호스트로 간주하거나, 새 유료 호스팅·터널·도메인을 자동 개설하지 않는다.
 
 - 생성된 JSON은 모두 비활성 상태로 검토한다. 빈 워크플로에 가져오고, 기존 접수·라우터의 원본 JSON을 덮어쓰지 않는다.
 - 실제 설치 버전에서 노드 버전·자식 워크플로 호출·대기 옵션을 확인한다. 두 분기가 그려져 있다는 이유로 동시 실행을 선언하지 않는다.
@@ -106,6 +110,8 @@ git diff --check
 `NEW_DIR`는 아직 없는 디렉터리다. [재현 스크립트](../../scripts/run_cross_review_mock.py)는 기존 파일을 덮어쓰지 않고 정상 3단계·불일치 수정/재검증 7단계의 합성 증거와 수동 BSO 패키지를 만든다. 저장소의 [정상 증거](evidence/normal-mock-evidence.json)와 [수정·재검증 증거](evidence/discrepancy-mock-evidence.json)는 실제 사업자 호출·BSO 자동 반영·크레딧 확인 증거가 아니다. 최종 시험 개수와 실행 로그는 [STATUS.md](STATUS.md)에 있다.
 
 실제 호출 활성화는 무료 크레딧·계정·모델·자료 전송 범위가 확인된 경우에만 가능하다. 먼저 공개 또는 합성자료로 정상 사례와 수정·재검증 사례를 실행한다. 비공개 사건자료는 기존 공개 접수 경로에 넣지 않는다. 별도 승인된 사건자료 경로와 접근·보존 정책이 준비되기 전에는 실행하지 않는다.
+
+n8n Gateway·Assistant 크레딧과 각 사업자의 직접 API 크레딧은 별도 잔액이다. 현재 native HTTP 어댑터가 Gateway 잔액을 사용한다고 표시하지 않는다. 로그인 후 실제 버전·플랜·지원 모델·무료 잔액·만료와 유료 자동 충전 설정을 확인한다. Gateway를 사용하려면 해당 경로와 실행 영수증을 검증하는 별도 어댑터가 필요하다.
 
 ## 4. 작업 접수와 비용
 

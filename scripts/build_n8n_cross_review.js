@@ -30,6 +30,31 @@ function stableId(key) {
   return [s.slice(0, 8), s.slice(8, 12), s.slice(12, 16), s.slice(16, 20), s.slice(20, 32)].join('-');
 }
 
+function validateRunnerBaseUrl(value) {
+  if (value === RUNNER_URL) return value;
+  // This is installation metadata, never a destination taken from a job. Reject
+  // normalizations that can hide userinfo, IP literals, or unexpected paths.
+  if (typeof value !== 'string' || value.length > 2048 ||
+      !/^https:\/\/[A-Za-z0-9.-]+(?::443)?(?:\/[A-Za-z0-9_-]+)*\/?$/i.test(value)) {
+    throw Error('TRUSTED_RUNNER_HTTPS_BASE_URL_REQUIRED');
+  }
+  let parsed;
+  try { parsed = new URL(value); }
+  catch (_) { throw Error('TRUSTED_RUNNER_HTTPS_BASE_URL_REQUIRED'); }
+  const hostname = parsed.hostname;
+  const labels = hostname.split('.');
+  if (parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.search || parsed.hash ||
+      (parsed.port && parsed.port !== '443') || hostname.length > 253 || labels.length < 2 ||
+      labels.some(label => !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label)) ||
+      !/^(?:[a-z]{2,63}|xn--[a-z0-9-]{2,59})$/.test(labels.at(-1)) ||
+      /(?:^|\.)(?:localhost|localdomain|local|internal|intranet|lan|home|arpa|corp|test|invalid|example|onion)$/.test(hostname)) {
+    throw Error('TRUSTED_RUNNER_HTTPS_BASE_URL_REQUIRED');
+  }
+  // A public-looking name can still resolve privately. Verify this approved
+  // origin's actual DNS/TLS/egress route during installation, before activation.
+  return parsed.origin + parsed.pathname.replace(/\/$/, '');
+}
+
 function validateBindings(input = DEFAULT_BINDINGS) {
   const expectedKeys = ['runner', 'anthropic', 'google', 'openai'];
   if (!input || typeof input !== 'object' || Array.isArray(input) ||
@@ -38,7 +63,7 @@ function validateBindings(input = DEFAULT_BINDINGS) {
   for (const provider of expectedKeys) {
     const entry = input[provider];
     if (!entry || typeof entry !== 'object' || Array.isArray(entry) ||
-        Object.keys(entry).some(key => !['credential_ref', 'account_ref'].includes(key)) ||
+        Object.keys(entry).some(key => !['credential_ref', 'account_ref', ...(provider === 'runner' ? ['base_url'] : [])].includes(key)) ||
         typeof entry.credential_ref !== 'string' || !entry.credential_ref.trim() ||
         entry.credential_ref.length > 200 || /[\r\n\x00-\x1f]/.test(entry.credential_ref) ||
         /^(?:Bearer\s|sk-|AIza)/i.test(entry.credential_ref) ||
@@ -48,7 +73,8 @@ function validateBindings(input = DEFAULT_BINDINGS) {
       throw Error('CREDENTIAL_BINDING_METADATA_REQUIRED');
     }
     bindings[provider] = { credential_ref: entry.credential_ref,
-      ...(entry.account_ref === undefined ? {} : { account_ref: entry.account_ref }) };
+      ...(entry.account_ref === undefined ? {} : { account_ref: entry.account_ref }),
+      ...(provider === 'runner' && entry.base_url !== undefined ? { base_url: validateRunnerBaseUrl(entry.base_url) } : {}) };
   }
   return bindings;
 }
@@ -109,7 +135,7 @@ function graph(key, title, bindings) {
   }
   function runner(name, endpoint, jsonBody) {
     return add(name, 'httpRequest', {
-      method: 'POST', url: RUNNER_URL + endpoint,
+      method: 'POST', url: (bindings.runner.base_url || RUNNER_URL) + endpoint,
       authentication: 'genericCredentialType', genericAuthType: 'httpHeaderAuth',
       sendBody: true, specifyBody: 'json', jsonBody,
       options: { timeout: 15000, redirect: { redirect: { followRedirects: false } },

@@ -98,6 +98,62 @@ test('private binding metadata configures exact node credentials and rejects act
   assert.throws(() => validateBindings({ ...bindings, apiKey: 'sentinel' }), /CREDENTIAL_BINDING_METADATA_REQUIRED/);
 });
 
+test('approved HTTPS runner prefixes are compiled consistently into every inactive workflow', () => {
+  const configured = { ...bindings, runner: { ...bindings.runner, base_url: 'https://runner.example.com:443/lk-review/v1/' } };
+  const original = structuredClone(configured);
+  const workflows = buildWorkflows(configured);
+  const endpoints = new Set();
+  for (const workflow of Object.values(workflows)) {
+    assert.equal(workflow.active, false);
+    assert.equal(workflow.meta.lkCrossReview.installation_verified, false);
+    assert.equal(workflow.meta.lkCrossReview.credential_bindings.runner.base_url, 'https://runner.example.com/lk-review/v1');
+    const nodes = workflow.nodes.filter(node => node.type.endsWith('.httpRequest') &&
+      node.credentials.httpHeaderAuth.name === bindings.runner.credential_ref);
+    assert.ok(nodes.length);
+    for (const node of nodes) {
+      assert.match(node.parameters.url, /^https:\/\/runner\.example\.com\/lk-review\/v1\/(?:dispatch|start|complete|fail|watchdog)$/);
+      assert.doesNotMatch(node.parameters.url, /\$json|request\.url|\{\{/);
+      assert.equal(node.parameters.options.redirect.redirect.followRedirects, false);
+      assert.equal(node.retryOnFail, false);
+      endpoints.add(node.parameters.url.split('/').at(-1));
+    }
+    for (const node of workflow.nodes.filter(node => node.type.endsWith('.httpRequest') && node.name.startsWith('Call '))) {
+      assert.equal(node.parameters.url, PROVIDER_URLS[node.name.slice('Call '.length)]);
+    }
+  }
+  assert.deepEqual([...endpoints].sort(), ['complete', 'dispatch', 'fail', 'start', 'watchdog']);
+  assert.deepEqual(configured, original);
+  assert.equal(buildWorkflows({ ...bindings, runner: { ...bindings.runner, base_url: 'https://runner.example.com' } })
+    .dispatcher.nodes.find(node => node.name === 'Reserve call batch').parameters.url, 'https://runner.example.com/dispatch');
+  assert.equal(buildWorkflows({ ...bindings, runner: { ...bindings.runner, base_url: 'http://127.0.0.1:8791' } })
+    .dispatcher.nodes.find(node => node.name === 'Reserve call batch').parameters.url, 'http://127.0.0.1:8791/dispatch');
+});
+
+test('runner base URLs reject alternate protocols, auth material, private names and URL normalization tricks', () => {
+  for (const base_url of [
+    null, 123, '', 'http://runner.example.com', 'file:///tmp/runner', 'javascript:alert(1)',
+    'https://user:secret@runner.example.com', 'https://user@runner.example.com',
+    'https://runner.example.com?key=secret', 'https://runner.example.com?', 'https://runner.example.com#',
+    'https://runner.example.com/#fragment', 'https://runner.example.com:444', 'https://runner.example.com:0443',
+    'https://localhost', 'https://localhost.', 'https://runner.localhost', 'https://runner.local',
+    'https://metadata.google.internal', 'https://runner.home.arpa', 'https://runner.lan',
+    'https://127.0.0.1', 'https://127.1', 'https://2130706433', 'https://0x7f000001',
+    'https://10.0.0.1', 'https://192.168.0.1', 'https://169.254.169.254', 'https://999.999.999.999', 'https://[::1]',
+    'https://[::ffff:127.0.0.1]', 'https://runner.example.com.', 'https://-runner.example.com',
+    'https://runner..example.com', 'https://runner.example.com/a/../b', 'https://runner.example.com/./',
+    'https://runner.example.com/%2e%2e', 'https://runner.example.com/a//b',
+    'https://runner.example.com/={{$json.url}}', 'https://runner.example.com\\@evil.example.com',
+    ' https://runner.example.com', 'https://runner.example.com\n', 'https://runner.example.com/path with space',
+  ]) {
+    assert.throws(() => buildWorkflows({ ...bindings, runner: { ...bindings.runner, base_url } }),
+      /TRUSTED_RUNNER_HTTPS_BASE_URL_REQUIRED/, String(base_url));
+  }
+  assert.throws(() => validateBindings({ ...bindings, anthropic: { ...bindings.anthropic, base_url: 'https://runner.example.com' } }),
+    /CREDENTIAL_BINDING_METADATA_REQUIRED/);
+  assert.throws(() => validateBindings({ ...bindings, runner: { ...bindings.runner, url: 'https://runner.example.com' } }),
+    /CREDENTIAL_BINDING_METADATA_REQUIRED/);
+});
+
 test('private binding CLI output is restricted to ignored n8n-private paths and refuses symlinks', () => {
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'lk-cross-review-workflows-'));
   const input = path.join(temp, 'bindings.json');
