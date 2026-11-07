@@ -57,6 +57,10 @@ function candidateLinesForResult(lines, result, results) {
     .filter((candidate) => candidate !== result)
     .map((candidate) => normalizeAddress(candidate.parcel_address))
     .filter(Boolean);
+  // A parcel address alone cannot select one owner's factor narrative.
+  // Keep any explicitly linked calculation details, but do not borrow prose
+  // from multiple ownership rows sharing the same address.
+  if (address && otherAddresses.includes(address)) return [];
   const explicitStarts = lines.reduce((indexes, line, index) => {
     if (address && normalizeAddress(line.normalized_text).includes(address)) indexes.push(index);
     return indexes;

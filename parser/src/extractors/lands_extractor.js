@@ -441,21 +441,52 @@ function extractSubjectLandGroups(lines, stats = null) {
   return deduped;
 }
 
+function statementMemberIdentity(lines, sourceLines, parsed, context) {
+  const first = sourceLines[0];
+  const prior = lines.filter(line => line.page_no === first.page_no && line.line_no < first.line_no);
+  const heading = prior.findLastIndex(line => /토\s*지\s*평\s*가\s*조\s*서/.test(line.normalized_text));
+  if (heading < 0) return {};
+  // Stop at the first data row: previous owners and footnotes are not headers.
+  const headerLines = prior.slice(heading + 1);
+  const firstData = headerLines.findIndex(line => /^\d/.test(line.normalized_text.trim()));
+  if (firstData >= 0) headerLines.splice(firstData);
+  const compact = line => line.normalized_text.replace(/[\s|¦]/g, '');
+  if (!headerLines.some(line => /조합원/.test(compact(line)))) return {};
+  const unresolved = { ownership_identity_status:'UNRESOLVED_MEMBER_HEADER' };
+  const candidates = headerLines.filter(line => /조합원/.test(compact(line)) && /소재지/.test(compact(line)));
+  if (candidates.length !== 1) return unresolved;
+  const prefix = compact(candidates[0]).split('소재지')[0];
+  // A wrapped "조합원 / 번호" label is accepted only with the separate 번호 line.
+  if (!/조합원번호/.test(prefix) && !headerLines.some(line => /^번호/.test(compact(line)))) return unresolved;
+  let memberIndex, serialIndex, count;
+  if (/^(?:연번|일련번호|순번)조합원(?:번호)?$/.test(prefix)) {
+    memberIndex=1; serialIndex=0; count=2;
+  } else if (/^조합원(?:번호)?(?:연번|일련번호|순번)$/.test(prefix)) {
+    memberIndex=0; serialIndex=1; count=2;
+  } else if (/^조합원번호$/.test(prefix)) {
+    memberIndex=0; serialIndex=null; count=1;
+  } else return unresolved;
+  const tokens = sourceLines.map(line=>line.normalized_text).join(' ').trim().split(/\s+/);
+  if (tokens[0] !== String(parsed.land_no || '') || !tokens.slice(0,count).every(token=>AUXILIARY_INDEX_TOKEN.test(token))
+      || AUXILIARY_INDEX_TOKEN.test(tokens[count] || '')
+      || !normalizeParcelAddress(tokens.slice(count).join(' ')).startsWith(parsed.parcel_address + ' ')) return unresolved;
+  const headerRef = createParserSourceRef({appraisalId:context.appraisalId||'APP_001',fileName:context.fileName||null,
+    pageNo:first.page_no,lineStart:headerLines[0].line_no,lineEnd:headerLines.at(-1).line_no,
+    sourceLabel:'조합원번호 열 순서',rawTextExcerpt:headerLines.map(line=>line.raw_text).join(' / ')});
+  const rowRef = createParserSourceRef({appraisalId:context.appraisalId||'APP_001',fileName:context.fileName||null,
+    pageNo:first.page_no,lineStart:first.line_no,lineEnd:sourceLines.at(-1).line_no,
+    sourceLabel:'조합원번호 원문 행',rawTextExcerpt:sourceLines.map(line=>line.raw_text).join(' / ')});
+  return {member_no:tokens[memberIndex],member_no_origin:'EXPLICIT_STATEMENT_HEADER',member_no_evidence_version:2,
+    member_no_source_refs:[headerRef,rowRef],ownership_identity_status:'EXPLICIT_MEMBER',
+    statement_identifier_columns:{member:memberIndex,serial:serialIndex},
+    ...(serialIndex === null ? {} : {statement_serial_no:tokens[serialIndex]})};
+}
+
 function extractLands(lines, context = {}, stats = null) {
   return extractSubjectLandGroups(lines, stats).map(({ parsed, useStatus, sourceLines }, index) => {
     const sourceRefs = [sourceRefFromLines(sourceLines, parsed, context),...(parsed._recovered_address_lines||[]).map(line=>createParserSourceRef({appraisalId:context.appraisalId||'APP_001',fileName:context.fileName||null,pageNo:line.page_no,lineStart:line.line_no,lineEnd:line.line_no,sourceLabel:'소재지 복원 근거',rawTextExcerpt:line.raw_text}))].filter(Boolean);
-    const first=sourceLines[0],prior=lines.filter(line=>line.page_no===first.page_no&&line.line_no<first.line_no);
-    const heading=prior.findLastIndex(line=>/토\s*지\s*평\s*가\s*조\s*서/.test(line.normalized_text));
-    const headerLines=heading<0?[]:prior.slice(heading+1).filter(line=>!/^\d/.test(line.normalized_text.trim()));
-    const header=headerLines.map(line=>line.normalized_text).join(' ').replace(/\s/g,'');
-    const tokens=sourceLines.map(line=>line.normalized_text).join(' ').trim().split(/\s+/);
-    let memberNo='';
-    if(/조합원/.test(header)&&/번호/.test(header)&&tokens[0]===String(parsed.land_no||'')){
-      const hasSerial=/연번|일련번호/.test(header),candidate=tokens[hasSerial?1:0];
-      if(AUXILIARY_INDEX_TOKEN.test(candidate||'')&&(!hasSerial||AUXILIARY_INDEX_TOKEN.test(tokens[0])))memberNo=candidate;
-    }
-    const memberRef=memberNo&&headerLines.length?createParserSourceRef({appraisalId:context.appraisalId||'APP_001',fileName:context.fileName||null,pageNo:first.page_no,lineStart:headerLines[0].line_no,lineEnd:headerLines.at(-1).line_no,sourceLabel:'조합원번호 열 머리글',rawTextExcerpt:headerLines.map(line=>line.raw_text).join(' / ')}):null;
-    if(memberRef)sourceRefs.push(memberRef);
+    const memberIdentity = statementMemberIdentity(lines,sourceLines,parsed,context);
+    sourceRefs.push(...(memberIdentity.member_no_source_refs || []));
     const usedAddressRelaxation = Boolean(parsed._used_address_relaxation);
     const missingLandCategory = Boolean(parsed._missing_land_category);
     const recoveredAdjacentAddress = Boolean(parsed._recovered_adjacent_address);
@@ -464,7 +495,7 @@ function extractLands(lines, context = {}, stats = null) {
       land_id: `LAND_${String(index + 1).padStart(3, '0')}`,
       land_no: parsed.land_no,
       serial_no: parsed.land_no,
-      ...(memberRef?{member_no:memberNo,member_no_source_refs:[memberRef,sourceRefs[0]],member_no_origin:'EXPLICIT_STATEMENT_HEADER'}:{}),
+      ...memberIdentity,
       parcel_address: parsed.parcel_address,
       land_category: parsed.land_category,
       area: parsed.area,

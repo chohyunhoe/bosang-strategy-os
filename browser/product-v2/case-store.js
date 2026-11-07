@@ -41,6 +41,12 @@ function compatibleLandEvidence(left, right) {
     && (categoryKey(left?.land_category)===categoryKey(right?.land_category) || !categoryKey(left?.land_category) || !categoryKey(right?.land_category));
 }
 
+function explicitMember(row) {
+  return text(row.member_no) && row.member_no_origin === 'EXPLICIT_STATEMENT_HEADER'
+    && row.member_no_evidence_version === 2 && arr(row.member_no_source_refs).length >= 2;
+}
+function hasMemberEvidence(row) { return Boolean(text(row.member_no) || text(row.ownership_identity_status)); }
+
 const PARSE_HOLD_STATUS = 'PARSE_HOLD';
 
 // 승격 게이트는 parser/src/parse_sanity_gate.js 하나뿐이다. 브라우저 번들이 그것을 그대로 쓴다.
@@ -234,10 +240,29 @@ export class CaseStore {
     validateCaseSnapshot(snapshot);
     const base=freshState();
     Object.keys(base).forEach((key)=>{if(Object.prototype.hasOwnProperty.call(snapshot,key))base[key]=clone(snapshot[key]);});
+    // Previously saved matches predate ordered-header validation. Their original
+    // rows cannot be safely reconstructed from a merged snapshot; require reimport.
+    const legacyMembers = base.lands.filter(row => hasMemberEvidence(row) && !explicitMember(row)
+      && arr(row.source_appraisal_ids).length > 1);
+    if (legacyMembers.length) {
+      const affected = new Set(legacyMembers.flatMap(row=>arr(row.source_appraisal_ids)));
+      const code='OWNERSHIP_HEADER_REIMPORT_REQUIRED';
+      const detail='이전 방식으로 연결한 소유자 자료입니다. 새 사건에서 원본 평가서 두 개를 다시 불러와 소유자별 매칭과 개별요인을 확인하세요.';
+      for (const id of affected) {
+        let doc=base.documentSanity.find(row=>row.appraisal_id===id);
+        if(!doc){doc={appraisal_id:id,hold_codes:[],holds:[]};base.documentSanity.push(doc);}
+        doc.status=PARSE_HOLD_STATUS;doc.hold_codes=[...new Set([...arr(doc.hold_codes),code])];
+        doc.holds=[...arr(doc.holds).filter(row=>row.code!==code),{code,detail}];
+      }
+      for(const doc of base.sourceDocuments)if(affected.has(doc.appraisal_id)||arr(doc.appraisal_ids).some(id=>affected.has(id))){
+        doc.sanity_status=PARSE_HOLD_STATUS;doc.hold_codes=[...new Set([...arr(doc.hold_codes),code])];
+      }
+      base.reviewDecisions={};
+    }
     const hasContent=arr(base.sourceDocuments).length||arr(base.appraisals).length||arr(base.lands).length||arr(base.standardLands).length||arr(base.transactionCases).length;
     base.batchHasHold = Boolean(base.batchHasHold) || base.documentSanity.some((row) => row.status === PARSE_HOLD_STATUS) || snapshot.status === PARSE_HOLD_STATUS || snapshot.status === 'PROCESSING';
     base.status = base.batchHasHold ? PARSE_HOLD_STATUS : hasContent ? 'READY' : 'EMPTY';
-    base.route='home';base.error=base.batchHasHold?'보류 또는 처리 중 저장된 사건입니다. 원본과 추출 결과를 확인하세요.':null;
+    base.route='home';base.error=legacyMembers.length?'기존 소유자 매칭은 재검증이 필요합니다. 새 사건에서 원본 평가서 두 개를 다시 불러오세요.':base.batchHasHold?'보류 또는 처리 중 저장된 사건입니다. 원본과 추출 결과를 확인하세요.':null;
     base.capabilities={parser:'AVAILABLE',publicData:'NOT_CONNECTED',map:base.mapContext?'AVAILABLE':'NOT_CONNECTED',outputCenter:'LOCAL_ONLY'};
     if(!base.reviewDecisions||typeof base.reviewDecisions!=='object'||Array.isArray(base.reviewDecisions))base.reviewDecisions={};
     this.state=base;this.rebuildIssues();this.rebuildReviewQueue();this.emit();return true;
@@ -280,8 +305,9 @@ export class CaseStore {
 
     const landIdMap=new Map();const incomingCanonicalLands=[];
     const incomingLands=arr(parsed.lands);
+    const existingLands=[...this.state.lands];
     incomingLands.forEach((source)=>{
-      const compatible=this.state.lands.filter(row=>compatibleParcelLocation(row,source)
+      const compatible=existingLands.filter(row=>compatibleParcelLocation(row,source)
         && numberKey(row.area)===numberKey(source.area)
         && (!text(row.member_no)||!text(source.member_no)||text(row.member_no)===text(source.member_no))
         // Equal areas can be separate ownership rows within one appraisal.
@@ -295,10 +321,13 @@ export class CaseStore {
         // an older abbreviated row when another incompatible full address fits it.
         && !incomingLands.some(other=>other!==source && compatibleLandEvidence(row,other)!==compatibleLandEvidence(source,other)));
       const samePnu=validPnu(source.pnu)?compatible.filter(row=>text(row.pnu)===text(source.pnu)):[];
-      const explicitMember=row=>text(row.member_no)&&row.member_no_origin==='EXPLICIT_STATEMENT_HEADER'&&arr(row.member_no_source_refs).length>0;
       const duplicateMember=explicitMember(source)&&incomingLands.some(other=>other!==source&&explicitMember(other)&&text(other.member_no)===text(source.member_no)&&compatibleParcelLocation(other,source)&&numberKey(other.area)===numberKey(source.area));
       const memberMatches=explicitMember(source)?compatible.filter(row=>explicitMember(row)&&text(row.member_no)===text(source.member_no)):[];
-      const candidates=duplicateMember?[]:memberMatches.length?memberMatches:samePnu.length?samePnu:compatible;
+      // A PNU identifies land, not an owner. Never fall back from missing,
+      // conflicting or unverified member evidence to parcel/area similarity.
+      const needsMember=hasMemberEvidence(source)||compatible.some(hasMemberEvidence);
+      const repeatedIncoming=incomingLands.some(other=>other!==source&&compatibleLandEvidence(source,other));
+      const candidates=duplicateMember?[]:needsMember?memberMatches:repeatedIncoming?[]:samePnu.length?samePnu:compatible;
       let canonical=candidates.length===1?candidates[0]:null;
       if(!canonical){
         canonical={...clone(source),land_id:`LAND_${String(this.state.lands.length+1).padStart(3,'0')}`,source_appraisal_ids:landSources(source).length?landSources(source):[appraisalId],parcel_address_variants:[text(source.parcel_address)].filter(Boolean)};

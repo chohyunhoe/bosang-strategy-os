@@ -162,7 +162,8 @@ function extractSubjectFactorComparisons(lines, context = {}) {
   const appraisalId = context.appraisalId || 'APP_001';
   const comparisons = [];
   lands.forEach((land) => {
-    const landNo = land && land.land_no ? String(land.land_no) : '';
+    const landNo = String((land.ownership_identity_status || land.member_no
+      ? land.statement_serial_no : land.land_no) || '');
     const row = landNo ? rows.get(landNo) : null;
     if (!row) return;
     const result = results.find((candidate) => candidate && candidate.land_id === land.land_id) || {};
