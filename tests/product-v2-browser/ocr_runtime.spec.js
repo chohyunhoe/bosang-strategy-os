@@ -219,3 +219,37 @@ test('중간의 데이터 행은 더 긴 여백 뒤의 로고보다 먼저 확�
   });
   expect(crop.y).toBeGreaterThan(350);expect(crop.y).toBeLessThan(410);expect(crop.y+crop.height).toBeLessThan(550);
 });
+
+test('shaded header cells require one bounded ruled band',async({page})=>{
+  await page.goto('/');
+  const result=await page.evaluate(async()=>{
+    const {statementHeaderCells}=await import('/ocr-source.js');
+    const c=document.createElement('canvas');c.width=600;c.height=800;const ctx=c.getContext('2d');
+    ctx.fillStyle='white';ctx.fillRect(0,0,600,800);
+    const band=y=>{ctx.fillStyle='#ffffa0';ctx.fillRect(50,y,500,60);ctx.fillStyle='black';for(let x=50;x<=550;x+=100)ctx.fillRect(x,y,2,60);};
+    const blank=statementHeaderCells(ctx.getImageData(0,0,600,800),300);
+    band(150);const cells=statementHeaderCells(ctx.getImageData(0,0,600,800),300);
+    const belowRow=statementHeaderCells(ctx.getImageData(0,0,600,800),120);
+    band(50);const ambiguous=statementHeaderCells(ctx.getImageData(0,0,600,800),300);
+    return {blank,cells,belowRow,ambiguous};
+  });
+  expect(result.blank).toEqual([]);expect(result.cells).toHaveLength(5);
+  expect(result.cells.every(c=>c.top===150&&c.bottom===208&&c.right>c.left)).toBe(true);
+  expect(result.belowRow).toEqual([]);expect(result.ambiguous).toEqual([]);
+});
+
+test('calculation recovery preserves one complete direct OCR row and rejects ambiguity',async({page})=>{
+  await page.goto('/');
+  const r=await page.evaluate(async()=>{
+    const {calculationRowEvidence,preserveCalculationRows}=await import('/ocr-source.js');
+    const good='101 표본동 10-2 50 100 준주거 A 200,000 1.01000 1.00 0.90 1.00 0.80 0.95 1.00 1.00 0.684 2.00 276,336 276,000 검토의견';
+    const bad=good.replace('0.80','0.30');
+    return {good,bad,valid:!!calculationRowEvidence(good),invalid:calculationRowEvidence(bad),
+      recovered:preserveCalculationRows(bad,good),
+      duplicate:preserveCalculationRows(bad,good+'\n'+good),
+      wrong:preserveCalculationRows(bad,good.replace('10-2','20-2')),
+      intact:preserveCalculationRows(good,good.replace('276,000','275,000'))};
+  });
+  expect(r.valid).toBe(true);expect(r.invalid).toBeNull();expect(r.recovered).toBe(r.good);
+  expect(r.duplicate).toBe(r.bad);expect(r.wrong).toBe(r.bad);expect(r.intact).toBe(r.good);
+});

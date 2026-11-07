@@ -54,6 +54,12 @@ function isPageFurniture(line) {
   return text.length > 0 && text.length <= 40 && PAGE_FURNITURE_TAIL.test(text);
 }
 
+function isStandardReportHeader(line) {
+  const compact = String(line || '').replace(/\s+/g, '');
+  return /^감정평가액(?:의)?산출근거및그결정(?:에관한)?의견$/.test(compact)
+    || /^(?:[A-Z]{1,8})?\d{2,8}(?:-\d{1,8}){1,4}감정평가서$/.test(compact);
+}
+
 // 표준지 표의 열 머리글. 다음 장에서 이 머리글만 반복되면 같은 표가 이어진 것이다.
 function looksLikeStandardColumnHeader(line) {
   const compact = String(line || '').replace(/\s+/g, '');
@@ -168,7 +174,7 @@ function shouldCarryStandardSection(previousSection, lines) {
   for (let index = 0; index < head.length; index += 1) {
     const text = String(head[index] || '').trim();
     if (!text) continue;
-    if (isPageFurniture(text)) continue;
+    if (isPageFurniture(text) || isStandardReportHeader(text)) continue;
     if (isStandardContinuationRow(text)) return true;
     // 새 표제가 머리글보다 먼저 나오면 다른 표다. 이어붙이지 않는다.
     if (NEW_TABLE_HEADING.test(text)) return false;
@@ -223,7 +229,8 @@ function segmentLines(normalizedPages = []) {
       const isSubjectHeading = isSubjectTableHeading(rawText, page.lines.slice(index + 1, index + 17));
       currentSection = isSubjectHeading
         ? '편입토지 목록'
-        : (isPageFurniture(rawText) ? currentSection : detectSection(rawText, currentSection));
+        : (isPageFurniture(rawText) || (carryStandard && !sawStandardRow && isStandardReportHeader(rawText))
+          ? currentSection : detectSection(rawText, currentSection));
       if (currentSection === '편입토지 목록' && isSubjectContinuationRow(rawText)) lastSubjectRowIndex = index;
       if (currentSection === '비교표준지 목록' && (isStandardContinuationRow(rawText) || isStandardContinuationStart(rawText))) sawStandardRow = true;
       rows.push({

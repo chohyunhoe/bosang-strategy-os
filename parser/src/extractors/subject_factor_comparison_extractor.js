@@ -232,6 +232,15 @@ function buildAppraisalRowSubjectStandardLinks(context = {}) {
     const standardRefs = Array.isArray(standard.source_refs) ? standard.source_refs : [];
     if (resultRefs.length === 0 || standardRefs.length === 0) return;
 
+    const categories = ['가로조건','접근조건','환경조건','획지조건','행정적조건','기타조건'];
+    const details = Array.isArray(result.individual_factor_details) ? result.individual_factor_details : [];
+    const hasExplicitDetails = ['EXPLICIT_ROW_NUMBER','IDENTICAL_OWNERSHIP_GROUP_VALUES'].includes(result.calculation_link_method)
+      && details.length === 6 && details.every((detail,index) => detail.category === categories[index]
+        && Number.isFinite(detail.factor_value) && detail.factor_value > 0 && detail.factor_value <= 3
+        && Array.isArray(detail.source_refs) && detail.source_refs.length > 0);
+    const factorFields = hasExplicitDetails
+      ? Object.fromEntries(CONDITION_FIELDS.map((field,index) => [field,details[index].factor_value])) : {};
+
     comparisons.push({
       comparison_id: `SSF_${appraisalId}_${land.land_id}`,
       comparison_type: 'SUBJECT_LAND_TO_STANDARD',
@@ -240,13 +249,15 @@ function buildAppraisalRowSubjectStandardLinks(context = {}) {
       subject_parcel_address: land.parcel_address || '',
       standard_land_id: standard.standard_land_id || result.standard_land_id || '',
       standard_land_symbol: symbol,
+      ...factorFields,
+      ...(hasExplicitDetails ? {individual_factor_total:result.individual_factor_total} : {}),
       factor_reason: '',
-      source_refs: [...resultRefs, ...standardRefs],
+      source_refs: [...resultRefs, ...standardRefs, ...(hasExplicitDetails ? details.flatMap(detail=>detail.source_refs) : [])],
       review_status_code: REVIEW_STATUS.NEEDS_REVIEW,
       auto_confirmed: false,
       confidence_level: 'MEDIUM',
-      extraction_status: 'SYMBOL_LINK_ONLY_REVIEW_REQUIRED',
-      parser_notes: '대상토지 평가행에 적힌 비교표준지 기호가 비교표준지 목록의 기호와 유일하게 일치하여 연결했습니다. 개별요인 세부계수는 이 표에 없으므로 만들지 않았습니다. 수동 검수 필요.',
+      extraction_status: hasExplicitDetails ? 'EXPLICIT_CALCULATION_FACTORS_REVIEW_REQUIRED' : 'SYMBOL_LINK_ONLY_REVIEW_REQUIRED',
+      parser_notes: `대상토지 평가행에 적힌 비교표준지 기호가 비교표준지 목록의 기호와 유일하게 일치하여 연결했습니다. ${hasExplicitDetails ? '산출표의 열 머리글과 원문으로 확인된 개별요인 6개를 연결했습니다.' : '개별요인 세부계수는 이 표에 없으므로 만들지 않았습니다.'} 수동 검수 필요.`,
     });
   });
   return comparisons;

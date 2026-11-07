@@ -283,6 +283,7 @@ export class CaseStore {
     incomingLands.forEach((source)=>{
       const compatible=this.state.lands.filter(row=>compatibleParcelLocation(row,source)
         && numberKey(row.area)===numberKey(source.area)
+        && (!text(row.member_no)||!text(source.member_no)||text(row.member_no)===text(source.member_no))
         // Equal areas can be separate ownership rows within one appraisal.
         // Distinct explicit row numbers must not collapse into one subject.
         && (!arr(row.source_appraisal_ids).includes(appraisalId)
@@ -294,12 +295,19 @@ export class CaseStore {
         // an older abbreviated row when another incompatible full address fits it.
         && !incomingLands.some(other=>other!==source && compatibleLandEvidence(row,other)!==compatibleLandEvidence(source,other)));
       const samePnu=validPnu(source.pnu)?compatible.filter(row=>text(row.pnu)===text(source.pnu)):[];
-      const candidates=samePnu.length?samePnu:compatible;
+      const explicitMember=row=>text(row.member_no)&&row.member_no_origin==='EXPLICIT_STATEMENT_HEADER'&&arr(row.member_no_source_refs).length>0;
+      const duplicateMember=explicitMember(source)&&incomingLands.some(other=>other!==source&&explicitMember(other)&&text(other.member_no)===text(source.member_no)&&compatibleParcelLocation(other,source)&&numberKey(other.area)===numberKey(source.area));
+      const memberMatches=explicitMember(source)?compatible.filter(row=>explicitMember(row)&&text(row.member_no)===text(source.member_no)):[];
+      const candidates=duplicateMember?[]:memberMatches.length?memberMatches:samePnu.length?samePnu:compatible;
       let canonical=candidates.length===1?candidates[0]:null;
       if(!canonical){
         canonical={...clone(source),land_id:`LAND_${String(this.state.lands.length+1).padStart(3,'0')}`,source_appraisal_ids:landSources(source).length?landSources(source):[appraisalId],parcel_address_variants:[text(source.parcel_address)].filter(Boolean)};
         this.state.lands.push(canonical);
       } else {
+        if(explicitMember(source)&&explicitMember(canonical)&&text(source.member_no)===text(canonical.member_no)){
+          canonical.ownership_match_method='EXPLICIT_MEMBER_NUMBER';
+          canonical.member_no_source_refs=mergeSourceRefs(canonical.member_no_source_refs,source.member_no_source_refs);
+        }
         if(!categoryKey(canonical.land_category)&&categoryKey(source.land_category)){canonical.land_category=source.land_category;canonical.land_category_origin_appraisal_id=appraisalId;}
         canonical.source_refs=mergeSourceRefs(canonical.source_refs,source.source_refs);
         canonical.source_appraisal_ids=[...new Set([...arr(canonical.source_appraisal_ids),...(landSources(source).length?landSources(source):[appraisalId])])];

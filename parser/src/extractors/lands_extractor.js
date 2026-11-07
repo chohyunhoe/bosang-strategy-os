@@ -444,6 +444,18 @@ function extractSubjectLandGroups(lines, stats = null) {
 function extractLands(lines, context = {}, stats = null) {
   return extractSubjectLandGroups(lines, stats).map(({ parsed, useStatus, sourceLines }, index) => {
     const sourceRefs = [sourceRefFromLines(sourceLines, parsed, context),...(parsed._recovered_address_lines||[]).map(line=>createParserSourceRef({appraisalId:context.appraisalId||'APP_001',fileName:context.fileName||null,pageNo:line.page_no,lineStart:line.line_no,lineEnd:line.line_no,sourceLabel:'소재지 복원 근거',rawTextExcerpt:line.raw_text}))].filter(Boolean);
+    const first=sourceLines[0],prior=lines.filter(line=>line.page_no===first.page_no&&line.line_no<first.line_no);
+    const heading=prior.findLastIndex(line=>/토\s*지\s*평\s*가\s*조\s*서/.test(line.normalized_text));
+    const headerLines=heading<0?[]:prior.slice(heading+1).filter(line=>!/^\d/.test(line.normalized_text.trim()));
+    const header=headerLines.map(line=>line.normalized_text).join(' ').replace(/\s/g,'');
+    const tokens=sourceLines.map(line=>line.normalized_text).join(' ').trim().split(/\s+/);
+    let memberNo='';
+    if(/조합원/.test(header)&&/번호/.test(header)&&tokens[0]===String(parsed.land_no||'')){
+      const hasSerial=/연번|일련번호/.test(header),candidate=tokens[hasSerial?1:0];
+      if(AUXILIARY_INDEX_TOKEN.test(candidate||'')&&(!hasSerial||AUXILIARY_INDEX_TOKEN.test(tokens[0])))memberNo=candidate;
+    }
+    const memberRef=memberNo&&headerLines.length?createParserSourceRef({appraisalId:context.appraisalId||'APP_001',fileName:context.fileName||null,pageNo:first.page_no,lineStart:headerLines[0].line_no,lineEnd:headerLines.at(-1).line_no,sourceLabel:'조합원번호 열 머리글',rawTextExcerpt:headerLines.map(line=>line.raw_text).join(' / ')}):null;
+    if(memberRef)sourceRefs.push(memberRef);
     const usedAddressRelaxation = Boolean(parsed._used_address_relaxation);
     const missingLandCategory = Boolean(parsed._missing_land_category);
     const recoveredAdjacentAddress = Boolean(parsed._recovered_adjacent_address);
@@ -452,6 +464,7 @@ function extractLands(lines, context = {}, stats = null) {
       land_id: `LAND_${String(index + 1).padStart(3, '0')}`,
       land_no: parsed.land_no,
       serial_no: parsed.land_no,
+      ...(memberRef?{member_no:memberNo,member_no_source_refs:[memberRef,sourceRefs[0]],member_no_origin:'EXPLICIT_STATEMENT_HEADER'}:{}),
       parcel_address: parsed.parcel_address,
       land_category: parsed.land_category,
       area: parsed.area,

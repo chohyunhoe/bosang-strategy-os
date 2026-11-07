@@ -147,6 +147,80 @@ export function needsSparseStatementPass(data,width,height) {
   return borders>=3;
 }
 
+// Shaded statement headers can disappear during automatic thresholding. Find
+// the actual coloured band above the first data row, then read its ruled cells.
+// No file name, page number, parcel or fixed column coordinates are used.
+export function statementHeaderCells(image,firstRowY) {
+  const {width,height,data}=image;
+  if(!(width>200&&height>200&&firstRowY>0))return [];
+  const bands=[];
+  for(let y=0;y<Math.min(height,firstRowY-20);y++){
+    let coloured=0;
+    for(let x=0;x<width;x+=3){const i=(y*width+x)*4,values=[data[i],data[i+1],data[i+2]];
+      if(data[i+3]>128&&Math.max(...values)-Math.min(...values)>25&&Math.min(...values)>120)coloured++;
+    }
+    if(coloured<=width/30)continue;
+    const band=bands.at(-1);if(band&&y-band.bottom<=3)band.bottom=y;else bands.push({top:y,bottom:y});
+  }
+  const eligible=bands.filter(b=>b.bottom-b.top>12&&b.bottom-b.top<height*.2);
+  if(eligible.length!==1)return [];
+  const {top}=eligible[0],bottom=eligible[0].bottom+1,mid=Math.round(top+(bottom-top)*.55),xs=[];
+  let run=[];const finish=()=>{if(run.length)xs.push(Math.round(run.reduce((s,x)=>s+x,0)/run.length));run=[];};
+  for(let x=0;x<width;x++){
+    let count=0;for(let y=mid;y<bottom;y++){const i=(y*width+x)*4;if(Math.max(data[i],data[i+1],data[i+2])<180)count++;}
+    if(count/(bottom-mid)>.7)run.push(x);else finish();
+  }finish();
+  if(xs.length<5||xs.length>32)return [];
+  return xs.slice(0,-1).map((left,i)=>({left:left+3,right:xs[i+1]-3,top,bottom:bottom-2})).filter(c=>c.right-c.left>=15);
+}
+
+async function readStatementHeader(canvas,context,items,worker) {
+  const first=items.filter(item=>/^\d{2,6}(?:-\d{1,4})?$/.test(item.str)&&item.x<canvas.width*.2&&item.y>canvas.height*.2).sort((a,b)=>a.y-b.y)[0];
+  if(!first)return '';
+  const cells=statementHeaderCells(context.getImageData(0,0,canvas.width,canvas.height),first.y),texts=[];
+  for(const cell of cells){
+    const width=cell.right-cell.left,height=cell.bottom-cell.top;
+    const c=document.createElement('canvas');c.width=width*4;c.height=height*4;const ctx=c.getContext('2d');if(!ctx)continue;
+    ctx.drawImage(canvas,cell.left,cell.top,width,height,0,0,c.width,c.height);
+    const pixels=ctx.getImageData(0,0,c.width,c.height);
+    for(let i=0;i<pixels.data.length;i+=4){const v=(pixels.data[i]+pixels.data[i+1]+pixels.data[i+2])/3<180?0:255;pixels.data[i]=pixels.data[i+1]=pixels.data[i+2]=v;pixels.data[i+3]=255;}
+    ctx.putImageData(pixels,0,0);await worker.setParameters?.({tessedit_pageseg_mode:'6'});
+    const result=await worker.recognize(c,{}, {text:true});texts.push(String(result?.data?.text||'').replace(/\s+/g,' ').trim());
+  }
+  const header=texts.join(' ').replace(/[|¦]/g,' ').replace(/\s+/g,' ').trim();
+  return /(?:조합원|가로|접근|환경)/.test(header)?header:'';
+}
+
+export function calculationRowEvidence(line) {
+  const tokens=String(line||'').trim().split(/\s+/);
+  if(!/^\d{1,6}(?:-\d{1,4})?$/.test(tokens[0]))return null;
+  const lot=tokens.findIndex((token,i)=>i>0&&/^(?:산)?\d{1,5}-\d{1,5}$/.test(token));
+  if(lot<2)return null;
+  for(let i=lot+1;i<tokens.length-13;i++){
+    if(!/^[A-Za-z가-힣]{1,2}$/.test(tokens[i])||!/^\d{1,3}(?:,\d{3})+$/.test(tokens[i+1]))continue;
+    const raw=tokens.slice(i+1,i+14);
+    if(raw.length!==13||!raw.every(t=>/^\d[\d,]*(?:\.\d+)?$/.test(t)))continue;
+    const n=raw.map(t=>Number(t.replace(/,/g,''))),[official,time,region,...tail]=n;
+    const details=tail.slice(0,6),total=tail[6],other=tail[7],calculated=tail[8],unit=tail[9];
+    if(!(official>=100&&time>=.5&&time<=5&&region>0&&region<=3&&other>=.5&&other<=30&&calculated>=100&&unit>=100))continue;
+    if(!details.every(v=>v>0&&v<=3)||Math.abs(details.reduce((a,b)=>a*b,1)-total)>.00051)continue;
+    if(Math.abs(official*time*region*total*other-calculated)>1.5)continue;
+    return {serial:tokens[0],address:tokens.slice(1,lot+1).join(' ').replace(/\s/g,''),values:n};
+  }
+  return null;
+}
+
+export function preserveCalculationRows(current,original) {
+  const candidates=String(original||'').split(/\r?\n/).map(line=>({line,evidence:calculationRowEvidence(line)})).filter(r=>r.evidence);
+  return String(current||'').split(/\r?\n/).map(line=>{
+    if(calculationRowEvidence(line))return line;
+    const tokens=line.trim().split(/\s+/),lot=tokens.findIndex((token,i)=>i>0&&/^(?:산)?\d{1,5}-\d{1,5}$/.test(token));
+    if(lot<2)return line;
+    const matches=candidates.filter(r=>r.evidence.serial===tokens[0]&&r.evidence.address===tokens.slice(1,lot+1).join(' ').replace(/\s/g,''));
+    return matches.length===1?matches[0].line:line;
+  }).join('\n');
+}
+
 // Read sparse statement rows independently: multi-line address cells otherwise
 // scramble the row, while page-wide sparse OCR can lose amount digits.
 export function statementRowCrops(items, width, height) {
@@ -249,6 +323,7 @@ export async function ocrPdfDocument(pdfDocument, onProgress = () => {}, options
       }
     }
     const initialItems=items;
+    const recoveredHeader=statementHeading(value)?await readStatementHeader(canvas,context,items,worker):'';
     const tableLike=/(?:토\s*지\s*(?:평\s*가\s*조\s*서|가\s*격\s*산\s*출)|비\s*교\s*표\s*준\s*지|공\s*시\s*지\s*가|개\s*별\s*요\s*인)/.test(value);
     const compactText=value.replace(/\s/g,'');
     const hasTableColumns=['소재지','지번','지목','면적','감정평가액','단가'].filter(label=>compactText.includes(label)).length>=3;
@@ -264,6 +339,12 @@ export async function ocrPdfDocument(pdfDocument, onProgress = () => {}, options
         const cropItems=wordBoxes(recovered?.data).map(item=>({...item,x:item.x/2+crop.x,y:item.y/2+crop.y,width:item.width/2,height:item.height/2}));
         if(cropItems.length){items=mergeTableOcrWords(items,cropItems,crop);value=ocrWordLines(items);if(originalDongLines.length===1&&!value.split(/\r?\n/).some(line=>line.replace(/\s/g,'')===originalDongLines[0]))value+='\n'+originalDongLines[0];onProgress({phase:'ocr-table-crop-completed',page:pageNo});}
       }
+    }
+    if(/토지(?:가격|가액)산출/.test(compactText+value.replace(/\s/g,'')))value=preserveCalculationRows(value,ocrWordLines(initialItems));
+    if(recoveredHeader){
+      const lines=value.split(/\r?\n/),index=lines.findIndex(statementHeading);
+      if(index>=0)lines.splice(index+1,0,recoveredHeader);
+      value=lines.join('\n');
     }
     if(/토지평가조/.test(compactText+value.replace(/\s/g,''))){
       let rowCrops=statementRowCrops(initialItems,canvas.width,canvas.height);
