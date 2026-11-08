@@ -1,0 +1,116 @@
+name: Osong3 Temporary Aerial Images
+on:
+  push:
+    branches: [artifact/osong-park-20261108-map]
+permissions:
+  contents: read
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install imaging package and fonts
+        run: |
+          python -m pip install pillow
+          sudo apt-get update -qq && sudo apt-get install -y -qq fonts-nanum >/dev/null
+      - name: Render aerial map from public image tiles
+        env:
+          VWORLD_API_KEY: ${{ secrets.VWORLD_API_KEY }}
+          VWORLD_DOMAIN: ${{ secrets.VWORLD_DOMAIN }}
+        shell: bash
+        run: |
+          cat >/tmp/render_osong3.py <<'PYTHON'
+          import math,io,os,json,urllib.request,urllib.parse,time
+          from PIL import Image,ImageDraw,ImageFont
+          LAT,LON=36.607223,127.318029
+          PNUS={"7-2":("4311325029100070002",642),"7-6":("4311325029100070006",932),"192-2":("4311325029101920002",17)}
+          OUT="osong3_aerial_output"
+          os.makedirs(OUT,exist_ok=True)
+          def font(s):
+           for p in ("/usr/share/fonts/truetype/nanum/NanumGothic.ttf","/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"):
+            try:return ImageFont.truetype(p,s)
+            except OSError:pass
+           return ImageFont.load_default()
+          def xy(lat,lon,z):
+           n=2**z;return (lon+180)/360*n,(1-math.asinh(math.tan(math.radians(lat)))/math.pi)/2*n
+          def tile(z,x,y):
+           u=f"https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+           for attempt in range(3):
+            try:
+             r=urllib.request.Request(u,headers={"User-Agent":"Mozilla/5.0","Accept":"image/jpeg"})
+             with urllib.request.urlopen(r,timeout=18) as f:im=Image.open(io.BytesIO(f.read()));im.load()
+             return im.convert("RGB")
+            except Exception as e:
+             print("tile retry",z,x,y,type(e).__name__);time.sleep(attempt+1)
+           raise RuntimeError("Esri tile unavailable")
+          def cadastral():
+           key=os.getenv("VWORLD_API_KEY","").strip()
+           if not key:return {},{"reason":"No GitHub VWorld secret configured"}
+           result={};errs={}
+           for lot,(pnu,area) in PNUS.items():
+            params={"service":"data","request":"GetFeature","version":"2.0","data":"LP_PA_CBND_BUBUN","format":"json","geometry":"true","attribute":"true","crs":"EPSG:4326","size":"5","attrFilter":"pnu:=:"+pnu,"key":key,"domain":os.getenv("VWORLD_DOMAIN","https://github.com")}
+            try:
+             url="https://api.vworld.kr/req/data?"+urllib.parse.urlencode(params)
+             with urllib.request.urlopen(url,timeout=15) as r:payload=json.load(r)
+             features=payload.get("response",{}).get("result",{}).get("featureCollection",{}).get("features",[])
+             matching=[f for f in features if str(f.get("properties",{}).get("pnu",""))==pnu]
+             if len(matching)!=1:raise ValueError("PNU exact-one failed")
+             geom=matching[0]["geometry"]
+             if geom.get("type") not in ("Polygon","MultiPolygon"):raise ValueError("not polygon")
+             result[lot]=geom
+            except Exception as e:errs[lot]=type(e).__name__
+           return result,errs
+          geoms,errors=cadastral()
+          def rings(g):
+           if g["type"]=="Polygon":return g["coordinates"]
+           return [r for polygon in g["coordinates"] for r in polygon]
+          def build(z,nx,ny,desc,path):
+           cx,cy=xy(LAT,LON,z);x0=int(cx)-nx//2;y0=int(cy)-ny//2
+           im=Image.new("RGB",(nx*256,ny*256))
+           for a in range(nx):
+            for b in range(ny):im.paste(tile(z,x0+a,y0+b),(a*256,b*256))
+           w,h=im.size
+           d=ImageDraw.Draw(im,"RGBA")
+           confirmed=[]
+           palette={"7-2":(249,79,63,255),"7-6":(251,193,46,255),"192-2":(24,192,225,255)}
+           for lot,geom in geoms.items():
+            for ring in rings(geom):
+             pathpts=[]
+             for lon,lat,*_ in ring:
+              px,py=xy(lat,lon,z);pathpts.append((round((px-x0)*256),round((py-y0)*256)))
+             if len(pathpts)>2:
+              d.polygon(pathpts,fill=(*palette[lot][:3],55))
+              d.line(pathpts+[pathpts[0]],fill=(255,255,255,255),width=7,joint="curve")
+              d.line(pathpts+[pathpts[0]],fill=palette[lot],width=4,joint="curve")
+              if lot not in confirmed:confirmed.append(lot)
+           # reference center marker only when no exact cadastral boundary
+           if not geoms:
+            rx=round((cx-x0)*256);ry=round((cy-y0)*256)
+            d.ellipse((rx-9,ry-9,rx+9,ry+9),fill=(255,255,255,245),outline=(15,54,86,255),width=3)
+           d.rectangle((20,18,w-20,143),fill=(15,34,54,225))
+           d.text((37,30),"OSONG 3  |  DONGPYEONG-RI AERIAL",font=font(27),fill="white")
+           d.text((37,72),desc,font=font(20),fill="#d5e8ff")
+           quality="PNU exact-one polygons" if len(geoms)==3 else "CAUTION: cadastral boundary not fully verified"
+           d.text((37,109),quality,font=font(18),fill=("#aaf6d4" if len(geoms)==3 else "#ffdb9b"))
+           d.rectangle((20,h-120,w-20,h-20),fill=(15,34,54,225))
+           d.text((37,h-108),"7-2: 642m2  |  7-6: 932m2  |  192-2: 17m2  |  TOTAL 1591m2",font=font(23),fill="white")
+           d.text((37,h-72),"Blue-point / central reference is NOT a surveyed parcel location.",font=font(18),fill="#ffdb9b")
+           d.text((37,h-40),"Imagery: Esri / Vantor / Earthstar Geographics / GIS User Community",font=font(16),fill="#d5e8ff")
+           im.save(os.path.join(OUT,path),optimize=True)
+           print("wrote",path,os.path.getsize(os.path.join(OUT,path)))
+          build(16,7,5,"Cheongju, Osong-eup / wide area overview","01_aerial_overview.png")
+          build(18,7,5,"Near 112 Garosu-ro (Jibun: 7-2) / detailed area","02_aerial_detail.png")
+          with open(os.path.join(OUT,"verification.json"),"w") as f:
+           json.dump({"status":"PASS_3_PARCELS" if len(geoms)==3 else "PARTIAL","pnu_verified":list(geoms),"errors":errors,"target_pnus":{k:v[0] for k,v in PNUS.items()},"reference_center":[LON,LAT],"not_a_survey":True},f,indent=2)
+          with open(os.path.join(OUT,"README.txt"),"w") as f:
+           f.write("AERIAL REFERENCE - Osong Dongpyeong-ri. Source Esri World Imagery.\n3 lots in documentary register: 7-2 642m2, 7-6 932m2, 192-2 17m2.\nCheck verification.json. If status PARTIAL, no parcel boundary claim may be made. The center reference is for navigation only.\n")
+          
+          PYTHON
+          python /tmp/render_osong3.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: osong3-parcels-aerial-reference
+          path: osong3_aerial_output/*
+          retention-days: 7
