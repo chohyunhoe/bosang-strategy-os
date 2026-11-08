@@ -9,8 +9,13 @@ import zipfile
 from pathlib import Path
 
 import pytest
-import shapefile
-from PIL import Image
+
+# Other BSO pipelines do not install optional GIS wheels.  This entire module is
+# mandatory (not skipped) in the dedicated BSO Cadastral Aerial SOP CI job.
+shapefile = pytest.importorskip("shapefile")
+pytest.importorskip("pyproj")
+pytest.importorskip("shapely")
+Image = pytest.importorskip("PIL.Image")
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
