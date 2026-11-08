@@ -148,6 +148,11 @@ def test_complete_outputs_with_mock_imagery(tmp_path,monkeypatch):
         im.verify()
     with Image.open(next(output.glob("*_one_page.jpg"))) as im:
         assert im.size == (2480,3508)
+    from pypdf import PdfReader
+    pages = PdfReader(next(output.glob("*_one_page.pdf"))).pages
+    assert len(pages) == 1
+    assert 594 <= float(pages[0].mediabox.width) <= 596
+    assert 841 <= float(pages[0].mediabox.height) <= 843
     geojson=json.loads(next(output.glob("*_verified_wgs84.geojson")).read_text(encoding="utf-8"))
     assert len(geojson["features"])==2
     assert all(f["geometry"]["type"] in ("Polygon","MultiPolygon") for f in geojson["features"])
