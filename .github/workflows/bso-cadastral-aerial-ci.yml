@@ -33,7 +33,7 @@ jobs:
           python-version: '3.11'
       - name: Install isolated GIS engine and offline tests
         run: |
-          python -m pip install -r bso/tools/requirements_cadastral_aerial.txt pytest
+          python -m pip install -r bso/tools/requirements_cadastral_aerial.txt pytest pypdf
           sudo apt-get update -qq
           sudo apt-get install -y -qq fonts-nanum >/dev/null
       - name: Fail-closed and mock imagery regression
