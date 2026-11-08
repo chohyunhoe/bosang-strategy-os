@@ -1,0 +1,25 @@
+name: Osong3 Cadastre Direct Download Probe
+on:
+  push:
+    branches: [artifact/osong-park-20261108-map]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe official VWorld ZIP resource without keys
+        shell: bash
+        run: |
+          python - <<'PY'
+          import urllib.request,urllib.error
+          url="https://www.vworld.kr/dtmk/downloadResourceFile.do?ds_id=30564&fileNo=509"
+          print("PROBE: dataset 30564 resource 509")
+          req=urllib.request.Request(url,headers={"User-Agent":"Mozilla/5.0","Accept":"application/zip,application/octet-stream,*/*","Referer":"https://www.vworld.kr/"})
+          try:
+            with urllib.request.urlopen(req,timeout=27) as f:
+              print("status",f.status,"type",f.headers.get("Content-Type"),"length",f.headers.get("Content-Length"))
+              sample=f.read(10)
+              print("zip_signature", sample[:4] == b"PK\\x03\\x04", "length",len(sample))
+          except Exception as e:print("PROBE_FAILED",type(e).__name__,str(e)[:400])
+          PY
