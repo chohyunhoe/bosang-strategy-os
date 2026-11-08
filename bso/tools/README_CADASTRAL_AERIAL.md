@@ -23,6 +23,7 @@ Example **structure only** (all identifiers/coordinates synthetic, not a real ca
   "expected_bounds_wgs84": [126.5, 36.2, 127.5, 37.1],
   "source_document_verified": false,
   "imagery_capture_date": null,
+  "imagery_accuracy_m": null,
   "parcels": [
     {"pnu": "9999900000100010001", "jibun": "1-1",
      "category": "대", "registered_area_m2": 100.0,
@@ -58,11 +59,11 @@ Any failure blocks map output. No estimated boundary and no point placeholder ma
 
 ## Produced locally
 
-A successful run produces `<case_id>_overview.png/.jpg`, `<case_id>_detail.png/.jpg`,
+Use a **fresh output directory** for each run; old maps are never silently reused.\n\nA successful run produces `<case_id>_overview.png/.jpg`, `<case_id>_detail.png/.jpg`,
 `<case_id>_one_page.pdf/.jpg`, `<case_id>_verified_wgs84.geojson` and
 `<case_id>_verification.json`. Close-by polygons are grouped into panels, distant groups are separated.
 The engine stamps imagery attribution, its capture date *if independently known*, cadastral disclaimer,
-and source-document verification status. Outputs are internal **DRAFT_REVIEW_REQUIRED**, not approved court exhibits.
+and source-document verification status. Every PNG/JPG map prints its imagery provider,\ncapture date and positional accuracy, or explicitly `미확인` when not verified. Outputs are internal **DRAFT_REVIEW_REQUIRED**, not approved court exhibits.
 
 Study-specific reported discrepancy (not independently reverified here): cadastral geometry area may differ
 from registered area; report both and the percentage but **do not** silently rewrite register area.
