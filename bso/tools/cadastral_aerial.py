@@ -393,7 +393,7 @@ def create_outputs(items: list[dict], input_meta: dict, config: dict, outdir: Pa
         y+=48
     pdf=root.with_name(root.name+"_one_page.pdf")
     preview=root.with_name(root.name+"_one_page.jpg")
-    page.save(pdf,"PDF",resolution=200.0)
+    page.save(pdf,"PDF",resolution=300.0)
     page.save(preview,"JPEG",quality=88)
     feature_coll={"type":"FeatureCollection","features":[{
         "type":"Feature","properties":{k:it[k] for k in (
