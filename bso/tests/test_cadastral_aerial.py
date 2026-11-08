@@ -152,6 +152,10 @@ def test_complete_outputs_with_mock_imagery(tmp_path,monkeypatch):
     assert len(geojson["features"])==2
     assert all(f["geometry"]["type"] in ("Polygon","MultiPolygon") for f in geojson["features"])
     assert "법적 경계" in report["disclaimer"]
+    assert report["imagery_accuracy_m"] is None
+    # Re-running into an existing directory must not reuse a stale map as a new result.
+    with pytest.raises(aerial.MapBlocked, match="PREVIOUS_OUTPUT_EXISTS_USE_NEW_DIRECTORY"):
+        aerial.execute(config, output)
 
 
 def test_source_crs_must_be_explicit_and_provider_does_not_default_to_vworld(tmp_path):
