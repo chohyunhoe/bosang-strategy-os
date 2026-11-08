@@ -1,0 +1,44 @@
+name: BSO Cadastral Aerial SOP CI
+
+on:
+  pull_request:
+    paths:
+      - "bso/tools/**"
+      - "bso/RUN_CADASTRAL_AERIAL.cmd"
+      - "bso/tests/test_cadastral_aerial.py"
+      - "docs/BSO_GIS_지적경계_항공사진_SOP_v1.md"
+      - ".github/workflows/bso-cadastral-aerial-ci.yml"
+  push:
+    branches:
+      - main
+      - feature/bso-cadastral-aerial-sop-v1
+    paths:
+      - "bso/tools/**"
+      - "bso/RUN_CADASTRAL_AERIAL.cmd"
+      - "bso/tests/test_cadastral_aerial.py"
+      - "docs/BSO_GIS_지적경계_항공사진_SOP_v1.md"
+      - ".github/workflows/bso-cadastral-aerial-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  offline-synthetic-regression:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install isolated GIS engine and offline tests
+        run: |
+          python -m pip install -r bso/tools/requirements_cadastral_aerial.txt pytest
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq fonts-nanum >/dev/null
+      - name: Fail-closed and mock imagery regression
+        run: python -m pytest -q bso/tests/test_cadastral_aerial.py
+      - name: Syntax and repository hygiene
+        run: |
+          python -m compileall -q bso/tools/cadastral_aerial.py bso/tests/test_cadastral_aerial.py
+          git diff --check
