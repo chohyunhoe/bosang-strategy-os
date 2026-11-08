@@ -1,0 +1,560 @@
+{
+  "evidence_mode": "MOCK",
+  "actual_provider_calls": 0,
+  "actual_bso_auto_writes": 0,
+  "actual_free_credit_balances": "UNVERIFIED",
+  "actual_billed_cost": null,
+  "summary": {
+    "job_id": "BSO_SYNTHETIC_DISCREPANCY",
+    "case_id": "SYN_CASE",
+    "artifact_version": 2,
+    "artifact_hash": "c4562318034fb9a774b4c4910d19c705f1f4b53c4cee132a2c622f5813090e8a",
+    "snapshot_id": "SNAP_06c85145678d1dc2f3acc3aef4cfb90620b403b240e99301171eab054fcbdfc3",
+    "manifest_hash": "06c85145678d1dc2f3acc3aef4cfb90620b403b240e99301171eab054fcbdfc3",
+    "state": "READY_FOR_HUMAN",
+    "status": "DONE",
+    "completion_target": "MOCK_VERIFICATION",
+    "evidence_mode": "MOCK",
+    "independent_cross_review": true,
+    "concurrent_review": true,
+    "provided_scope": "EXTRACTED_TEXT_ONLY",
+    "source_scope": [
+      {
+        "doc_id": "SYN_DOC",
+        "sha256": "8ab2e183a0b1b65238951bea4d31bc4dc17f78e09128019e91a72dd7365ccfa3",
+        "pages": [
+          1
+        ]
+      }
+    ],
+    "coverage": [
+      {
+        "doc_id": "SYN_DOC",
+        "sha256": "8ab2e183a0b1b65238951bea4d31bc4dc17f78e09128019e91a72dd7365ccfa3",
+        "pages": [
+          1
+        ]
+      }
+    ],
+    "actual_reviewers": [],
+    "reviewer_completion": {
+      "claude": "COMPLETED",
+      "gemini": "COMPLETED",
+      "gpt": "COMPLETED"
+    },
+    "important_differences": [],
+    "rule_results": {
+      "artifact_hash": "c4562318034fb9a774b4c4910d19c705f1f4b53c4cee132a2c622f5813090e8a",
+      "calculations": [],
+      "coverage": [
+        {
+          "doc_id": "SYN_DOC",
+          "images_verified": false,
+          "pages": [
+            1
+          ],
+          "sha256": "8ab2e183a0b1b65238951bea4d31bc4dc17f78e09128019e91a72dd7365ccfa3",
+          "source_mode": "text_original"
+        }
+      ],
+      "issues": [],
+      "owner_comparison": [
+        {
+          "candidate_amount": "1000",
+          "candidate_factors": {
+            "individual": "0.90"
+          },
+          "candidate_unit": "원",
+          "evidence": [
+            {
+              "doc_id": "SYN_DOC",
+              "pdf_page": 1,
+              "sha256": "8ab2e183a0b1b65238951bea4d31bc4dc17f78e09128019e91a72dd7365ccfa3"
+            },
+            {
+              "doc_id": "SYN_DOC",
+              "pdf_page": 1,
+              "sha256": "8ab2e183a0b1b65238951bea4d31bc4dc17f78e09128019e91a72dd7365ccfa3"
+            }
+          ],
+          "original_amount": "1000",
+          "original_factors": {
+            "individual": "0.90"
+          },
+          "original_unit": "원",
+          "subject_key": [
+            "SYN_DOC",
+            "member_number",
+            "M1",
+            "PROPERTY_1",
+            "APPRAISAL_A"
+          ]
+        },
+        {
+          "candidate_amount": "2000",
+          "candidate_factors": {
+            "individual": "1.10"
+          },
+          "candidate_unit": "원",
+          "evidence": [
+            {
+              "doc_id": "SYN_DOC",
+              "pdf_page": 1,
+              "sha256": "8ab2e183a0b1b65238951bea4d31bc4dc17f78e09128019e91a72dd7365ccfa3"
+            },
+            {
+              "doc_id": "SYN_DOC",
+              "pdf_page": 1,
+              "sha256": "8ab2e183a0b1b65238951bea4d31bc4dc17f78e09128019e91a72dd7365ccfa3"
+            }
+          ],
+          "original_amount": "2000",
+          "original_factors": {
+            "individual": "1.10"
+          },
+          "original_unit": "원",
+          "subject_key": [
+            "SYN_DOC",
+            "member_number",
+            "M2",
+            "PROPERTY_1",
+            "APPRAISAL_A"
+          ]
+        }
+      ],
+      "passed": true,
+      "rule_input_hash": "f3045b14098e6a6a4cd3443884298c89ef21bea6d334a6734a3669c40f26418b",
+      "source_manifest_hash": "06c85145678d1dc2f3acc3aef4cfb90620b403b240e99301171eab054fcbdfc3"
+    },
+    "key_differences": [],
+    "unresolved": [],
+    "owner_comparison": [
+      {
+        "candidate_amount": "1000",
+        "candidate_factors": {
+          "individual": "0.90"
+        },
+        "candidate_unit": "원",
+        "evidence": [
+          {
+            "doc_id": "SYN_DOC",
+            "pdf_page": 1,
+            "sha256": "8ab2e183a0b1b65238951bea4d31bc4dc17f78e09128019e91a72dd7365ccfa3"
+          },
+          {
+            "doc_id": "SYN_DOC",
+            "pdf_page": 1,
+            "sha256": "8ab2e183a0b1b65238951bea4d31bc4dc17f78e09128019e91a72dd7365ccfa3"
+          }
+        ],
+        "original_amount": "1000",
+        "original_factors": {
+          "individual": "0.90"
+        },
+        "original_unit": "원",
+        "subject_key": [
+          "SYN_DOC",
+          "member_number",
+          "M1",
+          "PROPERTY_1",
+          "APPRAISAL_A"
+        ]
+      },
+      {
+        "candidate_amount": "2000",
+        "candidate_factors": {
+          "individual": "1.10"
+        },
+        "candidate_unit": "원",
+        "evidence": [
+          {
+            "doc_id": "SYN_DOC",
+            "pdf_page": 1,
+            "sha256": "8ab2e183a0b1b65238951bea4d31bc4dc17f78e09128019e91a72dd7365ccfa3"
+          },
+          {
+            "doc_id": "SYN_DOC",
+            "pdf_page": 1,
+            "sha256": "8ab2e183a0b1b65238951bea4d31bc4dc17f78e09128019e91a72dd7365ccfa3"
+          }
+        ],
+        "original_amount": "2000",
+        "original_factors": {
+          "individual": "1.10"
+        },
+        "original_unit": "원",
+        "subject_key": [
+          "SYN_DOC",
+          "member_number",
+          "M2",
+          "PROPERTY_1",
+          "APPRAISAL_A"
+        ]
+      }
+    ],
+    "source_locations": [
+      {
+        "doc_id": "SYN_DOC",
+        "original_location": "synthetic://fixture/document"
+      }
+    ],
+    "duration_seconds": 13.0,
+    "adjudication": {
+      "artifact_hash": "c4562318034fb9a774b4c4910d19c705f1f4b53c4cee132a2c622f5813090e8a",
+      "artifact_version": 2,
+      "coverage": [
+        {
+          "doc_id": "SYN_DOC",
+          "pages": [
+            1
+          ],
+          "sha256": "8ab2e183a0b1b65238951bea4d31bc4dc17f78e09128019e91a72dd7365ccfa3"
+        }
+      ],
+      "decisions": [],
+      "findings": [],
+      "job_id": "BSO_SYNTHETIC_DISCREPANCY",
+      "manifest_hash": "06c85145678d1dc2f3acc3aef4cfb90620b403b240e99301171eab054fcbdfc3",
+      "missing_pages": [],
+      "reviewer": "gpt",
+      "revision_needed": false,
+      "schema_version": "lk-cross-review-response/1.0",
+      "snapshot_id": "SNAP_06c85145678d1dc2f3acc3aef4cfb90620b403b240e99301171eab054fcbdfc3"
+    },
+    "error_code": "",
+    "reviewers": {
+      "claude": {
+        "status": "COMPLETED",
+        "receipt": {
+          "actual_cost": "0.01",
+          "artifact_hash": "c4562318034fb9a774b4c4910d19c705f1f4b53c4cee132a2c622f5813090e8a",
+          "artifact_version": 2,
+          "currency": "USD",
+          "evidence_mode": "MOCK",
+          "finished_at": "1970-01-01T00:16:51+00:00",
+          "input_hash": "faa71ccd5a9ef3512eecd2c9c20682660f86a9884928ba163a94d0ea02b2263e",
+          "manifest_hash": "06c85145678d1dc2f3acc3aef4cfb90620b403b240e99301171eab054fcbdfc3",
+          "model_id": "mock-claude",
+          "n8n_execution_id": "MOCK_CHILD_3_0",
+          "prompt_version": "lk-independent/1.0",
+          "provided_scope": "EXTRACTED_TEXT_ONLY",
+          "provider": "anthropic",
+          "provider_response_hash": null,
+          "request_id": "MOCK_7a4db047-2720-44dc-9868-10ccc67c393a",
+          "response_hash": "6b883816eaeefadcd3a67b19db4ea293499a126d4b58dff8b92ba2fbc4a412ab",
+          "snapshot_id": "SNAP_06c85145678d1dc2f3acc3aef4cfb90620b403b240e99301171eab054fcbdfc3",
+          "started_at": "1970-01-01T00:16:49+00:00",
+          "usage": {
+            "input_tokens": 1,
+            "output_tokens": 1
+          }
+        },
+        "ticket_id": "7a4db047-2720-44dc-9868-10ccc67c393a",
+        "actual_cost": "0.01",
+        "cost_reconciliation": null
+      },
+      "gemini": {
+        "status": "COMPLETED",
+        "receipt": {
+          "actual_cost": "0.01",
+          "artifact_hash": "c4562318034fb9a774b4c4910d19c705f1f4b53c4cee132a2c622f5813090e8a",
+          "artifact_version": 2,
+          "currency": "USD",
+          "evidence_mode": "MOCK",
+          "finished_at": "1970-01-01T00:16:52+00:00",
+          "input_hash": "8e9984018db81e4407c23911d92d42019b8361176e4616d86b309d47d6289200",
+          "manifest_hash": "06c85145678d1dc2f3acc3aef4cfb90620b403b240e99301171eab054fcbdfc3",
+          "model_id": "mock-gemini",
+          "n8n_execution_id": "MOCK_CHILD_3_1",
+          "prompt_version": "lk-independent/1.0",
+          "provided_scope": "EXTRACTED_TEXT_ONLY",
+          "provider": "google",
+          "provider_response_hash": null,
+          "request_id": "MOCK_f36a4b4a-fb80-4809-a2be-b51dc625003d",
+          "response_hash": "cd537610232cc325db3ba9891ba7ea5695d8698198554d4b62efa447430de7a4",
+          "snapshot_id": "SNAP_06c85145678d1dc2f3acc3aef4cfb90620b403b240e99301171eab054fcbdfc3",
+          "started_at": "1970-01-01T00:16:50+00:00",
+          "usage": {
+            "input_tokens": 1,
+            "output_tokens": 1
+          }
+        },
+        "ticket_id": "f36a4b4a-fb80-4809-a2be-b51dc625003d",
+        "actual_cost": "0.01",
+        "cost_reconciliation": null
+      },
+      "gpt": {
+        "status": "COMPLETED",
+        "receipt": {
+          "actual_cost": "0.01",
+          "artifact_hash": "c4562318034fb9a774b4c4910d19c705f1f4b53c4cee132a2c622f5813090e8a",
+          "artifact_version": 2,
+          "currency": "USD",
+          "evidence_mode": "MOCK",
+          "finished_at": "1970-01-01T00:16:54+00:00",
+          "input_hash": "24197ba7c69be528f92b72f9e6e79b8ed518b370ebc3a9750b033af73f8cc3bc",
+          "manifest_hash": "06c85145678d1dc2f3acc3aef4cfb90620b403b240e99301171eab054fcbdfc3",
+          "model_id": "mock-gpt",
+          "n8n_execution_id": "MOCK_CHILD_4_0",
+          "prompt_version": "lk-independent/1.0",
+          "provided_scope": "EXTRACTED_TEXT_ONLY",
+          "provider": "openai",
+          "provider_response_hash": null,
+          "request_id": "MOCK_d4b55f1a-6f97-430c-ace4-32acb65062b3",
+          "response_hash": "f723d5dcd50cabac44829cb076e782dbe4a69fce8b3ac5b94ff962b746fa33c3",
+          "snapshot_id": "SNAP_06c85145678d1dc2f3acc3aef4cfb90620b403b240e99301171eab054fcbdfc3",
+          "started_at": "1970-01-01T00:16:53+00:00",
+          "usage": {
+            "input_tokens": 1,
+            "output_tokens": 1
+          }
+        },
+        "ticket_id": "d4b55f1a-6f97-430c-ace4-32acb65062b3",
+        "actual_cost": "0.01",
+        "cost_reconciliation": null
+      }
+    },
+    "cost": {
+      "spent": "0.07",
+      "reserved": "0.00",
+      "currency": "USD",
+      "unconfirmed": false,
+      "final_invoice_verified": false,
+      "cost_basis": "SIMULATED",
+      "funding": "FREE_CREDITS_ONLY",
+      "simulated": true
+    },
+    "approval_status": "PENDING",
+    "submission_status": "NOT_SUBMITTED",
+    "bso_status": "NOT_RECORDED",
+    "next_action": "사람의 해당 버전 검토 필요"
+  },
+  "bso_export": {
+    "status": "EXPORTED_READBACK_CONFIRMED",
+    "package_sha256": "ea3dd50a96566c9632ca50cd30919ad65eac5b686deb82ee81a5a051a49ec075",
+    "bso_reflected": false,
+    "human_approved": false,
+    "external_model_calls": 0
+  },
+  "source_hashes": [
+    {
+      "doc_id": "SYN_DOC",
+      "sha256": "8ab2e183a0b1b65238951bea4d31bc4dc17f78e09128019e91a72dd7365ccfa3"
+    }
+  ],
+  "artifact_versions": [
+    {
+      "version": 1,
+      "sha256": "d154094f00d8b21fd6cd00c0cd16cf99936880e06e3224a64a45f539e478becb"
+    },
+    {
+      "version": 2,
+      "sha256": "c4562318034fb9a774b4c4910d19c705f1f4b53c4cee132a2c622f5813090e8a"
+    }
+  ],
+  "simulated_receipts": [
+    {
+      "ticket_id": "9338beae-61c0-4906-8298-54eaa702f888",
+      "reviewer": "claude",
+      "artifact_version": 1,
+      "receipt": {
+        "actual_cost": "0.01",
+        "artifact_hash": "d154094f00d8b21fd6cd00c0cd16cf99936880e06e3224a64a45f539e478becb",
+        "artifact_version": 1,
+        "currency": "USD",
+        "evidence_mode": "MOCK",
+        "finished_at": "1970-01-01T00:16:43+00:00",
+        "input_hash": "07c26bbb0ee11a5839c7a3ba6a5af37eada2ce9c0f244665684fc4f5acb7c371",
+        "manifest_hash": "06c85145678d1dc2f3acc3aef4cfb90620b403b240e99301171eab054fcbdfc3",
+        "model_id": "mock-claude",
+        "n8n_execution_id": "MOCK_CHILD_0_0",
+        "prompt_version": "lk-independent/1.0",
+        "provided_scope": "EXTRACTED_TEXT_ONLY",
+        "provider": "anthropic",
+        "provider_response_hash": null,
+        "request_id": "MOCK_9338beae-61c0-4906-8298-54eaa702f888",
+        "response_hash": "43d59a6a348b9d618478f738d094633aeaff0fdfbd6d9d2c831a5dd433832e7d",
+        "snapshot_id": "SNAP_06c85145678d1dc2f3acc3aef4cfb90620b403b240e99301171eab054fcbdfc3",
+        "started_at": "1970-01-01T00:16:41+00:00",
+        "usage": {
+          "input_tokens": 1,
+          "output_tokens": 1
+        }
+      }
+    },
+    {
+      "ticket_id": "a02fa6d8-b830-499c-8d5b-e6741085e859",
+      "reviewer": "gemini",
+      "artifact_version": 1,
+      "receipt": {
+        "actual_cost": "0.01",
+        "artifact_hash": "d154094f00d8b21fd6cd00c0cd16cf99936880e06e3224a64a45f539e478becb",
+        "artifact_version": 1,
+        "currency": "USD",
+        "evidence_mode": "MOCK",
+        "finished_at": "1970-01-01T00:16:44+00:00",
+        "input_hash": "7e648eb5202077d8dd67813e853201a1c5c3d6c36531d94b04de38c407c21999",
+        "manifest_hash": "06c85145678d1dc2f3acc3aef4cfb90620b403b240e99301171eab054fcbdfc3",
+        "model_id": "mock-gemini",
+        "n8n_execution_id": "MOCK_CHILD_0_1",
+        "prompt_version": "lk-independent/1.0",
+        "provided_scope": "EXTRACTED_TEXT_ONLY",
+        "provider": "google",
+        "provider_response_hash": null,
+        "request_id": "MOCK_a02fa6d8-b830-499c-8d5b-e6741085e859",
+        "response_hash": "89a58ed1e218b49ad24006b5146ac1842167534348471c7f1fb06947594418dd",
+        "snapshot_id": "SNAP_06c85145678d1dc2f3acc3aef4cfb90620b403b240e99301171eab054fcbdfc3",
+        "started_at": "1970-01-01T00:16:42+00:00",
+        "usage": {
+          "input_tokens": 1,
+          "output_tokens": 1
+        }
+      }
+    },
+    {
+      "ticket_id": "f8fd1ce1-4593-4356-a584-587489ae00e6",
+      "reviewer": "gpt",
+      "artifact_version": 1,
+      "receipt": {
+        "actual_cost": "0.01",
+        "artifact_hash": "d154094f00d8b21fd6cd00c0cd16cf99936880e06e3224a64a45f539e478becb",
+        "artifact_version": 1,
+        "currency": "USD",
+        "evidence_mode": "MOCK",
+        "finished_at": "1970-01-01T00:16:46+00:00",
+        "input_hash": "16c0562aca63340c071b15a6295b6c761f5ff0603b8ae0a03b7092a42588ec3a",
+        "manifest_hash": "06c85145678d1dc2f3acc3aef4cfb90620b403b240e99301171eab054fcbdfc3",
+        "model_id": "mock-gpt",
+        "n8n_execution_id": "MOCK_CHILD_1_0",
+        "prompt_version": "lk-independent/1.0",
+        "provided_scope": "EXTRACTED_TEXT_ONLY",
+        "provider": "openai",
+        "provider_response_hash": null,
+        "request_id": "MOCK_f8fd1ce1-4593-4356-a584-587489ae00e6",
+        "response_hash": "2888d4a40975f6918b7972d02a68c8f831db344b3bd8cd546b55eabb59544084",
+        "snapshot_id": "SNAP_06c85145678d1dc2f3acc3aef4cfb90620b403b240e99301171eab054fcbdfc3",
+        "started_at": "1970-01-01T00:16:45+00:00",
+        "usage": {
+          "input_tokens": 1,
+          "output_tokens": 1
+        }
+      }
+    },
+    {
+      "ticket_id": "b3955f9d-b7a1-41a6-ae1e-f71046e3fde1",
+      "reviewer": "reviser",
+      "artifact_version": 1,
+      "receipt": {
+        "actual_cost": "0.01",
+        "artifact_hash": "d154094f00d8b21fd6cd00c0cd16cf99936880e06e3224a64a45f539e478becb",
+        "artifact_version": 1,
+        "currency": "USD",
+        "evidence_mode": "MOCK",
+        "finished_at": "1970-01-01T00:16:48+00:00",
+        "input_hash": "9d2fee5fcbfbc756c69c25d258dc2690c70f87bb1002c4294925723b065ada44",
+        "manifest_hash": "06c85145678d1dc2f3acc3aef4cfb90620b403b240e99301171eab054fcbdfc3",
+        "model_id": "mock-claude",
+        "n8n_execution_id": "MOCK_CHILD_2_0",
+        "prompt_version": "lk-independent/1.0",
+        "provided_scope": "EXTRACTED_TEXT_ONLY",
+        "provider": "anthropic",
+        "provider_response_hash": null,
+        "request_id": "MOCK_b3955f9d-b7a1-41a6-ae1e-f71046e3fde1",
+        "response_hash": "6bf43b06e6163cea71b2701f67606d36517e595c0a6e191e4ad7c6ce96ca40a3",
+        "snapshot_id": "SNAP_06c85145678d1dc2f3acc3aef4cfb90620b403b240e99301171eab054fcbdfc3",
+        "started_at": "1970-01-01T00:16:47+00:00",
+        "usage": {
+          "input_tokens": 1,
+          "output_tokens": 1
+        }
+      }
+    },
+    {
+      "ticket_id": "7a4db047-2720-44dc-9868-10ccc67c393a",
+      "reviewer": "claude",
+      "artifact_version": 2,
+      "receipt": {
+        "actual_cost": "0.01",
+        "artifact_hash": "c4562318034fb9a774b4c4910d19c705f1f4b53c4cee132a2c622f5813090e8a",
+        "artifact_version": 2,
+        "currency": "USD",
+        "evidence_mode": "MOCK",
+        "finished_at": "1970-01-01T00:16:51+00:00",
+        "input_hash": "faa71ccd5a9ef3512eecd2c9c20682660f86a9884928ba163a94d0ea02b2263e",
+        "manifest_hash": "06c85145678d1dc2f3acc3aef4cfb90620b403b240e99301171eab054fcbdfc3",
+        "model_id": "mock-claude",
+        "n8n_execution_id": "MOCK_CHILD_3_0",
+        "prompt_version": "lk-independent/1.0",
+        "provided_scope": "EXTRACTED_TEXT_ONLY",
+        "provider": "anthropic",
+        "provider_response_hash": null,
+        "request_id": "MOCK_7a4db047-2720-44dc-9868-10ccc67c393a",
+        "response_hash": "6b883816eaeefadcd3a67b19db4ea293499a126d4b58dff8b92ba2fbc4a412ab",
+        "snapshot_id": "SNAP_06c85145678d1dc2f3acc3aef4cfb90620b403b240e99301171eab054fcbdfc3",
+        "started_at": "1970-01-01T00:16:49+00:00",
+        "usage": {
+          "input_tokens": 1,
+          "output_tokens": 1
+        }
+      }
+    },
+    {
+      "ticket_id": "f36a4b4a-fb80-4809-a2be-b51dc625003d",
+      "reviewer": "gemini",
+      "artifact_version": 2,
+      "receipt": {
+        "actual_cost": "0.01",
+        "artifact_hash": "c4562318034fb9a774b4c4910d19c705f1f4b53c4cee132a2c622f5813090e8a",
+        "artifact_version": 2,
+        "currency": "USD",
+        "evidence_mode": "MOCK",
+        "finished_at": "1970-01-01T00:16:52+00:00",
+        "input_hash": "8e9984018db81e4407c23911d92d42019b8361176e4616d86b309d47d6289200",
+        "manifest_hash": "06c85145678d1dc2f3acc3aef4cfb90620b403b240e99301171eab054fcbdfc3",
+        "model_id": "mock-gemini",
+        "n8n_execution_id": "MOCK_CHILD_3_1",
+        "prompt_version": "lk-independent/1.0",
+        "provided_scope": "EXTRACTED_TEXT_ONLY",
+        "provider": "google",
+        "provider_response_hash": null,
+        "request_id": "MOCK_f36a4b4a-fb80-4809-a2be-b51dc625003d",
+        "response_hash": "cd537610232cc325db3ba9891ba7ea5695d8698198554d4b62efa447430de7a4",
+        "snapshot_id": "SNAP_06c85145678d1dc2f3acc3aef4cfb90620b403b240e99301171eab054fcbdfc3",
+        "started_at": "1970-01-01T00:16:50+00:00",
+        "usage": {
+          "input_tokens": 1,
+          "output_tokens": 1
+        }
+      }
+    },
+    {
+      "ticket_id": "d4b55f1a-6f97-430c-ace4-32acb65062b3",
+      "reviewer": "gpt",
+      "artifact_version": 2,
+      "receipt": {
+        "actual_cost": "0.01",
+        "artifact_hash": "c4562318034fb9a774b4c4910d19c705f1f4b53c4cee132a2c622f5813090e8a",
+        "artifact_version": 2,
+        "currency": "USD",
+        "evidence_mode": "MOCK",
+        "finished_at": "1970-01-01T00:16:54+00:00",
+        "input_hash": "24197ba7c69be528f92b72f9e6e79b8ed518b370ebc3a9750b033af73f8cc3bc",
+        "manifest_hash": "06c85145678d1dc2f3acc3aef4cfb90620b403b240e99301171eab054fcbdfc3",
+        "model_id": "mock-gpt",
+        "n8n_execution_id": "MOCK_CHILD_4_0",
+        "prompt_version": "lk-independent/1.0",
+        "provided_scope": "EXTRACTED_TEXT_ONLY",
+        "provider": "openai",
+        "provider_response_hash": null,
+        "request_id": "MOCK_d4b55f1a-6f97-430c-ace4-32acb65062b3",
+        "response_hash": "f723d5dcd50cabac44829cb076e782dbe4a69fce8b3ac5b94ff962b746fa33c3",
+        "snapshot_id": "SNAP_06c85145678d1dc2f3acc3aef4cfb90620b403b240e99301171eab054fcbdfc3",
+        "started_at": "1970-01-01T00:16:53+00:00",
+        "usage": {
+          "input_tokens": 1,
+          "output_tokens": 1
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,211 @@
+{
+  "name": "LK Cross Review Dispatcher | UNVALIDATED_INSTALL",
+  "active": false,
+  "nodes": [
+    {
+      "id": "6648984c-2586-8ab4-7e6b-32d3626678c1",
+      "name": "Dispatch schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "a4a365fe-d01e-9862-99f9-e8bb5e6b4269",
+      "name": "Manual dispatch",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        300,
+        0
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "083e9828-8acc-b587-56f5-0a80f1d73a26",
+      "name": "Reserve call batch",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        600,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:8791/dispatch",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({owner:String($execution.id)}) }}",
+        "options": {
+          "timeout": 15000,
+          "redirect": {
+            "redirect": {
+              "followRedirects": false
+            }
+          },
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "SELECT_EXISTING_LK_RUNNER_HEADER_AUTH"
+        }
+      },
+      "retryOnFail": false
+    },
+    {
+      "id": "1128fa28-80b4-9288-10a4-00381ee0fa0b",
+      "name": "Split reserved tasks",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        900,
+        0
+      ],
+      "parameters": {
+        "fieldToSplitOut": "tasks",
+        "include": "noOtherFields",
+        "options": {}
+      }
+    },
+    {
+      "id": "e3112f00-511e-a9dc-616b-8c6f92b9bdc2",
+      "name": "Start independent child",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        1200,
+        0
+      ],
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "UNCONFIGURED_REVIEWER_WORKFLOW_ID"
+        },
+        "mode": "each",
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      },
+      "retryOnFail": false
+    },
+    {
+      "id": "ef2e3f7a-c861-996e-682b-19f9ecd41dd4",
+      "name": "Installation gate",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        240
+      ],
+      "parameters": {
+        "content": "**UNVALIDATED_INSTALL — inactive template**\n\nImport the reviewer first, then select its real workflow ID in Start independent child. Each ticket starts its own child execution with waitForSubWorkflow=false. Measure real start/end overlap before reporting simultaneous completion. Keep existing intake/router workflows unchanged.\n\nConfirm installed n8n version, runner reachability, existing credential/account mapping, and FREE_CREDITS_ONLY balances before activation. No paid fallback. No actual API or concurrency evidence is implied by this export.",
+        "height": 300,
+        "width": 600
+      }
+    }
+  ],
+  "connections": {
+    "Dispatch schedule": {
+      "main": [
+        [
+          {
+            "node": "Reserve call batch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manual dispatch": {
+      "main": [
+        [
+          {
+            "node": "Reserve call batch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reserve call batch": {
+      "main": [
+        [
+          {
+            "node": "Split reserved tasks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split reserved tasks": {
+      "main": [
+        [
+          {
+            "node": "Start independent child",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Seoul",
+    "callerPolicy": "workflowsFromSameOwner",
+    "saveDataErrorExecution": "none",
+    "saveDataSuccessExecution": "none",
+    "saveExecutionProgress": false,
+    "saveManualExecutions": false,
+    "availableInMCP": false
+  },
+  "pinData": {},
+  "tags": [],
+  "meta": {
+    "lkCrossReview": {
+      "installation_verified": false,
+      "credential_bindings": {
+        "anthropic": {
+          "credential_ref": "SELECT_EXISTING_ANTHROPIC_HEADER_AUTH",
+          "account_ref": "UNCONFIGURED_ACCOUNT"
+        },
+        "google": {
+          "credential_ref": "SELECT_EXISTING_GEMINI_HEADER_AUTH",
+          "account_ref": "UNCONFIGURED_ACCOUNT"
+        },
+        "openai": {
+          "credential_ref": "SELECT_EXISTING_OPENAI_HEADER_AUTH",
+          "account_ref": "UNCONFIGURED_ACCOUNT"
+        },
+        "runner": {
+          "credential_ref": "SELECT_EXISTING_LK_RUNNER_HEADER_AUTH",
+          "account_ref": "UNCONFIGURED_ACCOUNT"
+        }
+      },
+      "funding_mode": "FREE_CREDITS_ONLY",
+      "source_delivery": "EXTRACTED_TEXT_ONLY"
+    }
+  }
+}

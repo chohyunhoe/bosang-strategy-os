@@ -1,0 +1,21 @@
+{
+  "verified": false,
+  "n8n_version": null,
+  "bindings": {
+    "anthropic": {
+      "credential_ref": "CHOOSE_EXISTING_N8N_HEADER_AUTH",
+      "account_ref": "UNCONFIGURED_ACCOUNT",
+      "model_bounds": {}
+    },
+    "google": {
+      "credential_ref": "CHOOSE_EXISTING_N8N_HEADER_AUTH",
+      "account_ref": "UNCONFIGURED_ACCOUNT",
+      "model_bounds": {}
+    },
+    "openai": {
+      "credential_ref": "CHOOSE_EXISTING_N8N_HEADER_AUTH",
+      "account_ref": "UNCONFIGURED_ACCOUNT",
+      "model_bounds": {}
+    }
+  }
+}

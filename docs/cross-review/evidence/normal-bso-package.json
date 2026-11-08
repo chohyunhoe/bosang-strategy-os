@@ -1,0 +1,34 @@
+{
+  "schema_version": "lk-bso-result/1.0",
+  "bso_receipt": {
+    "schema_version": "lk-bso-receipt/1.0",
+    "document_id": "WORK_DOC_1",
+    "revision": 1,
+    "artifact_sha256": "08bd627641b88e278d4dababd281d8bc084d699e18c24ff0770ba4bfbdb5b5df",
+    "job_id": "BSO_SYNTHETIC_NORMAL",
+    "input_sha256": "20c2e1b790c9b23526a6077f413e1355e4d680860e53f3a38d3f355960bf8cf9",
+    "output_sha256": "6f934dcdf7147fb1fb32fee03723444d1a8979e4deac6ea4fc074319a21c21fb",
+    "execution_id": "CROSS_REPORT_0bf09ed2d0d1abc314c2710505c49e5d",
+    "status": "NEEDS_GPT_REVIEW",
+    "human_approved": false
+  },
+  "output": "{\n  \"case_id\": \"SYN_CASE\",\n  \"artifact_version\": 1,\n  \"state\": \"READY_FOR_HUMAN\",\n  \"evidence_mode\": \"MOCK\",\n  \"actual_reviewers\": [],\n  \"reviewer_completion\": {\n    \"claude\": \"COMPLETED\",\n    \"gemini\": \"COMPLETED\",\n    \"gpt\": \"COMPLETED\"\n  },\n  \"coverage\": [\n    {\n      \"doc_id\": \"SYN_DOC\",\n      \"sha256\": \"8ab2e183a0b1b65238951bea4d31bc4dc17f78e09128019e91a72dd7365ccfa3\",\n      \"pages\": [\n        1\n      ]\n    }\n  ],\n  \"key_differences\": [],\n  \"owner_comparison\": [\n    {\n      \"candidate_amount\": \"1000\",\n      \"candidate_factors\": {\n        \"individual\": \"0.90\"\n      },\n      \"candidate_unit\": \"원\",\n      \"evidence\": [\n        {\n          \"doc_id\": \"SYN_DOC\",\n          \"pdf_page\": 1,\n          \"sha256\": \"8ab2e183a0b1b65238951bea4d31bc4dc17f78e09128019e91a72dd7365ccfa3\"\n        },\n        {\n          \"doc_id\": \"SYN_DOC\",\n          \"pdf_page\": 1,\n          \"sha256\": \"8ab2e183a0b1b65238951bea4d31bc4dc17f78e09128019e91a72dd7365ccfa3\"\n        }\n      ],\n      \"original_amount\": \"1000\",\n      \"original_factors\": {\n        \"individual\": \"0.90\"\n      },\n      \"original_unit\": \"원\",\n      \"subject_key\": [\n        \"SYN_DOC\",\n        \"member_number\",\n        \"M1\",\n        \"PROPERTY_1\",\n        \"APPRAISAL_A\"\n      ]\n    },\n    {\n      \"candidate_amount\": \"2000\",\n      \"candidate_factors\": {\n        \"individual\": \"1.10\"\n      },\n      \"candidate_unit\": \"원\",\n      \"evidence\": [\n        {\n          \"doc_id\": \"SYN_DOC\",\n          \"pdf_page\": 1,\n          \"sha256\": \"8ab2e183a0b1b65238951bea4d31bc4dc17f78e09128019e91a72dd7365ccfa3\"\n        },\n        {\n          \"doc_id\": \"SYN_DOC\",\n          \"pdf_page\": 1,\n          \"sha256\": \"8ab2e183a0b1b65238951bea4d31bc4dc17f78e09128019e91a72dd7365ccfa3\"\n        }\n      ],\n      \"original_amount\": \"2000\",\n      \"original_factors\": {\n        \"individual\": \"1.10\"\n      },\n      \"original_unit\": \"원\",\n      \"subject_key\": [\n        \"SYN_DOC\",\n        \"member_number\",\n        \"M2\",\n        \"PROPERTY_1\",\n        \"APPRAISAL_A\"\n      ]\n    }\n  ],\n  \"unresolved\": [],\n  \"source_locations\": [\n    {\n      \"doc_id\": \"SYN_DOC\",\n      \"original_location\": \"synthetic://fixture/document\"\n    }\n  ],\n  \"cost\": {\n    \"spent\": \"0.03\",\n    \"reserved\": \"0.00\",\n    \"currency\": \"USD\",\n    \"unconfirmed\": false,\n    \"final_invoice_verified\": false,\n    \"cost_basis\": \"SIMULATED\",\n    \"funding\": \"FREE_CREDITS_ONLY\",\n    \"simulated\": true\n  },\n  \"duration_seconds\": 5.0,\n  \"next_action\": \"사람의 해당 버전 검토 필요\"\n}",
+  "verification": {
+    "output_sha256_checked": true,
+    "provider_guard_passed": true,
+    "human_approved": false,
+    "legal_accuracy_approved": false
+  },
+  "evidence_source": "CROSS_REVIEW_RUNNER_EXPORT_NOT_AUTHENTICATED_BY_BSO",
+  "cross_review": {
+    "job_id": "BSO_SYNTHETIC_NORMAL",
+    "snapshot_id": "SNAP_06c85145678d1dc2f3acc3aef4cfb90620b403b240e99301171eab054fcbdfc3",
+    "artifact_version": 1,
+    "artifact_hash": "08bd627641b88e278d4dababd281d8bc084d699e18c24ff0770ba4bfbdb5b5df",
+    "evidence_mode": "MOCK",
+    "report_reference_is_provider_evidence": false,
+    "bso_reflected": false,
+    "approval_status": "PENDING",
+    "submission_status": "NOT_SUBMITTED"
+  }
+}
