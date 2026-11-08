@@ -313,7 +313,8 @@ def split_clusters(items: list[dict], threshold_m: float = 180) -> list[list[dic
 
 
 def format_map(image: Image.Image, heading: str, subtitle: str,
-               font_path: str | None) -> Image.Image:
+               font_path: str | None, provider: str,
+               capture_date: object, accuracy_m: object) -> Image.Image:
     out = Image.new("RGB", (image.width,image.height+152), "white")
     out.paste(image,(0,114))
     d = ImageDraw.Draw(out)
@@ -321,7 +322,10 @@ def format_map(image: Image.Image, heading: str, subtitle: str,
     d.text((28,18),heading,font=font(32,font_path),fill="white")
     d.text((28,68),subtitle,font=font(22,font_path),fill="#e6eef3")
     d.rectangle((0,image.height+114,image.width,image.height+151),fill="#233047")
-    d.text((20,image.height+124),"경계: 연속지적도 참고 / 영상출처 및 기준일은 검증표 확인",
+    accuracy = f"{accuracy_m}m" if accuracy_m is not None else "미확인"
+    source = PROVIDER_CREDIT[provider]
+    d.text((20,image.height+124),
+           f"영상: {source} / 촬영일: {capture_date or '미확인'} / 위치정확도: {accuracy}",
            font=font(17,font_path),fill="white")
     return out
 
@@ -341,7 +345,8 @@ def create_outputs(items: list[dict], input_meta: dict, config: dict, outdir: Pa
     overview = format_map(
         render_panel(items,1616,900,provider,17,cache,font_path),
         title+" — 전체 항공위치도", "PNU 정확 일치 확인 / 소유·면적 원본검증 별도",
-        font_path)
+        font_path, provider, config.get("imagery_capture_date"),
+        config.get("imagery_accuracy_m"))
     clusters=split_clusters(items)
     if len(clusters)>4:
         raise MapBlocked("TOO_MANY_DISTANT_PARCEL_CLUSTERS")
@@ -350,7 +355,9 @@ def create_outputs(items: list[dict], input_meta: dict, config: dict, outdir: Pa
     for i, panel in enumerate(panels):
         wide.paste(panel,(1600*i,0))
     detail=format_map(wide,title+" — 필지 경계 확대도",
-                      f"분리 표시 구역 {len(clusters)}개 / 확대배율 구역별 자동조정",font_path)
+                      f"분리 표시 구역 {len(clusters)}개 / 확대배율 구역별 자동조정",
+                      font_path, provider, config.get("imagery_capture_date"),
+                      config.get("imagery_accuracy_m"))
     root=outdir/config["case_id"]
     p_ov=save_png_jpg(overview,root.with_name(root.name+"_overview"))
     p_detail=save_png_jpg(detail,root.with_name(root.name+"_detail"))
@@ -374,6 +381,7 @@ def create_outputs(items: list[dict], input_meta: dict, config: dict, outdir: Pa
     info=(
         f'영상: {PROVIDER_CREDIT[provider]}',
         f'영상촬영일: {config.get("imagery_capture_date") or "미확인"}  |  원본 SHP: {input_meta["source_shp_name"]}',
+        f'영상 제공자 위치정확도: {str(config.get("imagery_accuracy_m")) + "m" if config.get("imagery_accuracy_m") is not None else "미확인"}',
         f'좌표계: 원본 EPSG:5174 → WGS84 / 영상 WebMercator',
         DISCLAIMER,
         f'토지조서 원본대조: {"확인" if config.get("source_document_verified") else "미완료"}',
@@ -407,6 +415,8 @@ def execute(config_path: Path, output: Path, font_path: str | None = None) -> di
     if not archive.is_absolute():archive=(config_path.parent/archive).resolve()
     items,meta=load_verified(archive,config)
     # Only after exact-one/JIBUN/category/CRS/geometry checks are imagery tiles requested.
+    if output.exists() and any(p.name.startswith(config["case_id"]+"_") for p in output.iterdir()):
+        raise MapBlocked("PREVIOUS_OUTPUT_EXISTS_USE_NEW_DIRECTORY")
     output.mkdir(parents=True,exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="bso-aerial-") as tmp:
         tmpdir=Path(tmp)
@@ -417,6 +427,7 @@ def execute(config_path: Path, output: Path, font_path: str | None = None) -> di
             "source_document_verified":config.get("source_document_verified") is True,
             "imagery_source":PROVIDER_CREDIT[config.get("provider","esri")],
             "imagery_capture_date":config.get("imagery_capture_date"),
+            "imagery_accuracy_m":config.get("imagery_accuracy_m"),
             "source":meta,
             "parcels":[{
                 k:v for k,v in it.items() if k not in ("wgs84_geometry","epsg5174_geometry")
