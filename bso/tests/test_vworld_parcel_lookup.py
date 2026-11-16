@@ -198,3 +198,115 @@ def test_cli_output_has_no_secret(monkeypatch, tmp_path, capsys, caplog):
     payload = json.loads(out.out)
     assert payload["ok"] is True and payload["http"] == 200
     _assert_no_secret(out.out, out.err, caplog.text)
+
+
+# ---- geometry (지도 중첩용 경계 도형) -------------------------------------------------
+SYN_RING = [[127.0000, 37.5000], [127.0002, 37.5000], [127.0002, 37.5002], [127.0000, 37.5002], [127.0000, 37.5000]]
+
+
+def _geom_body(coords=None, geometry_type="MultiPolygon", pnu=SYN_PNU, with_geometry=True):
+    coords = coords if coords is not None else [[SYN_RING]]
+    feature = {"properties": {"pnu": pnu, "addr": "합성시 합성동 1", "jibun": "1대"}}
+    if with_geometry:
+        feature["geometry"] = {"type": geometry_type, "coordinates": coords}
+    return json.dumps({"response": {"status": "OK", "result": {"featureCollection": {"features": [feature]}}}})
+
+
+def _query_of(url):
+    return dict(ca.urllib.parse.parse_qsl(ca.urllib.parse.urlsplit(url).query))
+
+
+def test_default_request_keeps_geometry_off_and_no_crs(monkeypatch, config):
+    seen = {}
+
+    def fake(request, timeout):
+        seen["url"] = request.full_url
+        return _FakeResponse(_ok_body())
+
+    _patch_urlopen(monkeypatch, fake)
+    result = ca.fetch_parcel(SYN_PNU, config)
+    query = _query_of(seen["url"])
+    assert query["geometry"] == "false" and "crs" not in query
+    assert "geometry" not in result
+
+
+def test_geometry_request_asks_for_wgs84(monkeypatch, config):
+    seen = {}
+
+    def fake(request, timeout):
+        seen["url"] = request.full_url
+        return _FakeResponse(_geom_body())
+
+    _patch_urlopen(monkeypatch, fake)
+    ca.fetch_parcel(SYN_PNU, config, include_geometry=True)
+    query = _query_of(seen["url"])
+    assert query["geometry"] == "true" and query["crs"] == "EPSG:4326"
+
+
+def test_geometry_result_summary_and_geojson_have_no_secret(monkeypatch, config, caplog):
+    _patch_urlopen(monkeypatch, lambda *a, **k: _FakeResponse(_geom_body()))
+    with caplog.at_level(logging.DEBUG, logger="bso.cadastral_aerial"):
+        result = ca.fetch_parcel(SYN_PNU, config, include_geometry=True)
+    summary = result["geometry_summary"]
+    assert summary["geometry_type"] == "MultiPolygon" and summary["vertex_count"] == 5
+    assert summary["lonlat_plausible"] is True
+    assert summary["bbox"] == [127.0, 37.5, 127.0002, 37.5002]
+    feature = ca.to_geojson(result)
+    assert feature["type"] == "Feature" and feature["geometry"]["type"] == "MultiPolygon"
+    assert feature["properties"]["pnu"] == SYN_PNU
+    _assert_no_secret(json.dumps(result, ensure_ascii=False), json.dumps(feature, ensure_ascii=False), caplog.text)
+
+
+def test_projected_coordinates_are_flagged_and_blocked(monkeypatch, config):
+    projected = [[[[200000.0, 500000.0], [200010.0, 500000.0], [200010.0, 500010.0], [200000.0, 500000.0]]]]
+    _patch_urlopen(monkeypatch, lambda *a, **k: _FakeResponse(_geom_body(coords=projected)))
+    result = ca.fetch_parcel(SYN_PNU, config, include_geometry=True)
+    assert result["geometry_summary"]["lonlat_plausible"] is False
+    with pytest.raises(ca.VWorldCadastralError) as info:
+        ca.to_geojson(result)
+    assert info.value.code == "GEOMETRY_CRS_UNVERIFIED"
+
+
+def test_missing_or_unsupported_geometry_is_reported(monkeypatch, config):
+    _patch_urlopen(monkeypatch, lambda *a, **k: _FakeResponse(_geom_body(with_geometry=False)))
+    result = ca.fetch_parcel(SYN_PNU, config, include_geometry=True)
+    assert result["geometry"] is None and result["geometry_summary"] is None
+    with pytest.raises(ca.VWorldCadastralError) as info:
+        ca.to_geojson(result)
+    assert info.value.code == "GEOMETRY_MISSING"
+
+    _patch_urlopen(monkeypatch, lambda *a, **k: _FakeResponse(_geom_body(geometry_type="Point", coords=[127.0, 37.5])))
+    assert ca.fetch_parcel(SYN_PNU, config, include_geometry=True)["geometry"] is None
+
+
+def test_to_geojson_requires_geometry_request(monkeypatch, config):
+    _patch_urlopen(monkeypatch, lambda *a, **k: _FakeResponse(_ok_body()))
+    with pytest.raises(ca.VWorldCadastralError) as info:
+        ca.to_geojson(ca.fetch_parcel(SYN_PNU, config))
+    assert info.value.code == "GEOMETRY_NOT_REQUESTED"
+
+
+def test_write_geojson_creates_file_and_never_overwrites(monkeypatch, config, tmp_path):
+    _patch_urlopen(monkeypatch, lambda *a, **k: _FakeResponse(_geom_body()))
+    result = ca.fetch_parcel(SYN_PNU, config, include_geometry=True)
+    target = tmp_path / "parcel.geojson"
+    ca.write_geojson(result, target)
+    saved = json.loads(target.read_text(encoding="utf-8"))
+    assert saved["type"] == "Feature" and saved["geometry"]["coordinates"][0][0][0] == [127.0, 37.5]
+    _assert_no_secret(target.read_text(encoding="utf-8"))
+    with pytest.raises(ca.VWorldCadastralError) as info:
+        ca.write_geojson(result, target)
+    assert info.value.code == "OUTPUT_EXISTS"
+
+
+def test_cli_geojson_out_prints_summary_only(monkeypatch, tmp_path, capsys, caplog):
+    env = tmp_path / ".env"
+    env.write_text(f"VWORLD_API_KEY={FAKE_KEY}\n", encoding="utf-8")
+    out = tmp_path / "p.geojson"
+    _patch_urlopen(monkeypatch, lambda *a, **k: _FakeResponse(_geom_body()))
+    assert ca.main(["--pnu", SYN_PNU, "--env", str(env), "--geojson-out", str(out)]) == 0
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert payload["ok"] is True and payload["geometry"]["vertex_count"] == 5
+    assert "coordinates" not in captured.out and out.exists()
+    _assert_no_secret(captured.out, captured.err, caplog.text, out.read_text(encoding="utf-8"))
