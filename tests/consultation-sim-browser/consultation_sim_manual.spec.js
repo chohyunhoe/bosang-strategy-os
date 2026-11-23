@@ -28,7 +28,9 @@ test('비공개 지식팩을 사용자가 선택하면 로컬 검색·참조만 
   await page.locator('[data-manual-file]').setInputFiles({name:'private-knowledge.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(fakePack()),'utf8')});
   await expect(page.locator('[data-manual-status]')).toContainText('198개 쟁점');
   await expect(page.locator('[data-manual-hints]')).toContainText('T-01');
-  await expect(page.locator('[data-manual-hints]')).not.toContainText('T-09');
+  await expect(page.locator('[data-manual-gates]')).toContainText('T-09');
+  await expect(page.locator('[data-manual-gates]')).toContainText('지목·조사용 이용상황 명칭만으로 쟁점 성립하지 않음');
+  await expect(page.locator('[data-manual-gates]')).toContainText('T-05');
   await page.locator('[data-manual-query]').fill('T-01');
   await page.locator('[data-manual-search]').click();
   const link=page.locator('[data-manual-results] button').first();
@@ -36,6 +38,14 @@ test('비공개 지식팩을 사용자가 선택하면 로컬 검색·참조만 
   await link.click();
   await expect(page.locator('[data-manual-results]')).toContainText('출처: 내부 실무기본서');
   await expect(page.locator('[data-manual-results]')).toContainText('가상 자료');
+  await page.locator('[data-copy]').click();
+  const report = await page.locator('[data-summary]').inputValue();
+  expect(report).toContain('■ 내부 실무기본서 증빙 게이트');
+  expect(report).toContain('T-01');
+  expect(report).toContain('T-05');
+  expect(report).toContain('T-09');
+  expect(report).toContain('T-12');
+  expect(report).toContain('최종 비교표준지 선정');
   const persistent=await page.evaluate(()=>({local:Object.keys(localStorage),session:Object.keys(sessionStorage)}));
   expect(persistent.local).toEqual([]);expect(persistent.session).toEqual([]);
   expect(apiRequests).toEqual([]);

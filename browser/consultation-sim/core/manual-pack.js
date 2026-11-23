@@ -69,3 +69,28 @@ export function suggestManualReferences(pack, draft) {
   }
   return results;
 }
+
+// 기본서 항목의 판단 구조를 검증하는 게이트. 절차·현장·평가서 증빙이 없는 지번 단계에서는 결론을 낼 수 없다.
+export function getManualEvidenceGates(pack, draft) {
+  if (!pack?.issue_codes || !draft) return [];
+  const byCode = new Map(pack.issue_codes.map((x) => [x.code, x]));
+  const plan = [
+    { code: 'T-01', state: 'HOLD', state_label: '비교표준지 선정 적정성 판단 보류',
+      requires: ['실제 이용상황·주위환경 확인', '감정평가서 비교표준지 선정사유', '공시기준일·가격시점 확인'],
+      memo: '후보의 용도지역·조사용 이용상황·직선거리만으로 적정성을 확정하지 않음' },
+    { code: 'T-05', state: 'HOLD', state_label: '요인비교 시점·산정 근거 확인 필요',
+      requires: ['사업인정(의제) 고시문', '가격시점·공시기준일', '감정평가서 지역·개별요인 비교표'],
+      memo: '비교표준지와 대상토지의 기준시점이 동일하다고 가정하지 않음' },
+    { code: 'T-09', state: 'NOT_TRIGGERED', state_label: '지목·조사용 이용상황 명칭만으로 쟁점 성립하지 않음',
+      requires: ['현장 사진·현황 확인자료', '건축물·토지대장', '감정평가서 현황기재·품등비교'],
+      memo: '대/단독 등 서로 다른 분류명은 곧바로 현실적 이용상황 불일치의 증거가 아님' },
+    { code: 'T-12', state: 'HOLD', state_label: '현실적 이용상황 객관적 증거 확인 필요',
+      requires: ['촬영시점이 확인되는 현장·항공사진', '인허가·건축물대장 등 독립기록', '감정평가서 관련 기재'],
+      memo: '지번 조회값이나 소유자 진술만으로 실제 현황을 확정하지 않음' },
+  ];
+  return plan.flatMap((v) => {
+    const source = byCode.get(v.code);
+    return source ? [{ ...v, title: source.title, pdf_page: source.pdf_page_start,
+      role: 'REFERENCE_CHECKLIST_ONLY', automatic_legal_conclusion: false }] : [];
+  });
+}

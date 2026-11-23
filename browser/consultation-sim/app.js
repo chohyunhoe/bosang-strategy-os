@@ -4,7 +4,7 @@ import { createSyntheticAdapter } from './adapters/synthetic-adapter.js';
 import { createBridgeAdapter } from './adapters/bridge-adapter.js';
 import { createVworldDirectAdapter, DIRECT_PROBE } from './adapters/vworld-direct-adapter.js';
 import { renderMap } from './map-view.js';
-import { validateManualPack, searchManualPack, suggestManualReferences } from './core/manual-pack.js';
+import { validateManualPack, searchManualPack, suggestManualReferences, getManualEvidenceGates } from './core/manual-pack.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -317,8 +317,16 @@ function summaryText(d) {
     lines.push('', '■ 추가 확보자료', ...o.materials.map((m) => `- ${m}`));
     lines.push('', '■ 상담 멘트(초안)', o.script);
   }
+  if (privateManualPack) {
+    const checks = getManualEvidenceGates(privateManualPack, d);
+    lines.push('', '■ 내부 실무기본서 증빙 게이트(내부 검토용 · 법률판단 아님)');
+    checks.forEach((g) => lines.push(`- ${g.code} ${g.title} [${g.state_label}] · 확인자료: ${g.requires.join(', ')} · 기본서 PDF ${g.pdf_page}쪽(제1판 검토본)`));
+    lines.push('- 위 유형은 원문 참조와 자료요청 항목이며 주장 성립 여부를 자동 판단하지 않았습니다.');
+  } else {
+    lines.push('', '■ 내부 실무기본서 참조 상태', '- 비공개 지식팩 미연결: 이 검토서에는 기본서 T-01·T-05·T-09·T-12의 근거 검토가 반영되지 않았습니다.');
+  }
   lines.push('', '■ 지번만으로 미확인', ...d.analysis.unknowns.map((u) => `- ${u.label}`));
-  lines.push('', '※ 비교표준지·보정률·보상금은 산정하지 않았습니다. 최종 판단은 원문·현장·전문가 검토가 필요합니다.');
+  lines.push('', '※ 비교표준지는 조회 범위 내 검토 후보만 추출하였으며, 최종 비교표준지 선정·보정률·보상금 산정은 수행하지 않았습니다. 법령·평가서·현장 원문과 전문가 검토가 필요합니다.');
   return lines.join('\n');
 }
 
@@ -509,6 +517,20 @@ function renderManualHints() {
     li.append(button); list.append(li);
   }
   hints.append(list, manualTextNode('p', '지번만으로 법률쟁점을 확정하지 않습니다. 실제 보상평가서·고시·현장 증빙을 대조하세요.', 'muted small'));
+  const gates = getManualEvidenceGates(privateManualPack, session?.state?.draft);
+  if (gates.length) {
+    hints.append(manualTextNode('h3', '실무기본서 핵심 유형: 증빙 게이트(판정 보류)'));
+    const gateList = document.createElement('ul');
+    gateList.dataset.manualGates = 'true';
+    for (const g of gates) {
+      const li = document.createElement('li');
+      li.append(manualTextNode('b', `${g.code} · ${g.title}`),
+        manualTextNode('div', `상태: ${g.state_label}`, 'muted small'),
+        manualTextNode('div', `필요: ${g.requires.join(' · ')}`, 'muted small'));
+      gateList.append(li);
+    }
+    hints.append(gateList);
+  }
 }
 function renderManualSearchResults(query) {
   const results = $('[data-manual-results]');
