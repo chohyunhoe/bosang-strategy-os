@@ -27,6 +27,7 @@ const ORDER = [
   'core/standard-land-engine.js',
   'core/consult-opinion.js',
   'core/consultation-session.js',
+  'core/manual-pack.js',
   'adapters/synthetic-adapter.js',
   'map-view.js',
   'app.js',
