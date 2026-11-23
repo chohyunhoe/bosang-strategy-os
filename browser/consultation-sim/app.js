@@ -4,6 +4,7 @@ import { createSyntheticAdapter } from './adapters/synthetic-adapter.js';
 import { createBridgeAdapter } from './adapters/bridge-adapter.js';
 import { createVworldDirectAdapter, DIRECT_PROBE } from './adapters/vworld-direct-adapter.js';
 import { renderMap } from './map-view.js';
+import { validateManualPack, searchManualPack, suggestManualReferences } from './core/manual-pack.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -28,6 +29,8 @@ const ui = {
   tab: 'map', editing: null, saveOpen: false, footer: '', adapterStatus: null, probe: null, probing: false,
 };
 let adapter; let session; let lastMapHtml = ''; let lastLandHtml = ''; let lastAnalysisHtml = '';
+let privateManualPack = null;
+const MANUAL_MAX_BYTES = 8 * 1024 * 1024;
 
 function buildAdapter() {
   if (RUNTIME.synthetic_only) ui.mode = 'SYNTHETIC';
@@ -409,6 +412,7 @@ function render() {
   renderFooter(state);
   renderSavePanel(state);
   renderTabs();
+  renderManualHints();
   document.body.dataset.phase = state.phase;
 }
 
@@ -455,3 +459,101 @@ if (IN_ARTIFACT) {
 renderLegend();
 buildAdapter();
 window.BSOConsultationSim = { get state() { return session.state; } };
+
+// 사내용 실무기본서 원문은 공개 번들에 포함하지 않고 파일 선택 시 메모리에만 보관한다.
+
+function manualTextNode(tag, textContent, className = '') {
+  const el = document.createElement(tag);
+  el.textContent = String(textContent == null ? '' : textContent);
+  if (className) el.className = className;
+  return el;
+}
+function showManualReference(entry) {
+  const root = $('[data-manual-results]');
+  root.replaceChildren();
+  if (!entry) return;
+  const h = manualTextNode('h3', `${entry.code} · ${entry.title}`);
+  const info = manualTextNode('p', `출처: 내부 실무기본서 제1판, 책 ${entry.book_page_start}쪽 · PDF ${entry.pdf_page_start}쪽 / 검토본·법령 원문 재확인 필요`, 'muted small');
+  root.append(h, info);
+  for (const key of ['쟁점', '판단기준', '근거', '확인자료', '편람쪽', '대리포인트']) {
+    const value = entry.sections[key];
+    if (!value) continue;
+    const details = document.createElement('details');
+    details.className = 'manual-ref-section';
+    if (key === '쟁점' || key === '확인자료') details.open = true;
+    details.append(manualTextNode('summary', key), manualTextNode('p', Array.isArray(value) ? value.join('\n') : value));
+    root.append(details);
+  }
+  root.append(manualTextNode('p', '참고 자료를 찾은 것이며 쟁점 성립·법률효과·보상액을 확인한 것은 아닙니다.', 'warn-note small'));
+}
+function renderManualHints() {
+  const hints = $('[data-manual-hints]');
+  if (!hints || !privateManualPack) {
+    if (hints) hints.replaceChildren();
+    return;
+  }
+  const candidates = suggestManualReferences(privateManualPack, session?.state?.draft);
+  hints.replaceChildren();
+  if (!candidates.length) return;
+  hints.append(manualTextNode('h3', '현재 조회 내용 관련 기본서 참조(판정 아님)'));
+  const list = document.createElement('ul');
+  for (const item of candidates) {
+    const li = document.createElement('li');
+    const button = document.createElement('button');
+    button.type = 'button'; button.className = 'secondary';
+    button.textContent = `${item.code} · ${item.title} (PDF ${item.pdf_page}쪽)`;
+    button.addEventListener('click', () => {
+      const ref = privateManualPack?.issue_codes.find((e) => e.code === item.code);
+      showManualReference(ref);
+    });
+    li.append(button); list.append(li);
+  }
+  hints.append(list, manualTextNode('p', '지번만으로 법률쟁점을 확정하지 않습니다. 실제 보상평가서·고시·현장 증빙을 대조하세요.', 'muted small'));
+}
+function renderManualSearchResults(query) {
+  const results = $('[data-manual-results]');
+  if (!privateManualPack) return;
+  const matches = searchManualPack(privateManualPack, query, 10);
+  results.replaceChildren();
+  results.append(manualTextNode('p', `검색 결과 ${matches.length}건 (최대 10건 표시)`, 'muted small'));
+  const list = document.createElement('ul');
+  for (const entry of matches) {
+    const li = document.createElement('li');
+    const button = document.createElement('button');
+    button.type = 'button'; button.className = 'secondary';
+    button.textContent = `${entry.code} · ${entry.title} (책 ${entry.book_page_start}쪽)`;
+    button.addEventListener('click', () => showManualReference(entry));
+    li.append(button);list.append(li);
+  }
+  results.append(list);
+}
+$('[data-manual-file]').addEventListener('change', async (event) => {
+  const input = event.currentTarget;
+  const file = input.files?.[0];
+  if (!file) return;
+  const status = $('[data-manual-status]');
+  privateManualPack = null;
+  $('[data-manual-hints]').replaceChildren();
+  $('[data-manual-results]').replaceChildren();
+  $('[data-manual-query]').disabled = true;
+  $('[data-manual-search]').disabled = true;
+  try {
+    if (file.size > MANUAL_MAX_BYTES) throw new Error('PACK_TOO_LARGE');
+    const pack = JSON.parse(await file.text());
+    const valid = validateManualPack(pack);
+    if (!valid.ok) throw new Error(valid.code);
+    privateManualPack = pack;
+    status.textContent = `기기 내 지식팩 연결: ${valid.issue_count}개 쟁점 / ${valid.page_count}쪽 / 내부 검토본. 법령 원문 별도 확인 필요.`;
+    $('[data-manual-query]').disabled = false;
+    $('[data-manual-search]').disabled = false;
+    renderManualHints();
+  } catch (err) {
+    status.textContent = `지식팩을 열 수 없습니다: ${err?.message || '형식 오류'} (원문을 외부로 전송하지 않았습니다).`;
+  } finally {
+    input.value = '';
+  }
+});
+$('[data-manual-search-form]').addEventListener('submit', (event) => {
+  event.preventDefault();
+  renderManualSearchResults($('[data-manual-query]').value);
+});
