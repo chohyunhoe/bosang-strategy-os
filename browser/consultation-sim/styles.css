@@ -130,3 +130,22 @@ table.fields td.ops{white-space:nowrap}
   .grid{grid-template-columns:1fr}
   .panel{display:block!important;break-inside:avoid;border-color:#999}
 }
+
+/* PR-2 비교표준지·상담의견 */
+.std-card{border:1px solid var(--line);border-radius:10px;padding:8px 10px;margin:8px 0;background:#fff}
+.std-card header{display:flex;flex-wrap:wrap;gap:4px 8px;align-items:baseline;border-bottom:1px dashed var(--line);padding-bottom:6px}
+.std-card header .small{width:100%;color:var(--muted)}
+.reasons{display:flex;flex-wrap:wrap;gap:4px;margin:6px 0}.reason{background:var(--ok-bg);color:var(--ok);border-radius:6px;padding:1px 6px}
+.f-cap{display:block;font-size:10.5px;color:var(--muted);font-weight:600;margin-bottom:1px}
+.factors{display:grid;gap:4px}
+.factor{display:grid;grid-template-columns:110px 1fr 1fr .9fr;gap:6px;border-top:1px solid #eef0f2;padding:5px 0;font-size:12px}
+.factor .muted{font-size:11.5px}
+.excluded{margin:6px 0;font-size:12px}.excluded summary{cursor:pointer;color:var(--accent);font-weight:600}.excluded ul{margin:4px 0;padding-left:16px}
+.notes{margin:4px 0 0;padding-left:16px;color:var(--muted)}
+.op-head{margin-top:16px!important;border-top:2px solid var(--ink);padding-top:8px}
+.op-list{margin:0;padding-left:16px;display:grid;gap:5px;font-size:12.5px}.basis{font-size:11px;color:var(--muted)}
+.script{margin:8px 0;background:var(--accent-soft);border-left:4px solid var(--accent);border-radius:6px;padding:8px 10px;font-size:13px;line-height:1.6}
+@media (max-width:720px){.factor{grid-template-columns:1fr}.factor .f-name{border-bottom:1px dotted #eef0f2}}
+@media (min-width:1180px){.grid{grid-template-columns:minmax(280px,.9fr) minmax(340px,1.05fr) minmax(380px,1.25fr)}}
+.diffs{display:flex;flex-wrap:wrap;gap:3px;margin:4px 0}
+.factor-details summary{cursor:pointer;color:var(--accent);font-weight:600;font-size:12.5px;padding:4px 0}

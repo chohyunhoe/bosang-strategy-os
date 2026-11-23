@@ -1,12 +1,13 @@
 // 합성 API 어댑터: 실제 네트워크 호출 없음. 공식 API 응답 형태를 흉내 낸 "모의 응답"만 반환한다.
 import { resolveConsultationInput, validatePnu } from '../core/pnu.js';
-import { SYNTHETIC_REGIONS, SYNTHETIC_PARCELS, SYNTHETIC_ORIGIN, SYNTHETIC_CRS, CELL, SYNTHETIC_MARK } from './synthetic-data.js';
+import { SYNTHETIC_REGIONS, SYNTHETIC_PARCELS, SYNTHETIC_ORIGIN, SYNTHETIC_CRS, CELL, SYNTHETIC_MARK, SYNTHETIC_STANDARD_LANDS } from './synthetic-data.js';
 
 const SOURCE = Object.freeze({
   characteristics: '합성 토지특성정보(모의 · 국토교통부 토지특성 API 형태)',
   price: '합성 개별공시지가(모의 · 국토교통부 개별공시지가 API 형태)',
   cadastral: '합성 지적경계(모의 · VWorld 연속지적 형태)',
   basemap: '합성 배경(실제 항공사진 아님)',
+  standard: '합성 표준지공시지가(모의 · VWorld 표준지공시지가 속성조회 형태)',
 });
 
 export const SYNTHETIC_SCENARIOS = Object.freeze({
@@ -29,7 +30,7 @@ function parcelPolygon(pnu, parcel) {
   return { type: 'Polygon', coordinates: [[[x, y], [x + w, y], [x + w, y + h], [x, y + h], [x, y]]] };
 }
 
-export function createSyntheticAdapter({ scenario = 'DEFAULT', baseDelayMs = 80, now = () => new Date() } = {}) {
+export function createSyntheticAdapter({ scenario = 'DEFAULT', baseDelayMs = 80, standardDelayMs = 0, now = () => new Date() } = {}) {
   const fetched = () => now().toISOString();
   async function delayFor(pnu) {
     const parcel = SYNTHETIC_PARCELS[pnu];
@@ -86,6 +87,32 @@ export function createSyntheticAdapter({ scenario = 'DEFAULT', baseDelayMs = 80,
         return { ok: true, features: [{ pnu: `${pnu.slice(0, 11)}0999${pnu.slice(15)}`, geometry: polygon }], point: geocodePoint(pnu, parcel), ...meta };
       }
       return { ok: true, features: [{ pnu, geometry: polygon }], point: geocodePoint(pnu, parcel), ...meta };
+    },
+    // PR-2: 같은 법정동(ldCode = PNU 앞 10자리) 표준지 목록 — 범위 확대는 하지 않는다
+    async listStandardLands({ pnu, year }) {
+      await sleep(baseDelayMs + standardDelayMs);
+      if (scenario === 'API_DOWN') return failure('API_UNAVAILABLE');
+      const ldCode = String(pnu || '').slice(0, 10);
+      const all = SYNTHETIC_STANDARD_LANDS[ldCode] || [];
+      const withYear = new Set(all.filter((r) => Number(r.stdrYear) === Number(year)).map((r) => r.pnu));
+      // 기준연도 행 + 기준연도 공시가 없는 표준지의 직전 연도 행(연도 불일치 배제 사례 재현)
+      const rows = all.filter((r) => Number(r.stdrYear) === Number(year) || (!withYear.has(r.pnu) && Number(r.stdrYear) === Number(year) - 1))
+        .map(({ _cell, ...row }) => row);
+      return { ok: true, rows, scope: { ld_code: ldCode, label: `같은 법정동(${ldCode}) · ${year}년 기준` }, source: SOURCE.standard, fetched_at: fetched(), synthetic: true };
+    },
+    async locateParcels(pnus) {
+      const centroids = {};
+      const all = Object.values(SYNTHETIC_STANDARD_LANDS).flat();
+      for (const pnu of pnus) {
+        const parcel = SYNTHETIC_PARCELS[pnu];
+        if (parcel) { const p = geocodePoint(pnu, parcel); centroids[pnu] = { x: p.x, y: p.y }; continue; }
+        const row = all.find((r) => r.pnu === pnu);
+        if (row) {
+          const origin = SYNTHETIC_ORIGIN[pnu.slice(0, 10)] || [0, 0];
+          centroids[pnu] = { x: origin[0] + row._cell[0] * (CELL.w + CELL.gap) + CELL.w / 2, y: origin[1] + row._cell[1] * (CELL.h + CELL.gap) + CELL.h / 2 };
+        }
+      }
+      return { ok: true, crs: SYNTHETIC_CRS, centroids };
     },
     async getNeighborhood(pnu) {
       if (scenario === 'NO_MAP_KEY') return { ok: false, code: 'MAP_KEY_REQUIRED' };

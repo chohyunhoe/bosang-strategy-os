@@ -3,6 +3,8 @@
 // - 필드별 출처·기준연도·조회시각·상태·수동수정·검수여부를 기록한다.
 // - 적정 비교표준지·보정률·보상금·증액 예상액은 산정하지 않는다.
 import { validatePnu } from './pnu.js';
+import { analyzeStandardCandidates, distanceMeters } from './standard-land-engine.js';
+import { buildConsultOpinion } from './consult-opinion.js';
 
 export const STATUS = Object.freeze({
   OK: 'OFFICIAL_OK', CANDIDATE: 'CANDIDATE', NOT_QUERIED: 'NOT_QUERIED', MISMATCH: 'MISMATCH',
@@ -79,7 +81,8 @@ export function createDraft({ dataMode, input, candidate, baseYear, requestId })
     public_selection: null,
     map: { status: 'NOT_QUERIED', code: 'MAP_NOT_REQUESTED', source: null, basemap_source: null, capture_date: null, crs: null, geometry: null, point: null, neighbors: [] },
     analysis: {
-      standard_candidates: { status: 'NOT_QUERIED', items: [], reason: '표준지 후보 원천(반경조회·지역별 파일) 검증 전 — PR-2에서 연결' },
+      standard: { status: 'NOT_QUERIED' },
+      opinion: null,
       unknowns: UNKNOWN_FROM_LOT.map((label) => ({ label, status: 'NOT_QUERIED', note: '지번만으로 확인 불가' })),
       signals: [],
     },
@@ -279,10 +282,50 @@ export function createConsultationSession({ adapter, onChange = () => {} }) {
     if (!isCurrent(token)) return state;
     if (state.draft.map.status === 'NOT_QUERIED') state.draft.map = { ...state.draft.map, status: 'FAILED', code: 'MAP_REQUEST_FAILED' };
     state.draft.analysis.signals = computeSignals(state.draft);
+    state.draft.analysis.opinion = buildConsultOpinion(state.draft);
     state.phase = 'READY';
     log('LOOKUP_DONE', { request_id: token.request_id });
     notify();
+    await runStandardAnalysis(token);
     return state;
+  }
+
+  function targetFromDraft(d) {
+    const v = (k) => d.fields[k]?.value ?? null;
+    return { land_category: v('land_category'), area_m2: v('area_m2'), zoning: v('zoning'), zoning_secondary: v('zoning_secondary'),
+      land_use: v('land_use'), road_access: v('road_access'), shape: v('shape'), elevation: v('elevation') };
+  }
+
+  // PR-2: 같은 법정동 표준지 → 후보 분석 → 상담 초동의견. 바인딩이 바뀌면 결과를 버린다.
+  async function runStandardAnalysis(token) {
+    const d = state.draft;
+    if (typeof adapter.listStandardLands !== 'function') {
+      d.analysis.standard = { status: 'NOT_SUPPORTED', reason: '이 데이터 모드는 표준지 조회를 지원하지 않음' };
+      d.analysis.opinion = buildConsultOpinion(d); notify(); return;
+    }
+    d.analysis.standard = { status: 'LOADING' };
+    d.analysis.opinion = buildConsultOpinion(d); notify();
+    const baseYear = d.binding.base_year;
+    const list = await adapter.listStandardLands({ pnu: d.parcel.pnu, year: baseYear }).catch((e) => ({ ok: false, code: e?.code || 'STANDARD_FAILED' }));
+    if (!isCurrent(token)) { state.discarded_responses += 1; notify(); return; }
+    if (!list.ok) {
+      d.analysis.standard = { status: 'FAILED', code: list.code };
+      d.analysis.opinion = buildConsultOpinion(d); notify(); return;
+    }
+    const target = targetFromDraft(d);
+    const pre = analyzeStandardCandidates({ target, rows: list.rows, baseYear, scope: list.scope });
+    const nearbyPnus = [...pre.candidates.map((c) => c.row.pnu), ...pre.excluded.filter((x) => x.reasons.some((r) => r.startsWith('유사 후보'))).map((x) => x.row.pnu)].slice(0, 10);
+    const toLocate = [...new Set([d.parcel.pnu, ...nearbyPnus, ...(list.synthetic ? list.rows.map((r) => r.pnu) : [])])];
+    const loc = typeof adapter.locateParcels === 'function' ? await adapter.locateParcels(toLocate).catch(() => ({ ok: false })) : { ok: false };
+    if (!isCurrent(token)) { state.discarded_responses += 1; notify(); return; }
+    const origin = loc.ok ? loc.centroids[d.parcel.pnu] : null;
+    const distances = {};
+    if (origin) Object.entries(loc.centroids).forEach(([pnu, c]) => { if (pnu !== d.parcel.pnu) distances[pnu] = distanceMeters(origin, c, loc.crs); });
+    const final = analyzeStandardCandidates({ target, rows: list.rows, baseYear, distances, scope: list.scope });
+    d.analysis.standard = { ...final, source: list.source, fetched_at: list.fetched_at, synthetic: Boolean(list.synthetic),
+      field_names: list.field_names || null, truncated: Boolean(list.truncated), located_count: Object.keys(distances).length };
+    d.analysis.opinion = buildConsultOpinion(d);
+    notify();
   }
 
   function overrideField(key, { value, by, reason = '' }) {

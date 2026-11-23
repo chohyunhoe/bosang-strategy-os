@@ -23,6 +23,9 @@ const out = path.join(root, 'dist', LIVE ? 'consultation-sim-live-test' : 'consu
 const ORDER = [
   'core/pnu.js',
   'adapters/synthetic-data.js',
+  'core/ned-revisions.js',
+  'core/standard-land-engine.js',
+  'core/consult-opinion.js',
   'core/consultation-session.js',
   'adapters/synthetic-adapter.js',
   'map-view.js',

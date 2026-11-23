@@ -4,6 +4,7 @@
 // - 공공데이터포털 키는 도메인 제한이 없어 브라우저로 보내지 않는다 → 주소→PNU는 VWorld 검색 API로 대체.
 // - 토지특성(ned/data/getLandCharacteristics)이 JSONP를 지원하지 않으면 '미조회 · 중계 필요'로 남긴다(추정값 없음).
 import { parseLotInput, validatePnu, PNU_CODES } from '../core/pnu.js';
+import { collapseNedRevisions } from '../core/ned-revisions.js';
 
 const API = 'https://api.vworld.kr';
 const SOURCE = Object.freeze({
@@ -11,49 +12,14 @@ const SOURCE = Object.freeze({
   characteristics: 'VWorld 토지특성(브라우저 직접)',
   price: 'VWorld 토지특성 내 개별공시지가(브라우저 직접)',
   cadastral: 'VWorld 연속지적도 LP_PA_CBND_BUBUN(브라우저 직접)',
+  standard: 'VWorld 표준지공시지가 속성조회 getReferLandPriceAttr(브라우저 직접)',
 });
 export const DIRECT_PROBE = Object.freeze({ address: '서울특별시 중구 태평로1가 31', note: '공공청사 부지 · 사건 무관' });
 
 const text = (v) => (v == null ? '' : String(v).trim());
+const norm = text;
 const arr = (v) => (Array.isArray(v) ? v : v && typeof v === 'object' ? [v] : []);
 const num = (v) => { const n = Number(String(v ?? '').replace(/,/g, '')); return Number.isFinite(n) && String(v ?? '').trim() !== '' ? n : null; };
-
-// 같은 PNU·기준연도 행이 여러 개일 때의 규칙 (2026-11-23 실호출: 2026년 2행·2025년 3행, 행 간 차이는 lastUpdtDt뿐)
-// - 갱신 메타(lastUpdtDt)를 뺀 모든 필드 값이 행끼리 완전히 같을 때만 정리한다. 대표행 = 날짜로 검증되는 최신 lastUpdtDt 행.
-//   값이 같으므로 어느 행을 골라도 결과는 같고, 대표행은 출처 기록용이다. 행 수·갱신일 목록·근거를 selection에 남긴다.
-// - 그 외 필드가 하나라도 다르면 자동 선택하지 않는다(VWORLD_REVISION_CONFLICT, 충돌 필드 이름만 기록).
-// - 최신 lastUpdtDt가 날짜로 해석되지 않거나 최신 행이 2개 이상이어도 값이 동일하면 정리하되, 근거에 그 사실을 남긴다.
-export const NED_REVISION_META_FIELDS = Object.freeze(['lastUpdtDt']);
-const norm = (v) => (v == null ? '' : String(v).trim());
-const dateKey = (v) => { const m = norm(v).match(/^(\d{4})-?(\d{2})-?(\d{2})/); return m ? `${m[1]}-${m[2]}-${m[3]}` : null; };
-
-export function collapseNedRevisions(rows) {
-  if (rows.length === 1) return { ok: true, row: rows[0], selection: { row_count: 1, rule: 'SINGLE_ROW' } };
-  const keys = [...new Set(rows.flatMap((row) => Object.keys(row || {})))].filter((k) => !NED_REVISION_META_FIELDS.includes(k)).sort();
-  const conflicts = keys.filter((k) => new Set(rows.map((row) => norm(row[k]))).size > 1);
-  const updated = rows.map((row) => norm(row.lastUpdtDt));
-  if (conflicts.length) {
-    return { ok: false, code: 'VWORLD_REVISION_CONFLICT', selection: { row_count: rows.length, rule: 'CONFLICT_HOLD', conflict_fields: conflicts, last_updated: updated } };
-  }
-  const dated = rows.map((row) => ({ row, key: dateKey(row.lastUpdtDt) }));
-  const valid = dated.filter((d) => d.key);
-  const latest = valid.length ? valid.reduce((a, b) => (b.key > a.key ? b : a)).key : null;
-  const winners = latest ? valid.filter((d) => d.key === latest) : [];
-  const chosen = winners[0]?.row || rows[0];
-  return {
-    ok: true, row: chosen,
-    selection: {
-      row_count: rows.length,
-      rule: 'IDENTICAL_DATA_REVISIONS',
-      basis: latest
-        ? `응답 ${rows.length}행 · 최종갱신일 외 모든 값 동일 → 최신 갱신행(${latest}) 대표${winners.length > 1 ? ` · 같은 날짜 ${winners.length}행` : ''}`
-        : `응답 ${rows.length}행 · 최종갱신일 외 모든 값 동일 · 갱신일 해석 불가(값이 같아 결과 동일)`,
-      selected_last_updated: latest,
-      unparsed_last_updated: dated.filter((d) => !d.key).length,
-      last_updated: updated,
-    },
-  };
-}
 
 export function parseNedLandCharacteristics(payload, { pnu, year }) {
   const root = payload?.landCharacteristicss || payload?.landCharacteristics;
@@ -298,6 +264,43 @@ export function createVworldDirectAdapter({ now = () => new Date(), timeoutMs = 
       const basemap_image = { token: `${pnu}|${view.zoom}`, width: MAP_IMAGE.width, height: MAP_IMAGE.height };
       return { ok: true, features, point, basemap_image, ...meta };
     },
+    // PR-2: 같은 법정동(ldCode) 표준지 목록. 응답 root 이름은 실호출로 미확정이라 field 배열을 가진 첫 객체를 찾는다.
+    async listStandardLands({ pnu, year }) {
+      const ldCode = text(pnu).slice(0, 10);
+      const rows = []; let fieldNames = []; let total = null;
+      for (let page = 1; page <= 3; page += 1) {
+        let payload;
+        try {
+          payload = await jsonp('/ned/data/getReferLandPriceAttr', { ldCode, stdrYear: String(year), format: 'json', numOfRows: '100', pageNo: String(page) });
+        } catch (error) { return { ok: false, code: error.code || 'VWORLD_STANDARD_FAILED', fetched_at: fetched() }; }
+        const status = text(payload?.response?.status).toUpperCase();
+        if (status === 'NOT_FOUND') break;
+        const root = Object.values(payload || {}).find((v) => v && typeof v === 'object' && ('field' in v || 'fields' in v));
+        if (!root) return { ok: false, code: status && status !== 'OK' ? 'VWORLD_API_ERROR' : 'VWORLD_SCHEMA_CHANGED', fetched_at: fetched() };
+        const resultCode = text(root.resultCode || root.resultCd);
+        if (resultCode && !['0', '00', '000', 'SUCCESS'].includes(resultCode.toUpperCase())) return { ok: false, code: 'VWORLD_API_ERROR', result_code: resultCode, fetched_at: fetched() };
+        const pageRows = [...arr(root.field), ...arr(root.fields)];
+        rows.push(...pageRows);
+        fieldNames = [...new Set([...fieldNames, ...pageRows.flatMap((r) => Object.keys(r || {}))])].sort();
+        total = Number(root.totalCount);
+        if (!Number.isFinite(total) || rows.length >= total || pageRows.length < 100) break;
+      }
+      return { ok: true, rows, field_names: fieldNames, total_count: total, truncated: Number.isFinite(total) && rows.length < total,
+        scope: { ld_code: ldCode, label: `같은 법정동(${ldCode}) · ${year}년 기준` }, source: SOURCE.standard, fetched_at: fetched() };
+    },
+    // 필지 중심점(경위도 평균) — 지적 exact-one 도형이 있을 때만. 호출 수 절감을 위해 요청한 PNU만 조회
+    async locateParcels(pnus) {
+      const centroids = {};
+      for (const pnu of pnus) {
+        const geo = await cadastral(pnu);
+        const exact = geo.ok ? geo.features.filter((f) => text(f?.properties?.pnu) === pnu) : [];
+        if (exact.length !== 1) continue;
+        const ring = ringOf(exact[0].geometry).map((p) => [Number(p[0]), Number(p[1])]);
+        const pts = ring.length > 1 && ring[0][0] === ring[ring.length - 1][0] && ring[0][1] === ring[ring.length - 1][1] ? ring.slice(0, -1) : ring;
+        centroids[pnu] = { x: pts.reduce((a, p) => a + p[0], 0) / pts.length, y: pts.reduce((a, p) => a + p[1], 0) / pts.length };
+      }
+      return { ok: true, crs: 'EPSG:4326', centroids };
+    },
     // canvas에 항공사진 일부(viewBox 영역)를 그린다. 교차 출처 영상이라 canvas는 읽기 불가(tainted)가 되며, 그래도 표시는 된다.
     paintBasemap(canvas, image, vb) {
       const pnu = text(image?.token).split('|')[0];
@@ -365,6 +368,8 @@ export function createVworldDirectAdapter({ now = () => new Date(), timeoutMs = 
           step('aerial_image', { ok: loaded, detail: loaded ? `영상 수신 · zoom ${view.zoom} · 촬영일 미확인` : '영상 미수신(키·도메인·권한 확인)' });
         }
         const year = now().getFullYear();
+        const stdList = await this.listStandardLands({ pnu, year: year - 1 });
+        step('standard_lands', { ok: stdList.ok, detail: stdList.ok ? `${year - 1}년 같은 법정동 표준지 ${stdList.rows.length}행 · 필드 ${(stdList.field_names || []).join(',') || '없음'}` : stdList.code });
         for (const y of [year, year - 1]) {
           const r = await ned(pnu, y);
           step(`land_characteristics_${y}`, { ok: r.ok && Boolean(r.record), detail: r.ok ? `${r.record ? '자료 있음' : '해당연도 자료 없음'}${r.selection ? ` · ${r.selection.basis || `응답 ${r.selection.row_count}행`}` : ''} · 필드 ${(r.field_names || []).join(',') || '없음'}` : `${r.code}${r.selection?.conflict_fields ? ` · 충돌 필드 ${r.selection.conflict_fields.join(',')}` : ''}` });

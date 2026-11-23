@@ -27,16 +27,17 @@ const ui = {
   scenario: ['NO_MAP_KEY', 'API_DOWN'].includes(params.get('scenario')) ? params.get('scenario') : 'DEFAULT',
   tab: 'map', editing: null, saveOpen: false, footer: '', adapterStatus: null, probe: null, probing: false,
 };
-let adapter; let session; let lastMapHtml = '';
+let adapter; let session; let lastMapHtml = ''; let lastLandHtml = ''; let lastAnalysisHtml = '';
 
 function buildAdapter() {
   if (RUNTIME.synthetic_only) ui.mode = 'SYNTHETIC';
   adapter = ui.mode === 'LIVE_BRIDGE' ? createBridgeAdapter()
     : ui.mode === 'VWORLD_DIRECT' ? createVworldDirectAdapter()
-      : createSyntheticAdapter({ scenario: ui.scenario });
+      : createSyntheticAdapter({ scenario: ui.scenario, standardDelayMs: Math.min(5000, Number(params.get('std_delay')) || 0) });
   ui.probe = null;
   session = createConsultationSession({ adapter, onChange: render });
   ui.editing = null; ui.saveOpen = false; ui.footer = ''; ui.adapterStatus = null;
+  lastMapHtml = ''; lastLandHtml = ''; lastAnalysisHtml = '';
   $('[data-region-hints]').innerHTML = adapter.regionHints().map((name) => `<option value="${esc(name)}"></option>`).join('');
   adapter.status().then((status) => { ui.adapterStatus = status; render(); });
   render();
@@ -180,16 +181,24 @@ const selectionText = (sel) => (sel.basis ? sel.basis
 function renderLand(state) {
   const box = $('[data-land]');
   const d = state.draft;
-  if (!d) { box.innerHTML = '<p class="muted">조회 전입니다.</p>'; return; }
+  if (!d) { if (lastLandHtml !== 'EMPTY') { lastLandHtml = 'EMPTY'; box.innerHTML = '<p class="muted">조회 전입니다.</p>'; } return; }
   const groups = [];
   FIELD_DEFS.forEach((def) => { if (!groups.includes(def.group_label)) groups.push(def.group_label); });
-  box.innerHTML = `
+  const html = `
     <dl class="kv"><div><dt>PNU</dt><dd class="mono">${esc(d.parcel.pnu)}</dd></div><div><dt>법정동</dt><dd>${esc(d.parcel.legal_dong_name)}</dd></div><div><dt>지번</dt><dd>${esc(d.parcel.lot_label)}${d.parcel.mountain ? ' (산번지)' : ''}</dd></div></dl>
     ${groups.map((label) => `<h3>${esc(label)}${label.startsWith('공시지가 산정용') ? ' <small>가격형성 요인 표기 · 실제 현황과 다를 수 있음</small>' : ''}</h3><div class="table-wrap"><table class="fields"><thead><tr><th>항목</th><th>값</th><th>상태</th><th>원천·기준연도·조회시각</th><th></th></tr></thead><tbody>
       ${FIELD_DEFS.filter((def) => def.group_label === label).map((def) => fieldRow(d.fields[def.key], d.synthetic)).join('')}
     </tbody></table></div>`).join('')}
     ${d.public_selection?.characteristics && d.public_selection.characteristics.row_count > 1 ? `<p class="note" data-selection-basis>${d.public_selection.characteristics.rule === 'CONFLICT_HOLD' ? chip('MISMATCH') : chip('OFFICIAL_OK', '중복 정리')} ${esc(selectionText(d.public_selection.characteristics))}</p>` : ''}
     <p class="note strong">공부·공시지가 산정용 토지특성은 실제 현황과 다를 수 있습니다. 실제 이용상황: ${chip('FIELD_CHECK')} (지번만으로 미확인)</p>`;
+  // 비동기 후속 결과(표준지 분석 등)로 다시 그려도 내용이 같으면 건드리지 않는다 — 입력 중인 수정값 보존
+  if (html === lastLandHtml) return;
+  const editRow = box.querySelector('[data-edit-row]');
+  const pending = editRow ? { key: editRow.dataset.editRow, value: $('[data-edit-value]', editRow).value, by: $('[data-edit-by]', editRow).value, reason: $('[data-edit-reason]', editRow).value } : null;
+  lastLandHtml = html;
+  box.innerHTML = html;
+  const restored = pending && box.querySelector(`[data-edit-row="${pending.key}"]`);
+  if (restored) { $('[data-edit-value]', restored).value = pending.value; $('[data-edit-by]', restored).value = pending.by; $('[data-edit-reason]', restored).value = pending.reason; }
   box.querySelectorAll('[data-edit]').forEach((b) => b.addEventListener('click', () => { ui.editing = b.dataset.edit; render(); }));
   box.querySelectorAll('[data-edit-cancel]').forEach((b) => b.addEventListener('click', () => { ui.editing = null; render(); }));
   box.querySelectorAll('[data-review]').forEach((b) => b.addEventListener('click', () => session.markReviewed(b.dataset.review, !d.fields[b.dataset.review].reviewed)));
@@ -202,30 +211,80 @@ function renderLand(state) {
   }));
 }
 
-const MATERIALS = {
-  MISSING: '토지대장·토지이용계획확인원 발급본',
-  CATEGORY_USE_DIFF: '현장사진·실제 이용상황 확인자료',
-  YEAR_CHANGE: '연도별 토지특성 변경 사유(지자체 확인)',
-  MAP_GATE: '지적도 등본 또는 연속지적 재조회',
-};
+const FACTOR_STATUS = { CONFIRMED: ['OFFICIAL_OK', '확인'], PARTIAL: ['CANDIDATE', '일부 확인'], NEEDS_CHECK: ['FIELD_CHECK', '확인 필요'] };
+const HYP_LABEL = { TARGET_WORSE: '대상 열세 가능(가설)', TARGET_BETTER: '대상 우세 가능(가설)', SIMILAR: '유사', UNDETERMINED: '차이 검토(가설)' };
+const fmtDist = (m) => (m == null ? '거리 미산출' : m >= 1000 ? `${(m / 1000).toFixed(2)}km` : `${Math.round(m)}m`);
+
+function factorRows(c) {
+  return c.factors.map((x) => {
+    const [st, lbl] = FACTOR_STATUS[x.status] || ['NOT_QUERIED', x.status];
+    return `<div class="factor" data-factor="${esc(x.key)}" data-factor-status="${esc(x.status)}">
+      <div class="f-name"><b>${esc(x.label)}</b> ${chip(st, lbl)}</div>
+      <div class="f-facts"><span class="f-cap">확인된 자료</span>${x.facts.length ? x.facts.map((t) => `<div>${esc(t)}</div>`).join('') : '<div class="muted">공적자료 없음</div>'}</div>
+      <div class="f-hyp"><span class="f-cap">검토상 우열 가설</span>${x.hypothesis ? `<div data-hypothesis="${esc(x.hypothesis.direction)}">${chip(x.hypothesis.direction === 'SIMILAR' ? 'OFFICIAL_OK' : 'EXPERT_REVIEW', HYP_LABEL[x.hypothesis.direction])} ${esc(x.hypothesis.text)}</div>` : '<div class="muted">— (근거 부족)</div>'}</div>
+      <div class="f-need"><span class="f-cap">확인 필요</span><div>${esc(x.needs || '—')}</div></div>
+    </div>`;
+  }).join('');
+}
+
+function renderStandard(st) {
+  if (!st || st.status === 'NOT_QUERIED' || st.status === 'LOADING') return `<div class="callout" data-standard-status="${esc(st?.status || 'NOT_QUERIED')}">${chip('NOT_QUERIED', st?.status === 'LOADING' ? '조회 중' : '미조회')} 표준지 자료 조회 대기</div>`;
+  if (st.status === 'NOT_SUPPORTED' || st.status === 'FAILED') return `<div class="callout" data-standard-status="${esc(st.status)}">${chip(st.status === 'FAILED' ? 'MISMATCH' : 'KEY_REQUIRED', st.status === 'FAILED' ? '조회 실패' : '미지원')} ${esc(st.reason || `표준지 자료를 받지 못했습니다(${st.code || '사유 미상'}). 임의 후보를 만들지 않습니다.`)}</div>`;
+  if (st.status === 'SCHEMA_UNMAPPED') return `<div class="callout" data-standard-status="SCHEMA_UNMAPPED">${chip('MISMATCH', '필드 해석 실패')} 표준지 응답 ${esc(st.mapping.row_count)}행을 받았지만 ${esc(st.mapping.unmapped.map((u) => `${u.label}(기대: ${u.expected.join('/')})`).join(', '))}를 해석하지 못해 후보 판정을 보류했습니다. 전부 배제하지 않습니다.<div class="muted small">응답 필드: ${esc(st.mapping.response_field_names.join(', '))}</div></div>`;
+  if (st.status === 'INSUFFICIENT_TARGET') return `<div class="callout" data-standard-status="INSUFFICIENT_TARGET">${chip('FIELD_CHECK', '대상 자료 부족')} 대상 용도지역·이용상황이 확보되지 않아 후보를 고르지 않았습니다.</div>`;
+  const head = `<p class="muted small" data-standard-scope>${esc(st.scope?.label || '')} · ${esc(st.source || '')} · 조회 ${st.total_rows}건${st.truncated ? ' (일부만 조회)' : ''}</p>`;
+  const notes = `<ul class="notes small">${st.notes.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>`;
+  const nearest = st.nearest_excluded ? `<p class="warn-note small" data-nearest-excluded>가장 가까운 표준지 ${esc(st.nearest_excluded.label || st.nearest_excluded.pnu)}(${fmtDist(st.nearest_excluded.distance_m)})는 ${esc(st.nearest_excluded.reasons.join(', '))}로 제외</p>` : '';
+  const cards = st.status === 'FOUND' ? st.candidates.map((c) => `
+    <article class="std-card" data-standard-candidate="${c.rank}">
+      <header><b>후보 ${c.rank}</b> ${esc(c.row.label || '')} <span class="mono">${esc(c.row.pnu)}</span>
+        <div class="small">${c.row.price != null ? `${esc(c.row.price.toLocaleString('ko-KR'))}원/㎡ (${esc(c.row.year)})` : '공시지가 미기재'} · ${fmtDist(c.distance_m)}</div></header>
+      <div class="reasons small"><span class="f-cap">선정 근거</span>${c.selection_reasons.map((r) => `<span class="reason">${esc(r)}</span>`).join('')}</div>
+      <div class="diffs small" data-candidate-diffs><span class="f-cap">차이 검토 항목</span>${(() => { const ds = c.factors.filter((x) => x.hypothesis && x.hypothesis.direction !== 'SIMILAR'); return ds.length ? ds.map((x) => chip('EXPERT_REVIEW', `${x.label} · ${HYP_LABEL[x.hypothesis.direction]}`)).join('') : '<span class="muted">확인된 자료상 뚜렷한 차이 없음</span>'; })()}</div>
+      <details class="factor-details" data-factor-details data-key="factor-${esc(c.row.pnu)}" ${c.rank === 1 ? 'open' : ''}><summary>8개 가격형성요인 비교 (확인 자료 · 우열 가설 · 확인 필요)</summary><div class="factors">${factorRows(c)}</div></details>
+    </article>`).join('') : `<div class="callout" data-standard-none>${chip('NOT_QUERIED', '후보 미확보')} 표준지 후보 미확보 — 조회 범위에서 용도지역·이용상황이 유사한 표준지가 없습니다.</div>`;
+  const excluded = st.excluded.length ? `<details class="excluded" data-standard-excluded data-key="excluded"><summary>배제 ${st.excluded.length}건과 사유</summary><ul>${st.excluded.map((x) => `<li><span class="mono">${esc(x.row.pnu)}</span> ${esc(x.row.label || '')} · ${fmtDist(x.distance_m)} — ${esc(x.reasons.join(', '))}</li>`).join('')}</ul></details>` : '';
+  return `<div data-standard-status="${esc(st.status)}">${head}${nearest}${cards}${excluded}${notes}</div>`;
+}
+
+function renderOpinion(o, d) {
+  if (!o) return '';
+  const list = (items, attr) => `<ul class="op-list" ${attr}>${items.map((x) => `<li>${esc(x.text)}${x.basis?.length ? `<div class="basis">근거: ${esc(x.basis.map((b) => d.fields[b]?.label || b.replace('standard:', '표준지 ')).join(', '))}</div>` : ''}</li>`).join('')}</ul>`;
+  return `
+    <section class="opinion" data-opinion>
+      <h3>① 대상토지 주요 특징</h3>${list(o.features, 'data-op-features')}
+      <h3>② 비교표준지 검토</h3>${list(o.standard, 'data-op-standard')}
+      <h3>③ 향후 주장 가능 쟁점 <small>후보 · 확정 아님</small></h3>
+      ${o.issues.length ? `<ul class="op-list" data-op-issues>${o.issues.map((x) => `<li data-issue="${esc(x.title)}">${chip('EXPERT_REVIEW', x.title)} ${esc(x.text)}<div class="basis">근거: ${esc(x.basis.map((b) => d.fields[b]?.label || b.replace('standard:', '표준지 ')).join(', '))}${x.needs?.length ? ` · 필요자료: ${esc(x.needs.join(', '))}` : ''}</div></li>`).join('')}</ul>` : '<p class="muted small" data-op-issues-empty>공적자료만으로 제시할 쟁점 후보 없음</p>'}
+      <p class="muted small">${esc(o.issue_note)}</p>
+      <h3>④ 추가 확보자료 · 상담 멘트</h3>
+      <ul class="materials" data-materials>${o.materials.map((m) => `<li>${esc(m)}</li>`).join('')}</ul>
+      <blockquote class="script" data-op-script>${esc(o.script)}</blockquote>
+      <h3>지번만으로 미확인</h3>
+      <ul class="unknowns" data-unknowns>${d.analysis.unknowns.map((u) => `<li>${chip('NOT_QUERIED')} ${esc(u.label)}</li>`).join('')}</ul>
+    </section>`;
+}
 
 function renderAnalysis(state) {
   const box = $('[data-analysis]');
   const d = state.draft;
-  if (!d) { box.innerHTML = '<p class="muted">조회 전입니다.</p>'; return; }
+  if (!d) { if (lastAnalysisHtml !== 'EMPTY') { lastAnalysisHtml = 'EMPTY'; box.innerHTML = '<p class="muted">조회 전입니다.</p>'; } return; }
   const signals = d.analysis.signals;
-  const materials = [...new Set(signals.map((s) => MATERIALS[s.kind]).filter(Boolean)), '사업인정 고시문·보상계획 공고문', '보상평가서(수령 시)'];
-  box.innerHTML = `
-    <h3>비교표준지 후보 <small>최대 3건 · 확보 수량만</small></h3>
-    <div class="callout" data-standard-status>${chip(d.analysis.standard_candidates.status)} 표준지 후보 미확보 — ${esc(d.analysis.standard_candidates.reason)}. 가까운 토지를 정답으로 간주하지 않으며, 원천 미확보 시 비교표를 채우지 않습니다.</div>
+  const html = `
+    <h3>비교표준지 후보 <small>최대 3건 · 확보 수량만 · 확정 아님</small></h3>
+    ${renderStandard(d.analysis.standard)}
     <h3>확인 필요 신호 <small>공적자료 필드 연결 · 결론 아님</small></h3>
     ${state.phase === 'LOADING' ? '<p class="muted">조회 중…</p>' : signals.length ? `<ul class="signals" data-signals>${signals.map((s) => `<li data-signal="${esc(s.kind)}">${chip(s.status)} <b>${esc(s.title)}</b><div class="note">${esc(s.detail)}</div>${s.fields.length ? `<div class="muted small">근거 필드: ${s.fields.map((k) => esc(d.fields[k]?.label || k)).join(', ')}</div>` : ''}</li>`).join('')}</ul>` : '<p class="muted" data-signals-empty>자동 확인 신호 없음 (전문가 검토는 별도)</p>'}
-    <h3>지번만으로 미확인</h3>
-    <ul class="unknowns" data-unknowns>${d.analysis.unknowns.map((u) => `<li>${chip('NOT_QUERIED')} ${esc(u.label)}</li>`).join('')}</ul>
-    <h3>추가 확보자료</h3>
-    <ul class="materials" data-materials>${materials.map((m) => `<li>${esc(m)}</li>`).join('')}</ul>
-    <h3>주장 검토 후보 · 불리한 요소 · 상담 멘트</h3>
-    <div class="callout muted" data-pr3-placeholder>${chip('EXPERT_REVIEW')} PR-3 범위: 확인된 공적 사실·조건부 검토 가설·추가 확보 증거 3구역으로 생성 예정. 현재 자동 문구를 만들지 않습니다.</div>`;
+    <h2 class="op-head">상담 초동의견 <span class="sub">${d.synthetic ? '합성 시연자료 기준' : '공적자료 기준'} · 검토 보조</span></h2>
+    ${renderOpinion(d.analysis.opinion, d)}`;
+  if (html === lastAnalysisHtml) return;
+  // 같은 필지 안에서 다시 그릴 때 사용자가 펼치거나 접은 표는 그대로 둔다
+  const samePnu = box.dataset.renderedFor === d.parcel.pnu;
+  const openState = samePnu ? [...box.querySelectorAll('details[data-key]')].map((el) => [el.dataset.key, el.open]) : [];
+  lastAnalysisHtml = html;
+  box.innerHTML = html;
+  box.dataset.renderedFor = d.parcel.pnu;
+  openState.forEach(([key, open]) => { const el = box.querySelector(`details[data-key="${key}"]`); if (el) el.open = open; });
 }
 
 function renderLegend() {
@@ -248,6 +307,13 @@ function summaryText(d) {
   }
   lines.push('', '■ 확인 필요 신호(결론 아님)');
   (d.analysis.signals.length ? d.analysis.signals : [{ title: '자동 신호 없음', detail: '' }]).forEach((s) => lines.push(`- ${s.title}${s.detail ? `: ${s.detail}` : ''}`));
+  const o = d.analysis.opinion;
+  if (o) {
+    lines.push('', '■ 비교표준지 검토(후보 · 확정 아님)', ...o.standard.map((x) => `- ${x.text}`));
+    lines.push('', '■ 향후 주장 가능 쟁점(후보)', ...(o.issues.length ? o.issues.map((x) => `- [${x.title}] ${x.text}`) : ['- 공적자료만으로 제시할 쟁점 후보 없음']));
+    lines.push('', '■ 추가 확보자료', ...o.materials.map((m) => `- ${m}`));
+    lines.push('', '■ 상담 멘트(초안)', o.script);
+  }
   lines.push('', '■ 지번만으로 미확인', ...d.analysis.unknowns.map((u) => `- ${u.label}`));
   lines.push('', '※ 비교표준지·보정률·보상금은 산정하지 않았습니다. 최종 판단은 원문·현장·전문가 검토가 필요합니다.');
   return lines.join('\n');

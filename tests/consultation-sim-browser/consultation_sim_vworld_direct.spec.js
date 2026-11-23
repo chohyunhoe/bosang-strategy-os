@@ -1,5 +1,6 @@
 'use strict';
 // VWorld 브라우저 직접 모드 — api.vworld.kr 응답을 가로채 JSONP로 모사(실제 키·실호출 없음)
+// 표준지 응답 형태(root=referLandPrices, prposAreaNm1/2)는 2026-11-23 실호출 결과에 맞춤 — 값은 전부 가상
 const { test, expect } = require('@playwright/test');
 
 const NURI = '가상특별시 누리구 새솔동';
@@ -32,7 +33,8 @@ async function mockVworld(page, { ned = 'jsonp' } = {}) {
       const filter = url.searchParams.get('attrFilter') || '';
       if (filter.startsWith('pnu:=:')) {
         const pnu = filter.slice(6);
-        return js({ response: { status: 'OK', result: { featureCollection: { features: [{ type: 'Feature', properties: { pnu, jibun: '합성' }, geometry: square(127, 37.5) }] } } } });
+        const off = (Number(pnu.slice(11, 15)) % 50) * 0.0002;
+        return js({ response: { status: 'OK', result: { featureCollection: { features: [{ type: 'Feature', properties: { pnu, jibun: '합성' }, geometry: square(127 + off, 37.5) }] } } } });
       }
       const neighbors = [1, 2, 3].map((i) => ({ type: 'Feature', properties: { pnu: `99011010001012300${i}0` }, geometry: square(127 + i * 0.00025, 37.5) }));
       return js({ response: { status: 'OK', result: { featureCollection: { features: neighbors } } } });
@@ -40,6 +42,15 @@ async function mockVworld(page, { ned = 'jsonp' } = {}) {
     if (url.pathname === '/req/image') {
       // 1x1 PNG (합성) — 실제 항공사진 아님
       return route.fulfill({ status: 200, contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64') });
+    }
+    if (url.pathname === '/ned/data/getReferLandPriceAttr') {
+      if (ned === 'std-fail') return route.abort('blockedbyclient');
+      const year = url.searchParams.get('stdrYear');
+      const ld = url.searchParams.get('ldCode');
+      const row = (bun, over) => ({ pnu: `${ld}1${String(bun).padStart(4, '0')}0000`, stdrYear: year, ldCodeNm: NURI, mnnmSlno: String(bun), lndcgrCodeNm: '대', lndpclAr: '380',
+        prposAreaNm1: '제2종일반주거지역', prposAreaNm2: '', ladUseSittnNm: '다세대', roadSideCodeNm: '소로한면', tpgrphFrmCodeNm: '가로장방형', tpgrphHgCodeNm: '평지', pblntfPclnd: '2100000', lastUpdtDt: `${year}-02-28`, ...over });
+      const rows = [row(110, {}), row(110, { lastUpdtDt: `${year}-03-15` }), row(128, { prposAreaNm1: '일반상업지역', ladUseSittnNm: '상업용' }), row(200, { roadSideCodeNm: '', tpgrphFrmCodeNm: '' })];
+      return js({ referLandPrices: { resultCode: '', totalCount: String(rows.length), field: rows } });
     }
     if (url.pathname === '/ned/data/getLandCharacteristics') {
       const pnu = url.searchParams.get('pnu'); const year = Number(url.searchParams.get('stdrYear'));
@@ -167,4 +178,32 @@ test('미존재 필지·미래연도 응답(NOT_FOUND)은 자료 없음으로 �
   await expect(page.locator('[data-field="land_category"]')).toHaveAttribute('data-status', 'NOT_QUERIED');
   await expect(page.locator('[data-field="land_category"]')).toContainText('자료 없음');
   await expect(page.locator('[data-field="land_category"]')).not.toContainText('조회 실패');
+});
+
+test('PR-2 직접 모드: 같은 법정동 표준지 조회 → 후보·배제·거리, 중복행 정리, 빈 값은 가설 없음', async ({ page }, testInfo) => {
+  const calls = await mockVworld(page);
+  await useKey(page);
+  await lookup(page, NURI, '123-4');
+  await ready(page);
+  await tab(page, testInfo, 'analysis');
+  await expect(page.locator('[data-standard-status="FOUND"]')).toBeVisible();
+  await expect(page.locator('[data-standard-candidate]')).toHaveCount(2);
+  await expect(page.locator('[data-standard-scope]')).toContainText('getReferLandPriceAttr');
+  await expect(page.locator('[data-standard-excluded]')).toContainText('용도지역 상이(일반상업지역)');
+  const c2 = page.locator('[data-standard-candidate="2"]');
+  await c2.locator('summary').click();
+  await expect(c2.locator('[data-factor="street"]')).toHaveAttribute('data-factor-status', 'NEEDS_CHECK');
+  await expect(c2.locator('[data-factor="street"] [data-hypothesis]')).toHaveCount(0);
+  expect(calls.filter((c) => c.path === '/ned/data/getReferLandPriceAttr').length).toBe(1);
+  expect(await page.content()).not.toContain(FAKE_KEY);
+});
+
+test('PR-2 직접 모드: 표준지 조회 실패 시 임의 후보 없음', async ({ page }, testInfo) => {
+  await mockVworld(page, { ned: 'std-fail' });
+  await useKey(page);
+  await lookup(page, NURI, '123-4');
+  await ready(page);
+  await tab(page, testInfo, 'analysis');
+  await expect(page.locator('[data-standard-status="FAILED"]')).toContainText('임의 후보를 만들지 않습니다');
+  await expect(page.locator('[data-standard-candidate]')).toHaveCount(0);
 });
