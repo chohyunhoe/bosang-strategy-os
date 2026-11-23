@@ -52,8 +52,10 @@ test('요인 비교: 확인 자료·가설·확인 필요 구분, 자료 없으�
   const std = normalizeStandardRow({ pnu: '9', stdrYear: '2026', prposArea1Nm: 'A', ladUseSittnNm: '다세대', roadSideCodeNm: '소로한면', tpgrphFrmCodeNm: '부정형', tpgrphHgCodeNm: '평지', lndpclAr: '100', pblntfPclnd: '1' });
   const f = Object.fromEntries(compareFactors(target, std, 250).map((x) => [x.key, x]));
   assert.equal(f.zoning.relation, 'SAME');
-  assert.equal(f.street.hypothesis.direction, 'TARGET_WORSE');
-  assert.equal(f.lot.hypothesis.direction, 'TARGET_BETTER', '대상 정형 vs 표준지 부정형');
+  assert.equal(f.street.hypothesis.direction, 'UNDETERMINED', '실제 도로폭·통행 확인 전 우열 보류');
+  assert.equal(f.lot.hypothesis.direction, 'UNDETERMINED', '형상 분류만으로 우열 단정 금지');
+  assert.match(f.street.hypothesis.text, /우열 판정 보류/);
+  assert.match(f.lot.hypothesis.text, /우열 판정 보류/);
   assert.match(f.lot.hypothesis.text, /4\.0배/);
   for (const k of ['access', 'environment', 'surroundings']) { assert.equal(f[k].status, 'NEEDS_CHECK'); assert.equal(f[k].hypothesis, null); }
   assert.match(f.access.facts[0], /250m/);
@@ -156,7 +158,7 @@ test('토지특성 계열 별칭(prposArea1Nm)도 보존, 핵심 필드 해석 �
 
 test('의견 ②는 조회 범위 한계(인접 법정동 미비교)를 밝힘', async () => {
   const d = await run(NURI, '123-4');
-  assert.ok(d.analysis.opinion.standard.some((x) => /인접 법정동 등 다른 지역 표준지는 비교하지 않았고/.test(x.text)));
+  assert.ok(d.analysis.opinion.standard.some((x) => /인접 법정동 등 다른 지역 표준지도 비교하지 않았습니다/.test(x.text)));
   const fake = { ...d, analysis: { ...d.analysis, standard: analyzeStandardCandidates({ target: TARGET, rows: sevenRows(2026).map(({ prposAreaNm1, ...r }) => r), baseYear: 2026 }) } };
   assert.match(buildConsultOpinion(fake).standard[0].text, /해석하지 못해 후보 판정을 보류/);
 });
@@ -200,4 +202,18 @@ test('위치 미조회 필지가 있으면 전체 최근접 표현을 금지하�
   assert.match(result.notes.join(' '), /전체 최근접 여부는 판정 불가/);
   assert.match(result.nearest_excluded.scope_label, /위치가 확인된 표준지 중 가장 가까운/);
   assert.doesNotMatch(result.candidates[0].selection_reasons.join(' '), /조회 표준지 중 .*번째로 가까움/);
+});
+
+test('합성 상담 결과: 공적자료 오인과 획지·도로·행정조건의 근거 없는 우열 표현 차단', async () => {
+  const d = await run(NURI, '123-4');
+  const opinion = d.analysis.opinion;
+  assert.match(opinion.standard.at(-1).text, /합성자료 기준/);
+  assert.doesNotMatch(opinion.standard.at(-1).text, /공적자료 기준/);
+  assert.ok(opinion.issues.length > 0);
+  assert.ok(opinion.issues.every((x) => x.gate === 'EVIDENCE_REQUIRED'), '증빙 확보 전 검토 항목');
+  for (const x of opinion.issues) {
+    assert.doesNotMatch(x.text, /(우세|열세) 가능성/, '지목·도로·형상만으로 감평상 우열 추정 금지');
+  }
+  assert.match(opinion.script, /주위환경/);
+  assert.match(opinion.issue_note, /확정하지 않습니다/);
 });

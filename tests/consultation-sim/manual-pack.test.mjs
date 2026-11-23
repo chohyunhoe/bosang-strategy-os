@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { MANUAL_SCHEMA, validateManualPack, searchManualPack, suggestManualReferences } from '../../browser/consultation-sim/core/manual-pack.js';
+import { MANUAL_SCHEMA, validateManualPack, searchManualPack, suggestManualReferences, getManualEvidenceGates } from '../../browser/consultation-sim/core/manual-pack.js';
 
 const PREFIX = { T:46, S:11, B:12, R:6, Y:12, N:10, L:9, H:9, P:83 };
 function makePack() {
@@ -48,4 +48,15 @@ test('지번 조회로 법률쟁점 자동 확정 금지: reference only, 허위
   assert.ok(!list.some((v)=>v.code==='T-09'));
   draft.analysis.signals=[{kind:'YEAR_CHANGE'}];
   assert.ok(suggestManualReferences(p,draft).some((v)=>v.code==='T-11'));
+});
+
+test('기본서 증빙 게이트 T-01·T-05·T-09·T-12: 확인자료 누락 시 법률판단 금지', () => {
+  const p = makePack();
+  const draft = { fields:{land_category:{value:'대'},land_use:{value:'단독'}},
+    analysis:{standard:{status:'FOUND'},signals:[]}, map:{status:'EXACT_ONE'} };
+  const gates = getManualEvidenceGates(p,draft);
+  assert.deepEqual(gates.map((g)=>g.code),['T-01','T-05','T-09','T-12']);
+  assert.equal(gates[2].state,'NOT_TRIGGERED');
+  assert.ok(gates.every((g)=>g.automatic_legal_conclusion===false));
+  assert.ok(gates.every((g)=>g.role==='REFERENCE_CHECKLIST_ONLY' && g.requires.length >= 3));
 });

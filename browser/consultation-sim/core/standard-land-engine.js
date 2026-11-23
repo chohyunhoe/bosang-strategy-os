@@ -142,15 +142,13 @@ export function compareFactors(target, std, distanceM) {
     needs: '대상 주위환경(주택지대·상가지대·농경지대 등) 지도·현장 확인',
     basis: ['standard.surroundings'],
   }));
-  // 4) 가로조건 — 도로접면 등급 차이로만 우열 '가설'
+  // 4) 가로조건 — 조사용 도로접면 분류는 실측 도로폭·접근성의 우열 판단 자료가 아님
   {
     const [t, s] = pair('road_access');
     const ct = roadClass(t); const cs = roadClass(s);
     let hypothesis = null;
     if (ct != null && cs != null && Math.abs(ct - cs) >= 1) {
-      hypothesis = ct < cs
-        ? { direction: 'TARGET_WORSE', text: `대상 도로접면(${t})이 표준지(${s})보다 좁은 도로에 접해 가로조건 열세 가능성` }
-        : { direction: 'TARGET_BETTER', text: `대상 도로접면(${t})이 표준지(${s})보다 넓은 도로에 접해 가로조건 우세 가능성` };
+      hypothesis = { direction: 'UNDETERMINED', text: `도로접면 분류 차이(대상 ${t} / 표준지 ${s})가 있으나 실제 도로폭·통행·접근 효용을 확인하기 전까지 가로조건 우열 판정 보류` };
     } else if (ct != null && cs != null) {
       hypothesis = { direction: 'SIMILAR', text: '도로접면 등급 유사' };
     }
@@ -188,20 +186,17 @@ export function compareFactors(target, std, distanceM) {
     }
     const st = shapeGroup(target.shape); const ss = shapeGroup(std.shape);
     if (has(target.shape) || has(std.shape)) facts.push(`형상: 대상 ${target.shape || '미확보'} · 표준지 ${std.shape || '미확보'}`);
-    let direction = null;
-    if (st && ss && st !== ss) { hyps.push(st === '부정형' ? '대상 형상이 부정형으로 획지조건 열세 가능성' : '대상 형상이 정형으로 획지조건 우세 가능성'); direction = st === '부정형' ? 'TARGET_WORSE' : 'TARGET_BETTER'; }
+    if (st && ss && st !== ss) hyps.push(`형상 분류 차이(대상 ${target.shape} / 표준지 ${std.shape}) — 실제 이용 효율·건축가능형태 확인 전 우열 판정 보류`);
     if (has(target.elevation) || has(std.elevation)) facts.push(`지세: 대상 ${target.elevation || '미확보'} · 표준지 ${std.elevation || '미확보'}`);
     const forest = useGroup(target.land_use) === '임야';
     if (!forest && has(target.elevation) && has(std.elevation) && target.elevation !== std.elevation) {
-      if (FLAT.test(target.elevation) && UNEVEN.test(std.elevation)) { hyps.push('대상이 평지로 고저 면에서 우세 가능성'); direction = direction || 'TARGET_BETTER'; }
-      else if (UNEVEN.test(target.elevation) && FLAT.test(std.elevation)) { hyps.push('대상 고저(경사·저지)로 이용 편의 열세 가능성'); direction = direction || 'TARGET_WORSE'; }
-      else hyps.push('지세 차이 — 이용 편의 차이 검토');
+      hyps.push(`지세 조사표기 차이(대상 ${target.elevation} / 표준지 ${std.elevation}) — 현장 고저·진입·배수 확인 전 효용 우열 판정 보류`);
     }
     const confirmedCount = [ta != null && sa != null, st && ss, has(target.elevation) && has(std.elevation)].filter(Boolean).length;
     out.push(factor('lot', '획지조건', {
       facts,
       status: confirmedCount === 3 ? 'CONFIRMED' : confirmedCount ? 'PARTIAL' : 'NEEDS_CHECK',
-      hypothesis: hyps.length ? { direction: direction || 'UNDETERMINED', text: hyps.join(' · ') } : null,
+      hypothesis: hyps.length ? { direction: 'UNDETERMINED', text: hyps.join(' · ') } : null,
       needs: '실측 형상·고저·출입 가능 여부 현장 확인',
       basis: ['target.area_m2', 'standard.area_m2', 'target.shape', 'standard.shape', 'target.elevation', 'standard.elevation'],
     }));
@@ -214,7 +209,7 @@ export function compareFactors(target, std, distanceM) {
     out.push(factor('administrative', '행정적 조건', {
       facts,
       status: has(target.zoning) && has(std.zoning) ? 'PARTIAL' : 'NEEDS_CHECK',
-      hypothesis: secondaryDiff ? { direction: 'UNDETERMINED', text: '용도지구·구역 기재가 달라 행위제한 차이 검토 필요' } : null,
+      hypothesis: secondaryDiff ? { direction: 'UNDETERMINED', text: '용도지구·구역의 기재 차이만 확인됨 — 적용되는 실제 행위제한의 차이·기준일은 토지이용계획 원문으로 확인 필요' } : null,
       needs: '토지이용계획확인원(행위제한·도시계획시설) 확인',
       basis: ['target.zoning', 'standard.zoning', 'target.zoning_secondary', 'standard.zoning_secondary'],
     }));

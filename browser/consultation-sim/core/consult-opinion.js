@@ -31,7 +31,7 @@ export function buildConsultOpinion(draft) {
   if (chars.length) features.push(item(`${prefix}공시지가 산정용 토지특성: ${chars.join(' · ')} (실제 현황과 다를 수 있음)`, ['land_use', 'road_access', 'shape', 'elevation'].filter((k) => f(k))));
   signals.filter((s) => ['YEAR_CHANGE', 'REVISION_CONFLICT'].includes(s.kind))
     .forEach((s) => features.push(item(`확인 필요: ${s.title} — ${s.detail}`, s.fields, { kind: 'signal' })));
-  if (!features.length) features.push(item('공적자료에서 확인된 토지 특성이 없습니다(조회 실패 또는 자료 없음).', []));
+  if (!features.length) features.push(item(d.synthetic ? '합성 시연자료에서 토지특성을 확보하지 못했습니다.' : '공적자료에서 확인된 토지 특성이 없습니다(조회 실패 또는 자료 없음).', []));
 
   // ② 비교표준지 검토
   const standard = [];
@@ -47,7 +47,7 @@ export function buildConsultOpinion(draft) {
     if (std.nearest_excluded) {
       standard.push(item(`${std.nearest_excluded.scope_label || '위치가 확인된 표준지 중 가장 가까운'} ${std.nearest_excluded.label || std.nearest_excluded.pnu}(${fmtM(std.nearest_excluded.distance_m)})는 ${std.nearest_excluded.reasons.join(', ')}로 후보에서 제외했습니다.`, [`standard:${std.nearest_excluded.pnu}`]));
     }
-    standard.push(item(`위 후보는 ${std.scope?.label || '같은 법정동'} 표준지 ${std.total_rows || 0}건 안에서의 공적자료 기준 유사도 순서일 뿐입니다. 인접 법정동 등 다른 지역 표준지는 비교하지 않았고, 평가서가 실제로 선정한 비교표준지와 다를 수 있습니다.`, ['standard:scope']));
+    standard.push(item(`위 후보는 ${std.scope?.label || '같은 법정동'} 표준지 ${std.total_rows || 0}건 안에서의 ${d.synthetic ? '합성자료' : '공적자료'} 기준 유사도 순서일 뿐입니다. 실제 이용상황·주위환경·선정 기준시점은 확인하지 않았고, 인접 법정동 등 다른 지역 표준지도 비교하지 않았습니다. 감정평가서상 최종 비교표준지의 적정성을 판단한 것은 아닙니다.`, ['standard:scope']));
   } else if (std.status === 'NONE') {
     standard.push(item(`${std.scope?.label || '조회 범위'}에서 용도지역·이용상황이 유사한 표준지 후보를 찾지 못했습니다(조회 ${std.total_rows || 0}건). 범위 확대 여부는 전문가가 판단해야 합니다.`, ['standard:scope']));
   } else if (std.status === 'SCHEMA_UNMAPPED') {
@@ -66,26 +66,25 @@ export function buildConsultOpinion(draft) {
   const fac = (key) => top?.factors.find((x) => x.key === key);
   // 지목과 조사용 이용상황의 명칭 차이만으로 현황불일치 주장을 만들지 않는다.
   const street = fac('street');
-  if (street?.hypothesis && ['TARGET_WORSE', 'TARGET_BETTER'].includes(street.hypothesis.direction)) {
-    issues.push(item(street.hypothesis.direction === 'TARGET_WORSE'
-      ? `도로조건: ${street.hypothesis.text}. 평가서가 가로조건 격차를 어떻게 반영했는지 확인할 쟁점 후보입니다.`
-      : `도로조건: ${street.hypothesis.text}. 평가서의 가로조건 비교에 대상의 도로 여건이 반영됐는지 확인할 쟁점 후보입니다.`,
-    street.basis, { title: '가로(도로)조건', needs: ['도로 폭·포장 현장 사진', '지적도·도로대장'] }));
+  if (street?.hypothesis && street.hypothesis.direction === 'UNDETERMINED') {
+    issues.push(item(`가로조건: ${street.hypothesis.text}. 조사용 분류만으로 평가상 우열을 주장하지 않으며 현장·평가서 확인이 필요합니다.`,
+      street.basis, { title: '가로(도로)조건 확인', needs: ['도로 폭·포장·통행 상태 현장 사진', '지적도·도로대장', '보상평가서(개별요인)'], gate: 'EVIDENCE_REQUIRED' }));
   }
   const lot = fac('lot');
   if (lot?.hypothesis) {
-    issues.push(item(`획지조건: ${lot.hypothesis.text}. 형상·고저·규모 차이의 반영 여부를 검토할 쟁점 후보입니다.`, lot.basis, { title: '획지조건', needs: ['지적도·실측도', '현장 사진(경사·출입)'] }));
+    issues.push(item(`획지조건: ${lot.hypothesis.text}. 현장·평가서 확인 전에는 실제 이용 효용이나 보상상 우열을 판단할 수 없습니다.`,
+      lot.basis, { title: '획지조건 확인', needs: ['지적도·실측도', '현장 사진(경사·출입)', '보상평가서(획지요인 비교)'], gate: 'EVIDENCE_REQUIRED' }));
   }
   const adm = fac('administrative');
   if (adm?.hypothesis || (d.fields.zoning_secondary?.value)) {
-    issues.push(item(`행정적 조건: ${adm?.hypothesis ? adm.hypothesis.text : `대상에 ${d.fields.zoning_secondary.value} 기재가 있어 행위제한 영향을 확인`}할 쟁점 후보입니다.`,
-      ['zoning', 'zoning_secondary'], { title: '행정적 조건(용도지구·행위제한)', needs: ['토지이용계획확인원'] }));
+    issues.push(item(`행정적 조건: ${adm?.hypothesis ? adm.hypothesis.text : `대상에 ${d.fields.zoning_secondary.value} 기재가 있으므로 실제 행위제한 원문을 확인할 필요가 있습니다.`} 기재 차이만으로 보상상 우열을 판단하지 않습니다.`,
+      ['zoning', 'zoning_secondary'], { title: '행정적 조건 확인', needs: ['토지이용계획확인서', '계획시설·지구단위계획 결정도서'], gate: 'EVIDENCE_REQUIRED' }));
   }
   if (std.status === 'NONE') {
     issues.push(item('비교표준지 선정: 같은 법정동 안에 유사 표준지가 없어, 평가서의 비교표준지 선정 근거가 쟁점이 될 수 있습니다.', ['standard:scope'], { title: '비교표준지 선정 적정성', needs: ['보상평가서(비교표준지 선정 사유)'] }));
   }
   signals.filter((s) => s.kind === 'YEAR_CHANGE').forEach((s) => issues.push(item(`토지특성 변경: ${s.detail}. 변경 경위가 평가에 어떻게 반영됐는지 확인할 사항입니다.`, s.fields, { title: '연도 간 토지특성 변경', needs: ['지자체 토지특성 변경 사유'] })));
-  const issueNote = '쟁점은 공적자료 기준 후보이며, 평가서·현장·전문가 검토 전에는 확정하지 않습니다.';
+  const issueNote = `표시된 항목은 ${d.synthetic ? '합성자료' : '공적자료'}에 따른 확인 과제이며, 감정평가서·현장증빙·법령 원문 대조 전에는 주장 성립이나 가치 우열을 확정하지 않습니다.`;
 
   // ④ 추가 확보자료 · 상담 멘트
   const materials = [...new Set([
@@ -98,8 +97,7 @@ export function buildConsultOpinion(draft) {
     sentences.push(`${d.synthetic ? '(시연자료 기준) 가상 조사자료상 ' : '공적자료로 보면 '}이 토지는 ${[zn?.value, lc && `지목 ${lc.value}`, ar && `${Number(ar.value).toLocaleString('ko-KR')}㎡`].filter(Boolean).join(', ')}이고${pr ? `, 개별공시지가는 ${pr.base_year || d.binding.base_year}년 ㎡당 ${Number(pr.value).toLocaleString('ko-KR')}원` : ''}으로 확인됩니다.`);
   }
   if (top) {
-    const diffLabels = top.factors.filter((x) => x.hypothesis && ['TARGET_WORSE', 'TARGET_BETTER'].includes(x.hypothesis.direction)).map((x) => x.label);
-    sentences.push(`인근 표준지 중 ${top.row.label || '후보 1'}이(가) 용도지역과 이용상황이 비슷한 후보로 보이며${diffLabels.length ? `, ${diffLabels.join('·')}에서 차이가 있어 평가 때 이 부분이 어떻게 반영됐는지 살펴볼 필요가 있습니다.` : ', 현재 공적자료만으로는 뚜렷한 차이 항목이 보이지 않습니다.'}`);
+    sentences.push(`인근 표준지 중 ${top.row.label || '후보 1'}이(가) 용도지역과 조사용 이용상황이 유사한 후보로 보이지만, 실제 이용상황·주위환경·요인비교 기준시점을 확인하기 전에는 적정성을 판단할 수 없습니다. ${top.factors.filter((x) => x.hypothesis && x.hypothesis.direction === 'UNDETERMINED').map((x) => x.label).slice(0, 3).join('·') || '추가 비교항목'}은 확인할 항목입니다.`);
   } else if (std.status === 'NONE') {
     sentences.push('같은 동네 안에서는 조건이 비슷한 표준지가 바로 확인되지 않아, 평가서의 비교표준지 선정 근거부터 확인해야 합니다.');
   }
