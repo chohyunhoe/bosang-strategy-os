@@ -2,7 +2,7 @@
 
 기준: `feat/consultation-sim-pr1`(PR #23) 위에 쌓은 별도 변경 단위 `feat/consultation-sim-pr2`
 
-상태: `SYNTHETIC_AND_MOCK_VERIFIED / LIVE_STANDARD_API_NOT_CALLED / FOLD8_LIVE_BLOCKED`
+상태: `LIVE_STANDARD_API_SUCCESS (ThinkPad, GPT 검증) / STANDARD_SCHEMA_MAPPING_FIXED / LIVE_AERIAL_IMAGE_TRANSFER_SUCCESS / OVERLAY_ON_DEVICE_UNVERIFIED / FOLD8_LIVE_BLOCKED`
 
 ## 1. 표준지 자료 원천
 
@@ -14,7 +14,11 @@
 
 - 범위 확대(인접 법정동)는 자동으로 하지 않는다. 후보가 없으면 "표준지 후보 미확보"와 함께 범위 판단을 전문가에게 남긴다.
 - 거리: 후보(최대 10건)만 지적 도형(`LP_PA_CBND_BUBUN`) 중심점으로 계산. 호출 수를 줄이려 배제 표준지는 거리 미산출일 수 있다.
-- 응답 root 이름과 필드명은 **실호출 미확인**. 토지특성 API와 같은 계열 필드명을 우선 매핑하고, 빈 값은 "확인 필요"로 둔다(외부 사례상 2025년 일부 행은 지세·형상·도로접면·용도지역이 빈 문자열). 연결 점검에 `standard_lands` 단계를 추가해 실제 행 수·필드 이름을 확인한다.
+- **2026-11-23 실호출(GPT, ThinkPad, 공공청사 표본 법정동)**: `getReferLandPriceAttr` 2025·2026 각 HTTP 200·JSONP 정상·root `referLandPrices`·연도별 7행.
+- 실스키마 차이 수정: 표준지 용도지역은 **`prposAreaNm1`**, 보조 용도지역은 **`prposAreaNm2`**(토지특성 API의 `prposArea1Nm`/`prposArea2Nm`과 다름). 표준지 매핑은 실스키마 우선, 토지특성 계열 이름은 별칭으로 보존.
+- 안전장치: 용도지역·이용상황·공시지가·기준연도·PNU 중 하나라도 응답 전체에서 해석되지 않으면 '미기재'로 전부 배제하지 않고 `SCHEMA_UNMAPPED`(판정 보류)로 멈추고 응답 필드 이름을 표시한다.
+- 빈 값은 "확인 필요"로 둔다(외부 사례상 일부 행의 지세·형상·도로접면이 빈 문자열).
+- 조회 범위 한계: 같은 법정동 표준지만 비교한다. 인접 법정동·주위환경이 유사한 다른 지역 표준지가 빠질 수 있음을 후보 목록·의견 ②에 항상 표시한다.
 
 ## 2. 후보 선정 규칙 (`core/standard-land-engine.js`)
 
@@ -53,5 +57,6 @@
 |---|---|
 | 단위(합성) | 28/28 (토지특성·중복행 22 + 표준지·의견 6) |
 | E2E(합성·VWorld 모의) | 89 pass / 1 skip — PC 1440·Fold 884·Fold 412 |
-| 실제 표준지 API 호출 | **미실행** (이 작업 환경에서 api.vworld.kr 차단, ThinkPad 미연결) |
+| 실제 표준지 API 호출 | **성공**(GPT·ThinkPad, 2025·2026 각 7행) — 필드 매핑 오류 발견·수정 |
+| 실제 항공사진(/req/image PHOTO) | **전송 성공**(HTTP 200·PNG) — 화면 겹침 위치(정합)·촬영일은 미검증 |
 | Fold8 실데이터 | **미실행** (배포 도메인 VWorld 등록·약관 확인 전) |

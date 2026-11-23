@@ -83,11 +83,11 @@ export const SYNTHETIC_PARCELS = Object.freeze({
 export const SYNTHETIC_ORIGIN = Object.freeze({ [NURI_SAESOL]: [0, 0], [HANBIT_SAESOL]: [800, 0], [BAWI]: [0, 900] });
 export const CELL = Object.freeze({ w: 22, h: 26, gap: 6 });
 
-// ── PR-2 합성 표준지 (VWorld 표준지공시지가 속성 필드 이름 형태 · 값은 전부 가상) ──
+// ── PR-2 합성 표준지 (2026-11-23 실호출로 확인한 getReferLandPriceAttr 필드 이름 형태 · 값은 전부 가상) ──
 // 설계: 새솔동(누리구) 123-4 기준 후보 3건, 가장 가까운 표준지는 용도지역 상이로 배제 / 바위리 산12-3 기준 후보 1건 / 한빛구 새솔동 기준 후보 0건
 const std = (region, bun, cell, year, over) => ({
   pnu: `${region}1${String(bun).padStart(4, '0')}0000`, stdrYear: String(year), ldCodeNm: SYNTHETIC_REGIONS.find((r) => r.code === region)?.full_name || '',
-  mnnmSlno: String(bun), lndcgrCodeNm: '대', lndpclAr: '400', prposArea1Nm: '제2종일반주거지역', prposArea2Nm: '', ladUseSittnNm: '단독',
+  mnnmSlno: String(bun), lndcgrCodeNm: '대', lndpclAr: '400', prposAreaNm1: '제2종일반주거지역', prposAreaNm2: '', ladUseSittnNm: '단독',
   roadSideCodeNm: '세로한면(가)', tpgrphFrmCodeNm: '가로장방형', tpgrphHgCodeNm: '평지', pblntfPclnd: '1900000', lastUpdtDt: `${year}-02-28`, _cell: cell, ...over,
 });
 const both = (region, bun, cell, base, p26, p25) => [std(region, bun, cell, 2026, { ...base, pblntfPclnd: String(p26) }), std(region, bun, cell, 2025, { ...base, pblntfPclnd: String(p25) })];
@@ -96,7 +96,7 @@ export const SYNTHETIC_STANDARD_LANDS = Object.freeze({
     ...both(NURI_SAESOL, 110, [4, 1], { ladUseSittnNm: '다세대', roadSideCodeNm: '소로한면', lndpclAr: '350', srrndngsNm: '주택지대' }, 2150000, 2080000),
     ...both(NURI_SAESOL, 200, [6, 4], { lndpclAr: '520', tpgrphFrmCodeNm: '부정형', srrndngsNm: '주택지대' }, 1820000, 1760000),
     ...both(NURI_SAESOL, 400, [8, 3], { ladUseSittnNm: '연립', roadSideCodeNm: '세로각지(가)', tpgrphFrmCodeNm: '사다리형', tpgrphHgCodeNm: '완경사', lndpclAr: '610' }, 1760000, 1700000),
-    ...both(NURI_SAESOL, 128, [-1, 0], { prposArea1Nm: '일반상업지역', ladUseSittnNm: '상업용', roadSideCodeNm: '중로한면', lndpclAr: '280', srrndngsNm: '상가지대' }, 4800000, 4650000),
+    ...both(NURI_SAESOL, 128, [-1, 0], { prposAreaNm1: '일반상업지역', ladUseSittnNm: '상업용', roadSideCodeNm: '중로한면', lndpclAr: '280', srrndngsNm: '상가지대' }, 4800000, 4650000),
     ...both(NURI_SAESOL, 300, [5, -2], { lndcgrCodeNm: '전', ladUseSittnNm: '전', roadSideCodeNm: '맹지', lndpclAr: '1200', srrndngsNm: '농경지대' }, 690000, 660000),
     std(NURI_SAESOL, 310, [7, 0], 2025, { pblntfPclnd: '1880000' }),
   ],
@@ -104,7 +104,7 @@ export const SYNTHETIC_STANDARD_LANDS = Object.freeze({
     ...both(HANBIT_SAESOL, 90, [2, 1], { srrndngsNm: '주택지대' }, 2300000, 2240000),
   ],
   [BAWI]: [
-    ...both(BAWI, 40, [2, 0], { lndcgrCodeNm: '임야', prposArea1Nm: '자연녹지지역', ladUseSittnNm: '자연림', roadSideCodeNm: '맹지', tpgrphFrmCodeNm: '부정형', tpgrphHgCodeNm: '급경사', lndpclAr: '25000' }, 38000, 36500),
-    ...both(BAWI, 55, [1, 1], { lndcgrCodeNm: '전', prposArea1Nm: '계획관리지역', ladUseSittnNm: '전', roadSideCodeNm: '세로한면(불)', lndpclAr: '1800' }, 120000, 115000),
+    ...both(BAWI, 40, [2, 0], { lndcgrCodeNm: '임야', prposAreaNm1: '자연녹지지역', ladUseSittnNm: '자연림', roadSideCodeNm: '맹지', tpgrphFrmCodeNm: '부정형', tpgrphHgCodeNm: '급경사', lndpclAr: '25000' }, 38000, 36500),
+    ...both(BAWI, 55, [1, 1], { lndcgrCodeNm: '전', prposAreaNm1: '계획관리지역', ladUseSittnNm: '전', roadSideCodeNm: '세로한면(불)', lndpclAr: '1800' }, 120000, 115000),
   ],
 });

@@ -10,15 +10,17 @@ const norm = (v) => (v == null ? '' : String(v).trim());
 const num = (v) => { const s = norm(v).replace(/,/g, ''); const n = Number(s); return s !== '' && Number.isFinite(n) ? n : null; };
 const has = (v) => norm(v) !== '';
 
-// 표준지 응답 필드 이름 — 토지특성 API와 같은 계열 이름을 우선 사용하고, 확인 안 된 별칭은 후순위로 둔다.
-const FIELD_ALIASES = Object.freeze({
+// 표준지 응답 필드 이름.
+// 2026-11-23 실호출(getReferLandPriceAttr, root=referLandPrices): 용도지역 = prposAreaNm1, 보조 용도지역 = prposAreaNm2.
+// 토지특성 API(getLandCharacteristics)는 prposArea1Nm/prposArea2Nm을 쓰므로 원천이 다른 별칭으로 뒤에 보존한다.
+export const STANDARD_FIELD_ALIASES = Object.freeze({
   pnu: ['pnu'],
   year: ['stdrYear'],
   price: ['pblntfPclnd', 'referLandPc', 'pclnd'],
   land_category: ['lndcgrCodeNm'],
   area_m2: ['lndpclAr'],
-  zoning: ['prposArea1Nm'],
-  zoning_secondary: ['prposArea2Nm'],
+  zoning: ['prposAreaNm1', 'prposArea1Nm'],
+  zoning_secondary: ['prposAreaNm2', 'prposArea2Nm'],
   land_use: ['ladUseSittnNm'],
   road_access: ['roadSideCodeNm'],
   shape: ['tpgrphFrmCodeNm'],
@@ -27,7 +29,18 @@ const FIELD_ALIASES = Object.freeze({
   legal_dong: ['ldCodeNm'],
   lot: ['mnnmSlno'],
 });
-const pick = (raw, key) => { for (const name of FIELD_ALIASES[key]) if (has(raw?.[name])) return raw[name]; return null; };
+const pick = (raw, key) => { for (const name of STANDARD_FIELD_ALIASES[key]) if (has(raw?.[name])) return raw[name]; return null; };
+
+// 후보 판정에 꼭 필요한 필드가 응답 전체에서 한 행도 해석되지 않으면 '미기재'로 전부 배제하지 않고 판정을 보류한다
+// (필드 이름이 바뀌었거나 예상과 다를 때 후보가 조용히 0건이 되는 것을 막는다).
+const REQUIRED_FOR_SELECTION = Object.freeze([['zoning', '용도지역'], ['land_use', '이용상황'], ['price', '공시지가'], ['year', '기준연도'], ['pnu', 'PNU']]);
+export function checkStandardMapping(rows) {
+  const list = Array.isArray(rows) ? rows : [];
+  const present = [...new Set(list.flatMap((r) => Object.keys(r || {})))].sort();
+  const counts = Object.fromEntries(REQUIRED_FOR_SELECTION.map(([key]) => [key, list.filter((r) => has(pick(r, key))).length]));
+  const unmapped = list.length ? REQUIRED_FOR_SELECTION.filter(([key]) => counts[key] === 0).map(([key, label]) => ({ key, label, expected: STANDARD_FIELD_ALIASES[key] })) : [];
+  return { row_count: list.length, mapped_counts: counts, unmapped, response_field_names: present };
+}
 
 export function normalizeStandardRow(raw) {
   return {
@@ -223,10 +236,19 @@ function similarityScore(target, std) {
 
 // rows: 표준지 원응답 행 배열. distances: { pnu: 미터|null } (없으면 거리 미산출)
 export function analyzeStandardCandidates({ target, rows, baseYear, distances = {}, maxCandidates = 3, scope = null }) {
-  const notes = ['가장 가까운 표준지를 적정 비교표준지로 확정하지 않음 — 후보는 검토 보조', '보정률·격차율·보상금은 산정하지 않음'];
+  const notes = [
+    '가장 가까운 표준지를 적정 비교표준지로 확정하지 않음 — 후보는 검토 보조',
+    `조회 범위는 ${scope?.label || '같은 법정동'}뿐 — 인접 법정동·주위환경이 유사한 다른 지역 표준지는 포함되지 않았을 수 있음`,
+    '보정률·격차율·보상금은 산정하지 않음',
+  ];
   const t = target || {};
   if (!has(t.zoning) || !has(t.land_use)) {
     return { status: 'INSUFFICIENT_TARGET', candidates: [], excluded: [], notes: [...notes, '대상 용도지역·이용상황이 확보되지 않아 후보를 고를 수 없음'], scope, total_rows: (rows || []).length };
+  }
+  const mapping = checkStandardMapping(rows);
+  if (mapping.unmapped.length) {
+    return { status: 'SCHEMA_UNMAPPED', candidates: [], excluded: [], mapping, scope, total_rows: (rows || []).length,
+      notes: [...notes, `응답 ${mapping.row_count}행에서 ${mapping.unmapped.map((u) => u.label).join('·')} 필드를 해석하지 못해 후보 판정을 보류함(전부 배제하지 않음)`] };
   }
   // 같은 PNU·연도 중복 행은 토지특성과 같은 규칙으로 정리(값 충돌 시 배제)
   const byKey = new Map();
@@ -280,7 +302,7 @@ export function analyzeStandardCandidates({ target, rows, baseYear, distances = 
     status: candidates.length ? 'FOUND' : 'NONE',
     candidates, excluded, nearest_excluded: nearestExcluded,
     notes: candidates.length ? notes : [...notes, '조회 범위 안에서 용도지역·이용상황이 유사한 표준지 후보 미확보 — 범위 확대 여부는 전문가 판단'],
-    scope, total_rows: (rows || []).length, base_year: Number(baseYear),
+    scope, total_rows: (rows || []).length, base_year: Number(baseYear), mapping,
   };
 }
 

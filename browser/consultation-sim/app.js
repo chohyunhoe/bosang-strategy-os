@@ -230,6 +230,7 @@ function factorRows(c) {
 function renderStandard(st) {
   if (!st || st.status === 'NOT_QUERIED' || st.status === 'LOADING') return `<div class="callout" data-standard-status="${esc(st?.status || 'NOT_QUERIED')}">${chip('NOT_QUERIED', st?.status === 'LOADING' ? '조회 중' : '미조회')} 표준지 자료 조회 대기</div>`;
   if (st.status === 'NOT_SUPPORTED' || st.status === 'FAILED') return `<div class="callout" data-standard-status="${esc(st.status)}">${chip(st.status === 'FAILED' ? 'MISMATCH' : 'KEY_REQUIRED', st.status === 'FAILED' ? '조회 실패' : '미지원')} ${esc(st.reason || `표준지 자료를 받지 못했습니다(${st.code || '사유 미상'}). 임의 후보를 만들지 않습니다.`)}</div>`;
+  if (st.status === 'SCHEMA_UNMAPPED') return `<div class="callout" data-standard-status="SCHEMA_UNMAPPED">${chip('MISMATCH', '필드 해석 실패')} 표준지 응답 ${esc(st.mapping.row_count)}행을 받았지만 ${esc(st.mapping.unmapped.map((u) => `${u.label}(기대: ${u.expected.join('/')})`).join(', '))}를 해석하지 못해 후보 판정을 보류했습니다. 전부 배제하지 않습니다.<div class="muted small">응답 필드: ${esc(st.mapping.response_field_names.join(', '))}</div></div>`;
   if (st.status === 'INSUFFICIENT_TARGET') return `<div class="callout" data-standard-status="INSUFFICIENT_TARGET">${chip('FIELD_CHECK', '대상 자료 부족')} 대상 용도지역·이용상황이 확보되지 않아 후보를 고르지 않았습니다.</div>`;
   const head = `<p class="muted small" data-standard-scope>${esc(st.scope?.label || '')} · ${esc(st.source || '')} · 조회 ${st.total_rows}건${st.truncated ? ' (일부만 조회)' : ''}</p>`;
   const notes = `<ul class="notes small">${st.notes.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>`;

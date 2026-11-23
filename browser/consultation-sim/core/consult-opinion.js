@@ -47,9 +47,11 @@ export function buildConsultOpinion(draft) {
     if (std.nearest_excluded) {
       standard.push(item(`가장 가까운 표준지 ${std.nearest_excluded.label || std.nearest_excluded.pnu}(${fmtM(std.nearest_excluded.distance_m)})는 ${std.nearest_excluded.reasons.join(', ')}로 후보에서 제외했습니다.`, [`standard:${std.nearest_excluded.pnu}`]));
     }
-    standard.push(item('위 후보는 공적자료 기준 유사도 순서일 뿐, 평가서가 실제로 선정한 비교표준지와 다를 수 있습니다.', []));
+    standard.push(item(`위 후보는 ${std.scope?.label || '같은 법정동'} 표준지 ${std.total_rows || 0}건 안에서의 공적자료 기준 유사도 순서일 뿐입니다. 인접 법정동 등 다른 지역 표준지는 비교하지 않았고, 평가서가 실제로 선정한 비교표준지와 다를 수 있습니다.`, ['standard:scope']));
   } else if (std.status === 'NONE') {
     standard.push(item(`${std.scope?.label || '조회 범위'}에서 용도지역·이용상황이 유사한 표준지 후보를 찾지 못했습니다(조회 ${std.total_rows || 0}건). 범위 확대 여부는 전문가가 판단해야 합니다.`, ['standard:scope']));
+  } else if (std.status === 'SCHEMA_UNMAPPED') {
+    standard.push(item(`표준지 응답 ${std.mapping?.row_count || 0}행을 받았지만 ${std.mapping?.unmapped.map((u) => u.label).join('·')} 필드를 해석하지 못해 후보 판정을 보류했습니다. 필드 이름 확인이 필요합니다.`, ['standard:mapping']));
   } else if (std.status === 'INSUFFICIENT_TARGET') {
     standard.push(item('대상토지 용도지역·이용상황이 확보되지 않아 표준지 후보를 고르지 않았습니다.', ['zoning', 'land_use']));
   } else if (std.status === 'LOADING') {

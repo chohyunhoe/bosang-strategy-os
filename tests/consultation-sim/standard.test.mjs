@@ -108,3 +108,54 @@ test('API 장애 시 표준지 FAILED·임의 후보 없음, 늦은 응답 폐�
   await slow;
   assert.equal(s.state.draft.analysis.standard.candidates.length, 1, '이전 필지 표준지 결과 혼입 없음');
 });
+
+// ── 2026-11-23 실호출로 확인한 표준지 응답 스키마 회귀 (값은 전부 가상, 실제 사례 하드코딩 없음) ──
+const realSchemaRow = (year, i, over = {}) => ({
+  pnu: `99011010001${String(500 + i).padStart(4, '0')}0000`, stdrYear: String(year), ldCodeNm: '가상특별시 누리구 새솔동', mnnmSlno: String(500 + i),
+  lndcgrCodeNm: '대', lndpclAr: String(300 + i * 10), prposAreaNm1: '제2종일반주거지역', prposAreaNm2: '지정되지않음',
+  ladUseSittnNm: '단독', roadSideCodeNm: '세로한면(가)', tpgrphFrmCodeNm: '가로장방형', tpgrphHgCodeNm: '평지',
+  pblntfPclnd: String(1500000 + i * 10000), lastUpdtDt: `${year}-03-01`, ...over,
+});
+const sevenRows = (year) => [
+  realSchemaRow(year, 0), realSchemaRow(year, 1, { ladUseSittnNm: '다세대' }), realSchemaRow(year, 2, { roadSideCodeNm: '소로한면' }),
+  realSchemaRow(year, 3, { prposAreaNm1: '일반상업지역', ladUseSittnNm: '상업용' }), realSchemaRow(year, 4, { ladUseSittnNm: '전', lndcgrCodeNm: '전' }),
+  realSchemaRow(year, 5, { prposAreaNm1: '제1종일반주거지역' }), realSchemaRow(year, 6, { roadSideCodeNm: '', tpgrphFrmCodeNm: '' }),
+];
+const TARGET = { zoning: '제2종일반주거지역', zoning_secondary: null, land_use: '단독', land_category: '대', road_access: '세로한면(가)', shape: '세로장방형', elevation: '평지', area_m2: 400 };
+
+test('실스키마(prposAreaNm1/2) 7행 × 2025·2026: 용도지역 전부 해석, 후보·배제 사유 정상', () => {
+  for (const year of [2025, 2026]) {
+    const rows = sevenRows(year);
+    rows.forEach((r) => assert.equal(normalizeStandardRow(r).zoning, r.prposAreaNm1, '용도지역 매핑'));
+    assert.equal(normalizeStandardRow(rows[0]).zoning_secondary, '지정되지않음');
+    const r = analyzeStandardCandidates({ target: TARGET, rows, baseYear: year, scope: { label: '같은 법정동(9901101000)' } });
+    assert.equal(r.status, 'FOUND', `${year}`);
+    assert.equal(r.mapping.mapped_counts.zoning, 7);
+    assert.equal(r.candidates.length, 3);
+    const reasons = r.excluded.flatMap((x) => x.reasons).join(' | ');
+    assert.doesNotMatch(reasons, /용도지역 미기재/, '실스키마에서 미기재 오판 없음');
+    assert.match(reasons, /용도지역 상이\(일반상업지역\)/);
+    assert.match(reasons, /용도지역 상이\(제1종일반주거지역\)/);
+    assert.match(reasons, /이용상황군 상이\(전: 농지/);
+    assert.match(reasons, /유사 후보 3건 초과/);
+    assert.ok(r.notes.some((n) => n.includes('인접 법정동')), '조회 범위 한계 고지');
+  }
+});
+
+test('토지특성 계열 별칭(prposArea1Nm)도 보존, 핵심 필드 해석 실패 시 전부 배제 대신 판정 보류', () => {
+  const legacy = sevenRows(2026).map(({ prposAreaNm1, prposAreaNm2, ...rest }) => ({ ...rest, prposArea1Nm: prposAreaNm1, prposArea2Nm: prposAreaNm2 }));
+  assert.equal(analyzeStandardCandidates({ target: TARGET, rows: legacy, baseYear: 2026 }).status, 'FOUND');
+  const unknown = sevenRows(2026).map(({ prposAreaNm1, prposAreaNm2, ...rest }) => ({ ...rest, prposAreaX: prposAreaNm1 }));
+  const held = analyzeStandardCandidates({ target: TARGET, rows: unknown, baseYear: 2026 });
+  assert.equal(held.status, 'SCHEMA_UNMAPPED');
+  assert.deepEqual(held.mapping.unmapped.map((u) => u.key), ['zoning']);
+  assert.ok(held.mapping.response_field_names.includes('prposAreaX'));
+  assert.equal(held.excluded.length, 0, '미기재로 전부 배제하지 않음');
+});
+
+test('의견 ②는 조회 범위 한계(인접 법정동 미비교)를 밝힘', async () => {
+  const d = await run(NURI, '123-4');
+  assert.ok(d.analysis.opinion.standard.some((x) => /인접 법정동 등 다른 지역 표준지는 비교하지 않았고/.test(x.text)));
+  const fake = { ...d, analysis: { ...d.analysis, standard: analyzeStandardCandidates({ target: TARGET, rows: sevenRows(2026).map(({ prposAreaNm1, ...r }) => r), baseYear: 2026 }) } };
+  assert.match(buildConsultOpinion(fake).standard[0].text, /해석하지 못해 후보 판정을 보류/);
+});

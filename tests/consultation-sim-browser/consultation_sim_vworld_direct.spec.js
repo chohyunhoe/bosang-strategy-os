@@ -1,5 +1,6 @@
 'use strict';
 // VWorld 브라우저 직접 모드 — api.vworld.kr 응답을 가로채 JSONP로 모사(실제 키·실호출 없음)
+// 표준지 응답 형태(root=referLandPrices, prposAreaNm1/2)는 2026-11-23 실호출 결과에 맞춤 — 값은 전부 가상
 const { test, expect } = require('@playwright/test');
 
 const NURI = '가상특별시 누리구 새솔동';
@@ -47,8 +48,8 @@ async function mockVworld(page, { ned = 'jsonp' } = {}) {
       const year = url.searchParams.get('stdrYear');
       const ld = url.searchParams.get('ldCode');
       const row = (bun, over) => ({ pnu: `${ld}1${String(bun).padStart(4, '0')}0000`, stdrYear: year, ldCodeNm: NURI, mnnmSlno: String(bun), lndcgrCodeNm: '대', lndpclAr: '380',
-        prposArea1Nm: '제2종일반주거지역', prposArea2Nm: '', ladUseSittnNm: '다세대', roadSideCodeNm: '소로한면', tpgrphFrmCodeNm: '가로장방형', tpgrphHgCodeNm: '평지', pblntfPclnd: '2100000', lastUpdtDt: `${year}-02-28`, ...over });
-      const rows = [row(110, {}), row(110, { lastUpdtDt: `${year}-03-15` }), row(128, { prposArea1Nm: '일반상업지역', ladUseSittnNm: '상업용' }), row(200, { roadSideCodeNm: '', tpgrphFrmCodeNm: '' })];
+        prposAreaNm1: '제2종일반주거지역', prposAreaNm2: '', ladUseSittnNm: '다세대', roadSideCodeNm: '소로한면', tpgrphFrmCodeNm: '가로장방형', tpgrphHgCodeNm: '평지', pblntfPclnd: '2100000', lastUpdtDt: `${year}-02-28`, ...over });
+      const rows = [row(110, {}), row(110, { lastUpdtDt: `${year}-03-15` }), row(128, { prposAreaNm1: '일반상업지역', ladUseSittnNm: '상업용' }), row(200, { roadSideCodeNm: '', tpgrphFrmCodeNm: '' })];
       return js({ referLandPrices: { resultCode: '', totalCount: String(rows.length), field: rows } });
     }
     if (url.pathname === '/ned/data/getLandCharacteristics') {
