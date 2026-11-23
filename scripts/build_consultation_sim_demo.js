@@ -1,6 +1,6 @@
 'use strict';
 // BSO 상담 시뮬레이터 공개 시연판 빌드 — 합성 데이터 전용 단일 HTML.
-// - 실데이터 브리지 어댑터(bridge-adapter.js)는 번들에서 제외하고 호출 시 예외를 던지는 스텁으로 대체한다.
+// - 실데이터 어댑터(bridge-adapter.js, vworld-direct-adapter.js)는 번들에서 제외하고 호출 시 예외를 던지는 스텁으로 대체한다.
 // - 외부 네트워크 호출·키·브리지 경로·실제 사건명 흔적이 있으면 빌드를 실패시킨다.
 // - Product v2 / Release v1 / 기존 Cloudflare·Netlify 빌드와 무관한 별도 출력(dist/consultation-sim-demo).
 // 사용: node scripts/build_consultation_sim_demo.js [--host=claude-artifact|static]
@@ -25,6 +25,7 @@ const ORDER = [
 ];
 const STUBS = {
   'adapters/bridge-adapter.js': 'function createBridgeAdapter() { throw new Error("LIVE_BRIDGE_EXCLUDED_FROM_PUBLIC_DEMO"); }\nreturn { createBridgeAdapter };',
+  'adapters/vworld-direct-adapter.js': 'function createVworldDirectAdapter() { throw new Error("VWORLD_DIRECT_EXCLUDED_FROM_PUBLIC_DEMO"); }\nconst DIRECT_PROBE = Object.freeze({ address: "", note: "" });\nreturn { createVworldDirectAdapter, DIRECT_PROBE };',
 };
 
 function transform(key, code) {

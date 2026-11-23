@@ -2,6 +2,7 @@
 import { createConsultationSession, STATUS, STATUS_LABEL, FIELD_DEFS, effectiveValue } from './core/consultation-session.js';
 import { createSyntheticAdapter } from './adapters/synthetic-adapter.js';
 import { createBridgeAdapter } from './adapters/bridge-adapter.js';
+import { createVworldDirectAdapter, DIRECT_PROBE } from './adapters/vworld-direct-adapter.js';
 import { renderMap } from './map-view.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -22,15 +23,18 @@ const params = new URLSearchParams(location.search);
 const RUNTIME = Object.freeze({ synthetic_only: false, host: 'local', ...(window.BSO_CONSULT_RUNTIME || {}) });
 const IN_ARTIFACT = RUNTIME.host === 'claude-artifact';
 const ui = {
-  mode: !RUNTIME.synthetic_only && params.get('mode') === 'live' ? 'LIVE_BRIDGE' : 'SYNTHETIC',
+  mode: RUNTIME.synthetic_only ? 'SYNTHETIC' : ({ live: 'LIVE_BRIDGE', vworld: 'VWORLD_DIRECT' }[params.get('mode')] || 'SYNTHETIC'),
   scenario: ['NO_MAP_KEY', 'API_DOWN'].includes(params.get('scenario')) ? params.get('scenario') : 'DEFAULT',
-  tab: 'map', editing: null, saveOpen: false, footer: '', adapterStatus: null,
+  tab: 'map', editing: null, saveOpen: false, footer: '', adapterStatus: null, probe: null, probing: false,
 };
 let adapter; let session;
 
 function buildAdapter() {
   if (RUNTIME.synthetic_only) ui.mode = 'SYNTHETIC';
-  adapter = ui.mode === 'LIVE_BRIDGE' ? createBridgeAdapter() : createSyntheticAdapter({ scenario: ui.scenario });
+  adapter = ui.mode === 'LIVE_BRIDGE' ? createBridgeAdapter()
+    : ui.mode === 'VWORLD_DIRECT' ? createVworldDirectAdapter()
+      : createSyntheticAdapter({ scenario: ui.scenario });
+  ui.probe = null;
   session = createConsultationSession({ adapter, onChange: render });
   ui.editing = null; ui.saveOpen = false; ui.footer = ''; ui.adapterStatus = null;
   $('[data-region-hints]').innerHTML = adapter.regionHints().map((name) => `<option value="${esc(name)}"></option>`).join('');
@@ -48,6 +52,10 @@ function renderModeBar() {
   if (ui.mode === 'SYNTHETIC') {
     badge.className = 'badge synthetic';
     badge.textContent = `${RUNTIME.synthetic_only ? '공개 시연판 · ' : ''}합성 데이터 · 실데이터 미연결${ui.scenario !== 'DEFAULT' ? ` · ${$('[data-scenario-select]').selectedOptions[0].textContent}` : ''}`;
+  } else if (ui.mode === 'VWORLD_DIRECT') {
+    const hasKey = adapter.hasKey();
+    badge.className = hasKey ? 'badge live' : 'badge warn';
+    badge.textContent = hasKey ? 'VWorld 직접 · 실데이터 · 검토 보조 · 항공사진 미연결' : 'API 키/권한 필요 · 이 기기에서 키 입력';
   } else if (!st) {
     badge.className = 'badge'; badge.textContent = '브리지 확인 중…';
   } else if (!st.ok || !st.characteristics) {
@@ -56,6 +64,47 @@ function renderModeBar() {
     badge.className = 'badge live'; badge.textContent = `${d.label} · 지도 보류`;
   }
   document.body.dataset.dataMode = ui.mode;
+}
+
+function renderKeyPanel() {
+  const panel = $('[data-key-panel]');
+  panel.hidden = ui.mode !== 'VWORLD_DIRECT';
+  if (panel.hidden) { panel.innerHTML = ''; return; }
+  if (panel.dataset.built !== '1') {
+    panel.dataset.built = '1';
+    panel.innerHTML = `
+      <div class="key-row">
+        <label>VWorld 인증키 <span class="hint">이 기기 메모리에만 보관 · 저장·전송·표시 안 함</span>
+          <input type="password" data-vw-key autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="키 입력 후 적용"></label>
+        <button type="button" class="primary" data-vw-key-apply>적용</button>
+        <button type="button" class="link" data-vw-key-clear>키 지우기</button>
+        <button type="button" class="secondary" data-vw-probe>연결 점검</button>
+      </div>
+      <p class="muted small">호출 도메인: <span class="mono" data-vw-domain></span> — VWorld에 등록한 서비스 URL과 같아야 합니다. 공공데이터포털 키는 브라우저로 보내지 않습니다.</p>
+      <div data-vw-probe-out></div>`;
+    $('[data-vw-key-apply]', panel).addEventListener('click', () => {
+      const input = $('[data-vw-key]', panel);
+      adapter.setKey(input.value); input.value = '';
+      ui.probe = null; adapter.status().then((st) => { ui.adapterStatus = st; render(); });
+    });
+    $('[data-vw-key-clear]', panel).addEventListener('click', () => { adapter.clearKey(); ui.probe = null; session.reset(); render(); });
+    $('[data-vw-probe]', panel).addEventListener('click', async () => {
+      if (!adapter.hasKey()) { ui.probe = { error: '먼저 인증키를 적용하세요.' }; render(); return; }
+      ui.probing = true; render();
+      try { ui.probe = await adapter.probe(); } catch (error) { ui.probe = { error: String(error?.code || error?.message || error) }; }
+      ui.probing = false; render();
+    });
+  }
+  $('[data-vw-domain]', panel).textContent = adapter.domain();
+  $('[data-vw-probe]', panel).disabled = ui.probing;
+  const out = $('[data-vw-probe-out]', panel);
+  if (ui.probing) { out.innerHTML = '<p class="muted small">점검 중… (최대 약 40초)</p>'; return; }
+  if (!ui.probe) { out.innerHTML = `<p class="muted small">점검 표본: ${esc(DIRECT_PROBE.address)} (${esc(DIRECT_PROBE.note)})</p>`; return; }
+  if (ui.probe.error) { out.innerHTML = `<p class="error small" data-vw-probe-error>${esc(ui.probe.error)}</p>`; return; }
+  const label = { search: '주소→PNU 검색', cadastral: '지적 경계' };
+  out.innerHTML = `<ul class="probe" data-vw-probe-result>${ui.probe.steps.map((st) => `<li data-probe-step="${esc(st.name)}" data-ok="${st.ok}">
+    ${chip(st.ok ? 'OFFICIAL_OK' : 'MISMATCH', st.ok ? '호출 성공' : '실패')} <b>${esc(label[st.name] || st.name.replace('land_characteristics_', '토지특성 '))}</b>
+    <div class="note">${esc(st.detail)}</div></li>`).join('')}</ul>`;
 }
 
 function renderNotice(state) {
@@ -260,6 +309,7 @@ function render() {
   if (!session) return;
   const state = session.state;
   renderModeBar();
+  renderKeyPanel();
   renderNotice(state);
   $('[data-map]').innerHTML = renderMap(state.draft);
   renderLand(state);
@@ -297,6 +347,7 @@ $('[data-proposal]').addEventListener('click', () => {
 if (RUNTIME.synthetic_only) {
   const select = $('[data-mode-select]');
   select.querySelector('option[value="LIVE_BRIDGE"]')?.remove();
+  select.querySelector('option[value="VWORLD_DIRECT"]')?.remove();
   select.disabled = true;
 }
 if (IN_ARTIFACT) {

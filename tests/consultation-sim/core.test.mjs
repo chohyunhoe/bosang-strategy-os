@@ -247,3 +247,20 @@ test('배포 보안: 실데이터 브리지 서버는 루프백(127.0.0.1)에만
   assert.match(demo, /"synthetic_only":true/);
   assert.match(demo, /LIVE_BRIDGE_EXCLUDED_FROM_PUBLIC_DEMO/);
 });
+
+test('VWorld 토지특성 파서: 정확히 1행만 채택, 면적 포함, 0건·복수·불일치·오류코드 처리', async () => {
+  const { parseNedLandCharacteristics } = await import('../../browser/consultation-sim/adapters/vworld-direct-adapter.js');
+  const row = { pnu: '9901101000101230004', stdrYear: '2026', lndcgrCodeNm: '대', lndpclAr: '412.5', pblntfPclnd: '1,968,000', ladUseSittnNm: '단독' };
+  const ok = parseNedLandCharacteristics({ landCharacteristicss: { resultCode: '', totalCount: '1', field: [row] } }, { pnu: row.pnu, year: 2026 });
+  assert.equal(ok.status, 'OK');
+  assert.equal(ok.record.area_m2, 412.5);
+  assert.equal(ok.record.price_per_m2, 1968000);
+  assert.ok(ok.field_names.includes('lndpclAr'));
+  assert.equal(parseNedLandCharacteristics({ landCharacteristicss: { totalCount: '0', field: [] } }, { pnu: row.pnu, year: 2026 }).status, 'NO_DATA_FOR_YEAR');
+  assert.equal(parseNedLandCharacteristics({ landCharacteristicss: { field: [row, row] } }, { pnu: row.pnu, year: 2026 }).code, 'VWORLD_MULTIPLE_EXACT_MATCHES');
+  assert.equal(parseNedLandCharacteristics({ landCharacteristicss: { field: [row] } }, { pnu: row.pnu, year: 2025 }).code, 'VWORLD_EXACT_MATCH_NOT_FOUND');
+  assert.equal(parseNedLandCharacteristics({ landCharacteristicss: { resultCode: 'INCORRECT_KEY', field: [] } }, { pnu: row.pnu, year: 2026 }).code, 'VWORLD_API_ERROR');
+  assert.equal(parseNedLandCharacteristics({ response: { status: 'ERROR', resultCode: 'x' } }, { pnu: row.pnu, year: 2026 }).code, 'VWORLD_API_ERROR');
+  const empty = parseNedLandCharacteristics({ landCharacteristicss: { field: [{ ...row, lndpclAr: '' }] } }, { pnu: row.pnu, year: 2026 });
+  assert.equal(empty.record.area_m2, null, '빈 면적은 0이 아니라 null');
+});
