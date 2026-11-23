@@ -6,6 +6,9 @@ const port = new URL(baseURL).port || '4176';
 const demoURL = process.env.BSO_DEMO_BASE_URL || 'http://127.0.0.1:4177';
 const demoPort = new URL(demoURL).port || '4177';
 process.env.BSO_DEMO_BASE_URL = demoURL;
+const liveURL = process.env.BSO_LIVE_TEST_BASE_URL || 'http://127.0.0.1:4178';
+const livePort = new URL(liveURL).port || '4178';
+process.env.BSO_LIVE_TEST_BASE_URL = liveURL;
 // 선택: 사전 설치 Chromium 경로 지정(사내망 등 브라우저 다운로드 불가 환경). 미지정 시 Playwright 기본 브라우저.
 const launchOptions = process.env.BSO_CHROMIUM_PATH ? { executablePath: process.env.BSO_CHROMIUM_PATH } : {};
 
@@ -36,6 +39,13 @@ module.exports = defineConfig({
       // 공개 시연판(합성 전용 단일 HTML, 아티팩트 호스트 동작) — consultation_sim_demo.spec.js
       command: `node scripts/build_consultation_sim_demo.js --host=claude-artifact && node scripts/serve_product_v2.js dist/consultation-sim-demo ${demoPort}`,
       url: demoURL,
+      reuseExistingServer: false,
+      timeout: 60_000,
+    },
+    {
+      // 실데이터 연결 테스트판(정적 호스트용, VWorld 직접 모드 포함·키 미포함) — consultation_sim_live_test.spec.js
+      command: `node scripts/build_consultation_sim_demo.js --host=static --variant=vworld-direct-test && node scripts/serve_product_v2.js dist/consultation-sim-live-test ${livePort}`,
+      url: liveURL,
       reuseExistingServer: false,
       timeout: 60_000,
     },

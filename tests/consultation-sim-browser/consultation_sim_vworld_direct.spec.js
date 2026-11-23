@@ -40,6 +40,13 @@ async function mockVworld(page, { ned = 'jsonp' } = {}) {
     if (url.pathname === '/ned/data/getLandCharacteristics') {
       const pnu = url.searchParams.get('pnu'); const year = Number(url.searchParams.get('stdrYear'));
       if (ned === 'blocked') return route.abort('blockedbyclient');
+      if (ned === 'not-found') return js({ response: { status: 'NOT_FOUND' } });
+      if (ned === 'dup' || ned === 'conflict') {
+        // 2026-11-23 실호출 재현: 2026년 2행·2025년 3행, 행 간 차이는 lastUpdtDt (conflict는 2026년 가격만 다르게)
+        const dates = year === 2026 ? ['2026-05-31', '2026-07-15'] : ['2025-06-30', '2025-11-02', '2025-08-01'];
+        const rows = dates.map((d, i) => ({ ...nedRow(pnu, year), lastUpdtDt: d, ...(ned === 'conflict' && year === 2026 && i === 1 ? { pblntfPclnd: '2010000' } : {}) }));
+        return js({ landCharacteristicss: { resultCode: '', totalCount: String(rows.length), field: rows } });
+      }
       return js({ landCharacteristicss: { resultCode: '', totalCount: '1', field: [nedRow(pnu, year)] } });
     }
     return route.abort();
@@ -116,4 +123,41 @@ test('연결 점검: 검색·지적·토지특성 호출 성공 여부와 필드
   await expect(result.locator('[data-probe-step="cadastral"]')).toHaveAttribute('data-ok', 'true');
   await expect(result.locator('li[data-probe-step^="land_characteristics_"]').first()).toContainText('lndpclAr');
   await expect(result).not.toContainText(FAKE_KEY);
+});
+
+test('실호출 재현 중복행(2026 2행·2025 3행): 값 표시 + 정리 근거 표시', async ({ page }, testInfo) => {
+  await mockVworld(page, { ned: 'dup' });
+  await useKey(page);
+  await lookup(page, NURI, '123-4');
+  await ready(page);
+  await tab(page, testInfo, 'land');
+  await expect(page.locator('[data-field="price_per_m2"] .val')).toContainText('1,968,000');
+  await expect(page.locator('[data-field="price_per_m2"]')).toHaveAttribute('data-status', 'OFFICIAL_OK');
+  await expect(page.locator('[data-selection-basis]')).toContainText('응답 2행');
+  await expect(page.locator('[data-selection-basis]')).toContainText('2026-07-15');
+});
+
+test('중복행 가격 충돌: 자동 선택 없이 불일치·전문가 검토, 숫자 미표시', async ({ page }, testInfo) => {
+  await mockVworld(page, { ned: 'conflict' });
+  await useKey(page);
+  await lookup(page, NURI, '123-4');
+  await ready(page);
+  await tab(page, testInfo, 'land');
+  await expect(page.locator('[data-field="price_per_m2"]')).toHaveAttribute('data-status', 'MISMATCH');
+  await expect(page.locator('[data-field="price_per_m2"] .val')).not.toContainText(/\d{3},\d{3}/);
+  await expect(page.locator('[data-field="price_per_m2"]')).toContainText('pblntfPclnd');
+  await expect(page.locator('[data-selection-basis]')).toContainText('자동 선택 안 함');
+  await tab(page, testInfo, 'analysis');
+  await expect(page.locator('[data-signal="REVISION_CONFLICT"]')).toContainText('전문가 검토');
+});
+
+test('미존재 필지·미래연도 응답(NOT_FOUND)은 자료 없음으로 구분', async ({ page }, testInfo) => {
+  await mockVworld(page, { ned: 'not-found' });
+  await useKey(page);
+  await lookup(page, NURI, '123-4');
+  await ready(page);
+  await tab(page, testInfo, 'land');
+  await expect(page.locator('[data-field="land_category"]')).toHaveAttribute('data-status', 'NOT_QUERIED');
+  await expect(page.locator('[data-field="land_category"]')).toContainText('자료 없음');
+  await expect(page.locator('[data-field="land_category"]')).not.toContainText('조회 실패');
 });

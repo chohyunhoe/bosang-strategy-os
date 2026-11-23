@@ -76,6 +76,7 @@ export function createDraft({ dataMode, input, candidate, baseYear, requestId })
     parcel: { pnu: candidate.pnu, legal_dong_name: candidate.legal_dong_name, lot_label: candidate.lot_label, mountain: Boolean(candidate.mountain), region_status: candidate.region_status },
     fields: Object.fromEntries(FIELD_DEFS.map((def) => [def.key, emptyField(def)])),
     previous_year: { base_year: Number(baseYear) - 1, status: 'NOT_QUERIED', record: null },
+    public_selection: null,
     map: { status: 'NOT_QUERIED', code: 'MAP_NOT_REQUESTED', source: null, basemap_source: null, capture_date: null, crs: null, geometry: null, point: null, neighbors: [] },
     analysis: {
       standard_candidates: { status: 'NOT_QUERIED', items: [], reason: '표준지 후보 원천(반경조회·지역별 파일) 검증 전 — PR-2에서 연결' },
@@ -87,10 +88,24 @@ export function createDraft({ dataMode, input, candidate, baseYear, requestId })
   };
 }
 
+function conflictNote(selection) {
+  return `응답 ${selection?.row_count || '복수'}행의 값이 서로 다름(${(selection?.conflict_fields || []).join(', ') || '필드 미상'}) — 자동 선택하지 않음, 원문 대조 필요`;
+}
+function recordSelection(draft, kind, response) {
+  if (response?.selection) draft.public_selection = { ...(draft.public_selection || {}), [kind]: response.selection };
+}
+
 function applyCharacteristics(draft, response) {
+  recordSelection(draft, 'characteristics', response);
   FIELD_DEFS.filter((def) => def.api === 'characteristics').forEach((def) => {
     const field = draft.fields[def.key];
     field.fetched_at = response.fetched_at || null;
+    if (!response.ok && response.code === 'VWORLD_REVISION_CONFLICT') {
+      field.status = STATUS.MISMATCH;
+      field.value = null;
+      field.note = conflictNote(response.selection);
+      return;
+    }
     if (!response.ok) {
       field.status = KEY_REQUIRED_CODES.has(response.code) ? STATUS.KEY_REQUIRED : STATUS.NOT_QUERIED;
       field.note = `조회 실패: ${response.code}`;
@@ -101,7 +116,7 @@ function applyCharacteristics(draft, response) {
       field.status = STATUS.NOT_QUERIED;
       field.note = response.status === 'NO_DATA_FOR_YEAR'
         ? `기준연도 자료 없음${response.available_years?.length ? ` (보유연도 ${response.available_years.join('·')} — 자동 대체하지 않음)` : ''}`
-        : '해당 PNU 자료 없음';
+        : '해당 PNU·연도 자료 없음(응답: 자료 없음)';
       return;
     }
     const value = response.record[def.key];
@@ -121,6 +136,12 @@ function applyCharacteristics(draft, response) {
 function applyPrice(draft, response) {
   const field = draft.fields.price_per_m2;
   field.fetched_at = response.fetched_at || null;
+  if (!response.ok && response.code === 'VWORLD_REVISION_CONFLICT') {
+    field.status = STATUS.MISMATCH;
+    field.value = null;
+    field.note = conflictNote(response.selection);
+    return;
+  }
   if (!response.ok) {
     field.status = KEY_REQUIRED_CODES.has(response.code) ? STATUS.KEY_REQUIRED : STATUS.NOT_QUERIED;
     field.note = `조회 실패: ${response.code}`;
@@ -182,6 +203,11 @@ export function computeSignals(draft) {
       signals.push({ kind: 'MISSING', status: STATUS.NOT_QUERIED, title: `${field.label} 미확보`, detail: field.note || '자료 없음', fields: [field.key] });
     }
   });
+  const conflict = Object.values(draft.public_selection || {}).find((sel) => sel?.rule === 'CONFLICT_HOLD');
+  if (conflict) {
+    signals.push({ kind: 'REVISION_CONFLICT', status: STATUS.EXPERT_REVIEW, title: '공적자료 응답 행 간 값 충돌',
+      detail: `${conflict.row_count}행 중 ${conflict.conflict_fields.join(', ')} 값이 다름 — 자동 선택하지 않음`, fields: [] });
+  }
   if (draft.map.status === 'POINT_FALLBACK') {
     signals.push({ kind: 'MAP_GATE', status: STATUS.MISMATCH, title: '지적 도형 미확정', detail: `${draft.map.code} — 좌표 점으로만 표시, 경계 확인 필요`, fields: [] });
   }

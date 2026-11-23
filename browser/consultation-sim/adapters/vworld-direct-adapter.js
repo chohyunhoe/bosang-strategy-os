@@ -18,34 +18,78 @@ const text = (v) => (v == null ? '' : String(v).trim());
 const arr = (v) => (Array.isArray(v) ? v : v && typeof v === 'object' ? [v] : []);
 const num = (v) => { const n = Number(String(v ?? '').replace(/,/g, '')); return Number.isFinite(n) && String(v ?? '').trim() !== '' ? n : null; };
 
+// 같은 PNU·기준연도 행이 여러 개일 때의 규칙 (2026-11-23 실호출: 2026년 2행·2025년 3행, 행 간 차이는 lastUpdtDt뿐)
+// - 갱신 메타(lastUpdtDt)를 뺀 모든 필드 값이 행끼리 완전히 같을 때만 정리한다. 대표행 = 날짜로 검증되는 최신 lastUpdtDt 행.
+//   값이 같으므로 어느 행을 골라도 결과는 같고, 대표행은 출처 기록용이다. 행 수·갱신일 목록·근거를 selection에 남긴다.
+// - 그 외 필드가 하나라도 다르면 자동 선택하지 않는다(VWORLD_REVISION_CONFLICT, 충돌 필드 이름만 기록).
+// - 최신 lastUpdtDt가 날짜로 해석되지 않거나 최신 행이 2개 이상이어도 값이 동일하면 정리하되, 근거에 그 사실을 남긴다.
+export const NED_REVISION_META_FIELDS = Object.freeze(['lastUpdtDt']);
+const norm = (v) => (v == null ? '' : String(v).trim());
+const dateKey = (v) => { const m = norm(v).match(/^(\d{4})-?(\d{2})-?(\d{2})/); return m ? `${m[1]}-${m[2]}-${m[3]}` : null; };
+
+export function collapseNedRevisions(rows) {
+  if (rows.length === 1) return { ok: true, row: rows[0], selection: { row_count: 1, rule: 'SINGLE_ROW' } };
+  const keys = [...new Set(rows.flatMap((row) => Object.keys(row || {})))].filter((k) => !NED_REVISION_META_FIELDS.includes(k)).sort();
+  const conflicts = keys.filter((k) => new Set(rows.map((row) => norm(row[k]))).size > 1);
+  const updated = rows.map((row) => norm(row.lastUpdtDt));
+  if (conflicts.length) {
+    return { ok: false, code: 'VWORLD_REVISION_CONFLICT', selection: { row_count: rows.length, rule: 'CONFLICT_HOLD', conflict_fields: conflicts, last_updated: updated } };
+  }
+  const dated = rows.map((row) => ({ row, key: dateKey(row.lastUpdtDt) }));
+  const valid = dated.filter((d) => d.key);
+  const latest = valid.length ? valid.reduce((a, b) => (b.key > a.key ? b : a)).key : null;
+  const winners = latest ? valid.filter((d) => d.key === latest) : [];
+  const chosen = winners[0]?.row || rows[0];
+  return {
+    ok: true, row: chosen,
+    selection: {
+      row_count: rows.length,
+      rule: 'IDENTICAL_DATA_REVISIONS',
+      basis: latest
+        ? `응답 ${rows.length}행 · 최종갱신일 외 모든 값 동일 → 최신 갱신행(${latest}) 대표${winners.length > 1 ? ` · 같은 날짜 ${winners.length}행` : ''}`
+        : `응답 ${rows.length}행 · 최종갱신일 외 모든 값 동일 · 갱신일 해석 불가(값이 같아 결과 동일)`,
+      selected_last_updated: latest,
+      unparsed_last_updated: dated.filter((d) => !d.key).length,
+      last_updated: updated,
+    },
+  };
+}
+
 export function parseNedLandCharacteristics(payload, { pnu, year }) {
   const root = payload?.landCharacteristicss || payload?.landCharacteristics;
   if (!root || typeof root !== 'object') {
-    const code = text(payload?.response?.resultCode || payload?.response?.status);
-    return { ok: false, code: code ? 'VWORLD_API_ERROR' : 'VWORLD_SCHEMA_CHANGED' };
+    // 실호출에서 미존재 필지·미래연도는 토지특성 root 없이 응답됨(기존 provider는 SCHEMA_CHANGED로 처리).
+    // response.status가 NOT_FOUND이면 '자료 없음'으로 구분하고, 그 밖의 형태는 오류로 남긴다.
+    const status = norm(payload?.response?.status).toUpperCase();
+    if (status === 'NOT_FOUND') return { ok: true, status: 'NO_DATA', record: null, field_names: [] };
+    const code = norm(payload?.response?.resultCode || payload?.response?.error?.code || status);
+    return { ok: false, code: code ? 'VWORLD_API_ERROR' : 'VWORLD_SCHEMA_CHANGED', response_status: status || null };
   }
-  const resultCode = text(root.resultCode || root.resultCd);
+  const resultCode = norm(root.resultCode || root.resultCd);
   if (resultCode && !['0', '00', '000', 'SUCCESS'].includes(resultCode.toUpperCase())) return { ok: false, code: 'VWORLD_API_ERROR', result_code: resultCode };
   const rows = [...arr(root.field), ...arr(root.fields)];
   const fieldNames = [...new Set(rows.flatMap((row) => Object.keys(row || {})))].sort();
   if (!rows.length || Number(root.totalCount) === 0) return { ok: true, status: 'NO_DATA_FOR_YEAR', record: null, field_names: fieldNames };
-  const exact = rows.filter((row) => text(row.pnu) === pnu && Number(row.stdrYear) === Number(year));
-  if (!exact.length) return { ok: false, code: 'VWORLD_EXACT_MATCH_NOT_FOUND', field_names: fieldNames };
-  if (exact.length !== 1) return { ok: false, code: 'VWORLD_MULTIPLE_EXACT_MATCHES', field_names: fieldNames };
-  const r = exact[0];
+  const exact = rows.filter((row) => norm(row.pnu) === pnu && Number(row.stdrYear) === Number(year));
+  const excluded = rows.length - exact.length;
+  if (!exact.length) return { ok: false, code: 'VWORLD_EXACT_MATCH_NOT_FOUND', field_names: fieldNames, excluded_rows: excluded };
+  const collapsed = collapseNedRevisions(exact);
+  if (!collapsed.ok) return { ok: false, code: collapsed.code, field_names: fieldNames, selection: { ...collapsed.selection, excluded_rows: excluded } };
+  const r = collapsed.row;
   return {
     ok: true, status: 'OK', base_year: Number(r.stdrYear), field_names: fieldNames,
+    selection: { ...collapsed.selection, excluded_rows: excluded },
     record: {
-      land_category: text(r.lndcgrCodeNm) || null,
+      land_category: norm(r.lndcgrCodeNm) || null,
       area_m2: num(r.lndpclAr),
-      zoning: text(r.prposArea1Nm) || null,
-      zoning_secondary: text(r.prposArea2Nm) || null,
-      land_use: text(r.ladUseSittnNm) || null,
-      road_access: text(r.roadSideCodeNm) || null,
-      shape: text(r.tpgrphFrmCodeNm) || null,
-      elevation: text(r.tpgrphHgCodeNm) || null,
+      zoning: norm(r.prposArea1Nm) || null,
+      zoning_secondary: norm(r.prposArea2Nm) || null,
+      land_use: norm(r.ladUseSittnNm) || null,
+      road_access: norm(r.roadSideCodeNm) || null,
+      shape: norm(r.tpgrphFrmCodeNm) || null,
+      elevation: norm(r.tpgrphHgCodeNm) || null,
       price_per_m2: num(r.pblntfPclnd),
-      last_updated: text(r.lastUpdtDt) || null,
+      last_updated: norm(r.lastUpdtDt) || null,
     },
   };
 }
@@ -177,16 +221,16 @@ export function createVworldDirectAdapter({ now = () => new Date(), timeoutMs = 
     async getLandCharacteristics(pnu, year) {
       if (!validPnuStr(pnu)) return { ok: false, code: 'PNU_LENGTH_INVALID', fetched_at: fetched() };
       const r = await ned(pnu, year);
-      if (!r.ok) return { ok: false, code: r.code, fetched_at: fetched() };
-      if (!r.record) return { ok: true, status: 'NO_DATA_FOR_YEAR', record: null, source: SOURCE.characteristics, fetched_at: fetched() };
+      if (!r.ok) return { ok: false, code: r.code, selection: r.selection || null, fetched_at: fetched() };
+      if (!r.record) return { ok: true, status: r.status === 'NO_DATA' ? 'NO_DATA' : 'NO_DATA_FOR_YEAR', record: null, source: SOURCE.characteristics, fetched_at: fetched() };
       const { price_per_m2, last_updated, ...record } = r.record;
-      return { ok: true, status: 'OK', base_year: r.base_year, record, source: SOURCE.characteristics, fetched_at: fetched() };
+      return { ok: true, status: 'OK', base_year: r.base_year, record, selection: r.selection, source: SOURCE.characteristics, fetched_at: fetched() };
     },
     async getIndividualPrice(pnu, year) {
       const r = await ned(pnu, year);
-      if (!r.ok) return { ok: false, code: r.code, fetched_at: fetched() };
+      if (!r.ok) return { ok: false, code: r.code, selection: r.selection || null, fetched_at: fetched() };
       if (!r.record || r.record.price_per_m2 == null) return { ok: true, status: 'NO_DATA_FOR_YEAR', record: null, source: SOURCE.price, fetched_at: fetched() };
-      return { ok: true, status: 'OK', base_year: r.base_year, record: { price_per_m2: r.record.price_per_m2, base_date: null }, source: SOURCE.price, fetched_at: fetched() };
+      return { ok: true, status: 'OK', base_year: r.base_year, record: { price_per_m2: r.record.price_per_m2, base_date: null }, selection: r.selection, source: SOURCE.price, fetched_at: fetched() };
     },
     async getCadastralGeometry(pnu) {
       const r = await cadastral(pnu);
@@ -242,7 +286,7 @@ export function createVworldDirectAdapter({ now = () => new Date(), timeoutMs = 
         const year = now().getFullYear();
         for (const y of [year, year - 1]) {
           const r = await ned(pnu, y);
-          step(`land_characteristics_${y}`, { ok: r.ok && Boolean(r.record), detail: r.ok ? `${r.record ? '자료 있음' : '해당연도 자료 없음'} · 필드 ${(r.field_names || []).join(',') || '없음'}` : r.code });
+          step(`land_characteristics_${y}`, { ok: r.ok && Boolean(r.record), detail: r.ok ? `${r.record ? '자료 있음' : '해당연도 자료 없음'}${r.selection ? ` · ${r.selection.basis || `응답 ${r.selection.row_count}행`}` : ''} · 필드 ${(r.field_names || []).join(',') || '없음'}` : `${r.code}${r.selection?.conflict_fields ? ` · 충돌 필드 ${r.selection.conflict_fields.join(',')}` : ''}` });
         }
       }
       return out;

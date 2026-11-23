@@ -257,10 +257,101 @@ test('VWorld 토지특성 파서: 정확히 1행만 채택, 면적 포함, 0건�
   assert.equal(ok.record.price_per_m2, 1968000);
   assert.ok(ok.field_names.includes('lndpclAr'));
   assert.equal(parseNedLandCharacteristics({ landCharacteristicss: { totalCount: '0', field: [] } }, { pnu: row.pnu, year: 2026 }).status, 'NO_DATA_FOR_YEAR');
-  assert.equal(parseNedLandCharacteristics({ landCharacteristicss: { field: [row, row] } }, { pnu: row.pnu, year: 2026 }).code, 'VWORLD_MULTIPLE_EXACT_MATCHES');
+  assert.equal(parseNedLandCharacteristics({ landCharacteristicss: { field: [row, row] } }, { pnu: row.pnu, year: 2026 }).selection.row_count, 2, '완전 동일 복수 행은 정리(아래 중복행 테스트 참고)');
   assert.equal(parseNedLandCharacteristics({ landCharacteristicss: { field: [row] } }, { pnu: row.pnu, year: 2025 }).code, 'VWORLD_EXACT_MATCH_NOT_FOUND');
   assert.equal(parseNedLandCharacteristics({ landCharacteristicss: { resultCode: 'INCORRECT_KEY', field: [] } }, { pnu: row.pnu, year: 2026 }).code, 'VWORLD_API_ERROR');
   assert.equal(parseNedLandCharacteristics({ response: { status: 'ERROR', resultCode: 'x' } }, { pnu: row.pnu, year: 2026 }).code, 'VWORLD_API_ERROR');
   const empty = parseNedLandCharacteristics({ landCharacteristicss: { field: [{ ...row, lndpclAr: '' }] } }, { pnu: row.pnu, year: 2026 });
   assert.equal(empty.record.area_m2, null, '빈 면적은 0이 아니라 null');
+});
+
+// ── 2026-11-23 실호출 재현: 같은 PNU·연도 복수 행(값 동일·lastUpdtDt만 상이) — 키 없는 합성 테스트 ──
+const DUP_PNU = '9901101000101230004';
+const nedRowSyn = (year, lastUpdtDt, over = {}) => ({
+  pnu: DUP_PNU, stdrYear: String(year), stdrMt: '01', ldCode: '9901101000', ldCodeNm: '가상특별시 누리구 새솔동', regstrSeCode: '1', mnnmSlno: '123-4',
+  lndcgrCode: '08', lndcgrCodeNm: '대', lndpclAr: '412.5', prposArea1: '12', prposArea1Nm: '제2종일반주거지역', prposArea2: '00', prposArea2Nm: '지정되지않음',
+  ladUseSittn: '011', ladUseSittnNm: '단독', tpgrphHgCode: '02', tpgrphHgCodeNm: '평지', tpgrphFrmCode: '04', tpgrphFrmCodeNm: '세로장방',
+  roadSideCode: '08', roadSideCodeNm: '세로한면(가)', pblntfPclnd: year === 2026 ? '1968000' : '1905000', lastUpdtDt, ...over,
+});
+const ned = (rows) => ({ landCharacteristicss: { resultCode: '', totalCount: String(rows.length), field: rows } });
+
+test('중복행: 2026 2행·2025 3행(lastUpdtDt만 상이) → 최신 갱신행 대표, 행수·근거 기록, 순서 무관', async () => {
+  const { parseNedLandCharacteristics } = await import('../../browser/consultation-sim/adapters/vworld-direct-adapter.js');
+  const y26 = parseNedLandCharacteristics(ned([nedRowSyn(2026, '2026-05-31'), nedRowSyn(2026, '2026-07-15')]), { pnu: DUP_PNU, year: 2026 });
+  assert.equal(y26.status, 'OK');
+  assert.equal(y26.record.price_per_m2, 1968000);
+  assert.equal(y26.record.area_m2, 412.5);
+  assert.equal(y26.selection.rule, 'IDENTICAL_DATA_REVISIONS');
+  assert.equal(y26.selection.row_count, 2);
+  assert.equal(y26.selection.selected_last_updated, '2026-07-15');
+  assert.match(y26.selection.basis, /응답 2행/);
+  const rows25 = [nedRowSyn(2025, '2025-06-30'), nedRowSyn(2025, '2025-11-02'), nedRowSyn(2025, '2025-08-01')];
+  for (const order of [rows25, [...rows25].reverse(), [rows25[1], rows25[0], rows25[2]]]) {
+    const y25 = parseNedLandCharacteristics(ned(order), { pnu: DUP_PNU, year: 2025 });
+    assert.equal(y25.selection.row_count, 3);
+    assert.equal(y25.selection.selected_last_updated, '2025-11-02');
+    assert.equal(y25.record.last_updated, '2025-11-02', '첫 행 임의 선택 금지');
+  }
+  const undated = parseNedLandCharacteristics(ned([nedRowSyn(2026, ''), nedRowSyn(2026, 'n/a')]), { pnu: DUP_PNU, year: 2026 });
+  assert.equal(undated.status, 'OK', '값이 같으면 결과 동일');
+  assert.equal(undated.selection.selected_last_updated, null);
+  assert.match(undated.selection.basis, /해석 불가/);
+});
+
+test('중복행 값 충돌(가격·토지특성·누락)은 자동 선택하지 않고 충돌 필드만 기록', async () => {
+  const { parseNedLandCharacteristics } = await import('../../browser/consultation-sim/adapters/vworld-direct-adapter.js');
+  const price = parseNedLandCharacteristics(ned([nedRowSyn(2026, '2026-05-31'), nedRowSyn(2026, '2026-07-15', { pblntfPclnd: '2010000' })]), { pnu: DUP_PNU, year: 2026 });
+  assert.equal(price.ok, false);
+  assert.equal(price.code, 'VWORLD_REVISION_CONFLICT');
+  assert.deepEqual(price.selection.conflict_fields, ['pblntfPclnd']);
+  assert.equal(price.record, undefined);
+  const use = parseNedLandCharacteristics(ned([nedRowSyn(2026, '2026-05-31'), nedRowSyn(2026, '2026-05-31', { ladUseSittnNm: '상업용', ladUseSittn: '021' })]), { pnu: DUP_PNU, year: 2026 });
+  assert.deepEqual(use.selection.conflict_fields, ['ladUseSittn', 'ladUseSittnNm']);
+  const { lndpclAr, ...noArea } = nedRowSyn(2026, '2026-07-15');
+  const missing = parseNedLandCharacteristics(ned([nedRowSyn(2026, '2026-05-31'), noArea]), { pnu: DUP_PNU, year: 2026 });
+  assert.equal(missing.code, 'VWORLD_REVISION_CONFLICT', '한 행에만 있는 값도 충돌');
+  assert.deepEqual(missing.selection.conflict_fields, ['lndpclAr']);
+  assert.doesNotMatch(JSON.stringify(price), /2010000|1968000/, '충돌 시 값 자체는 결과에 싣지 않음');
+});
+
+test('연도 충돌·미존재 필지·미래연도·응답 형태 구분', async () => {
+  const { parseNedLandCharacteristics } = await import('../../browser/consultation-sim/adapters/vworld-direct-adapter.js');
+  const mixed = parseNedLandCharacteristics(ned([nedRowSyn(2025, '2025-06-30'), nedRowSyn(2026, '2026-05-31'), nedRowSyn(2026, '2026-07-15')]), { pnu: DUP_PNU, year: 2026 });
+  assert.equal(mixed.record.price_per_m2, 1968000, '다른 연도 행은 제외');
+  assert.equal(mixed.selection.excluded_rows, 1);
+  assert.equal(parseNedLandCharacteristics(ned([nedRowSyn(2025, '2025-06-30')]), { pnu: DUP_PNU, year: 2026 }).code, 'VWORLD_EXACT_MATCH_NOT_FOUND');
+  assert.equal(parseNedLandCharacteristics({ response: { status: 'NOT_FOUND' } }, { pnu: DUP_PNU, year: 2099 }).status, 'NO_DATA');
+  assert.equal(parseNedLandCharacteristics({ response: { status: 'ERROR', error: { code: 'INCORRECT_KEY' } } }, { pnu: DUP_PNU, year: 2026 }).code, 'VWORLD_API_ERROR');
+  assert.equal(parseNedLandCharacteristics({ something: 1 }, { pnu: DUP_PNU, year: 2026 }).code, 'VWORLD_SCHEMA_CHANGED');
+});
+
+test('세션: 중복 정리 근거는 저장, 충돌이면 필드 불일치·값 없음·전문가 검토 신호', async () => {
+  const { parseNedLandCharacteristics } = await import('../../browser/consultation-sim/adapters/vworld-direct-adapter.js');
+  const fakeAdapter = (rows) => {
+    const synth = createSyntheticAdapter({ baseDelayMs: 1 });
+    const fromNed = (pnu, year) => {
+      const r = parseNedLandCharacteristics(ned(rows.filter((row) => Number(row.stdrYear) === year)), { pnu, year });
+      if (!r.ok) return { ok: false, code: r.code, selection: r.selection };
+      if (!r.record) return { ok: true, status: 'NO_DATA_FOR_YEAR', record: null };
+      return { ok: true, status: 'OK', base_year: r.base_year, record: r.record, selection: r.selection, source: 'VWorld(합성 재현)' };
+    };
+    return { ...synth, describe: () => ({ mode: 'VWORLD_DIRECT', label: 'x', live: true }),
+      getLandCharacteristics: async (pnu, year) => fromNed(pnu, year),
+      getIndividualPrice: async (pnu, year) => { const r = fromNed(pnu, year); return r.ok && r.record ? { ...r, record: { price_per_m2: r.record.price_per_m2 } } : r; } };
+  };
+  const dup = createConsultationSession({ adapter: fakeAdapter([nedRowSyn(2026, '2026-05-31'), nedRowSyn(2026, '2026-07-15'), nedRowSyn(2025, '2025-06-30'), nedRowSyn(2025, '2025-11-02'), nedRowSyn(2025, '2025-08-01')]) });
+  await dup.lookup({ context: NURI, lotText: '123-4', baseYear: 2026 });
+  assert.equal(dup.state.draft.fields.price_per_m2.value, 1968000);
+  assert.equal(dup.state.draft.public_selection.characteristics.row_count, 2);
+  const saved = dup.saveExplicit({ confirmedByUser: true }).payload;
+  assert.equal(saved.public_selection.characteristics.rule, 'IDENTICAL_DATA_REVISIONS');
+
+  const conflict = createConsultationSession({ adapter: fakeAdapter([nedRowSyn(2026, '2026-05-31'), nedRowSyn(2026, '2026-07-15', { pblntfPclnd: '2010000' })]) });
+  await conflict.lookup({ context: NURI, lotText: '123-4', baseYear: 2026 });
+  const f = conflict.state.draft.fields;
+  assert.equal(f.price_per_m2.status, STATUS.MISMATCH);
+  assert.equal(f.price_per_m2.value, null);
+  assert.equal(f.land_category.value, null, '같은 응답의 다른 필드도 자동 채택하지 않음');
+  assert.match(f.price_per_m2.note, /pblntfPclnd/);
+  assert.ok(conflict.state.draft.analysis.signals.some((s) => s.kind === 'REVISION_CONFLICT' && s.status === STATUS.EXPERT_REVIEW));
 });

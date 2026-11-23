@@ -1,12 +1,18 @@
 name: Consultation Simulator Demo Pages (manual)
 
-# 선택 배포: 합성 데이터 전용 시연판을 GitHub Pages에 올린다.
+# 선택 배포: 합성 시연판 또는 Fold8 실데이터 연결 테스트판을 GitHub Pages에 올린다(키는 번들에 없음).
 # - 수동 실행(workflow_dispatch)만. push/PR로는 실행되지 않는다.
 # - 저장소 Settings → Pages → Source를 "GitHub Actions"로 켠 뒤에만 동작한다(이 워크플로는 설정을 바꾸지 않는다).
 # - 기존 Cloudflare(wrangler.toml)·Netlify(netlify.toml) 배포와 무관하다.
 # - 배포물은 dist/consultation-sim-demo/index.html 1개 파일뿐이다. 빌드 스크립트가 브리지·키·외부 호출·실제 PNU를 검사해 있으면 실패한다.
 on:
   workflow_dispatch:
+    inputs:
+      variant:
+        description: 'synthetic = 합성 시연판 / vworld-direct-test = Fold8 실데이터 연결 테스트(키 미포함, 사용자가 화면에서 입력). 약관·서비스 URL 확인 전 vworld-direct-test 금지'
+        type: choice
+        options: [synthetic, vworld-direct-test]
+        default: synthetic
 
 permissions:
   contents: read
@@ -29,12 +35,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - name: Build synthetic-only demo (static host)
-        run: node scripts/build_consultation_sim_demo.js --host=static
+      - name: Build demo (static host)
+        run: node scripts/build_consultation_sim_demo.js --host=static --variant=${{ inputs.variant }}
       - name: Keep only the demo page
         run: |
           mkdir -p site
-          cp dist/consultation-sim-demo/index.html site/index.html
+          if [ "${{ inputs.variant }}" = "vworld-direct-test" ]; then cp dist/consultation-sim-live-test/index.html site/index.html; else cp dist/consultation-sim-demo/index.html site/index.html; fi
           printf 'User-agent: *\nDisallow: /\n' > site/robots.txt
       - uses: actions/upload-pages-artifact@v3
         with:

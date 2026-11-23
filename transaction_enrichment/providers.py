@@ -77,13 +77,62 @@ def _to_int(value: Any) -> int | None:
         return None
 
 
+_REVISION_META_FIELDS = frozenset({"lastUpdtDt"})
+
+
+def collapse_identical_revisions(rows: list[dict[str, Any]]) -> tuple[dict[str, Any] | None, dict[str, Any]]:
+    """Same PNU/year rows that differ only in lastUpdtDt collapse to the latest dated row.
+
+    Any other differing field is a conflict: returns (None, diagnostics) and the caller must hold.
+    Diagnostics carry row count, rule, conflicting field names and update dates (no values).
+    """
+    if len(rows) == 1:
+        return rows[0], {"row_count": 1, "rule": "SINGLE_ROW"}
+    keys = sorted({key for row in rows for key in row.keys()} - _REVISION_META_FIELDS)
+    norm = lambda value: "" if value is None else str(value).strip()  # noqa: E731
+    conflicts = [key for key in keys if len({norm(row.get(key)) for row in rows}) > 1]
+    updated = [norm(row.get("lastUpdtDt")) for row in rows]
+    if conflicts:
+        return None, {"row_count": len(rows), "rule": "CONFLICT_HOLD", "conflict_fields": conflicts, "last_updated": updated}
+
+    def date_key(value: Any) -> str | None:
+        match = re.match(r"^(\d{4})-?(\d{2})-?(\d{2})", norm(value))
+        return f"{match.group(1)}-{match.group(2)}-{match.group(3)}" if match else None
+
+    dated = [(row, date_key(row.get("lastUpdtDt"))) for row in rows]
+    valid = [(row, key) for row, key in dated if key]
+    latest = max((key for _row, key in valid), default=None)
+    winners = [row for row, key in valid if key == latest] if latest else []
+    chosen = winners[0] if winners else rows[0]
+    return chosen, {
+        "row_count": len(rows),
+        "rule": "IDENTICAL_DATA_REVISIONS",
+        "selected_last_updated": latest,
+        "same_date_rows": len(winners),
+        "unparsed_last_updated": sum(1 for _row, key in dated if not key),
+        "last_updated": updated,
+    }
+
+
 def parse_vworld_land_characteristics(
-    payload: Mapping[str, Any], *, expected_pnu: str, expected_year: int
+    payload: Mapping[str, Any],
+    *,
+    expected_pnu: str,
+    expected_year: int,
+    collapse_revisions: bool = False,
+    diagnostics: dict[str, Any] | None = None,
 ) -> LandCharacteristics | None:
-    """Parse one exact VWorld PNU/year result; zero or multiple rows fail closed."""
+    """Parse one exact VWorld PNU/year result; zero or multiple rows fail closed.
+
+    collapse_revisions=True (opt-in, consultation simulator only) collapses rows that differ
+    only in lastUpdtDt and treats ``response.status == NOT_FOUND`` as no data. The default
+    keeps the Release v1 contract unchanged.
+    """
     root = payload.get("landCharacteristicss") or payload.get("landCharacteristics")
     if not isinstance(root, Mapping):
         response = payload.get("response")
+        if collapse_revisions and isinstance(response, Mapping) and str(response.get("status") or "").upper() == "NOT_FOUND":
+            return None
         if isinstance(response, Mapping):
             result_code = str(_first(response, "resultCode", "resultCd", "errorCode") or "")
             if result_code.upper() not in _SUCCESS_CODES:
@@ -108,8 +157,17 @@ def parse_vworld_land_characteristics(
 
     if not exact:
         raise ProviderError("VWORLD_EXACT_MATCH_NOT_FOUND", "No exact PNU/year response row was found")
-    if len(exact) != 1:
+    if len(exact) != 1 and not collapse_revisions:
         raise ProviderError("VWORLD_MULTIPLE_EXACT_MATCHES", "Multiple exact PNU/year response rows require review")
+    if len(exact) != 1:
+        chosen, info = collapse_identical_revisions(exact)
+        if diagnostics is not None:
+            diagnostics.update(info, excluded_rows=len(items) - len(exact))
+        if chosen is None:
+            raise ProviderError("VWORLD_REVISION_CONFLICT", "Exact PNU/year rows disagree beyond lastUpdtDt; review required")
+        exact = [chosen]
+    elif diagnostics is not None:
+        diagnostics.update({"row_count": 1, "rule": "SINGLE_ROW", "excluded_rows": len(items) - 1})
 
     item = exact[0]
     mapped: dict[str, Any] = {
@@ -226,7 +284,14 @@ class VWorldLandCharacteristicsProvider(LandCharacteristicsProvider):
             params["domain"] = self._domain
         return f"{VWORLD_LAND_CHARACTERISTICS_ENDPOINT}?{urllib.parse.urlencode(params)}"
 
-    def get_by_pnu(self, pnu: str, *, standard_year: int | None = None) -> Optional[LandCharacteristics]:
+    def get_by_pnu(
+        self,
+        pnu: str,
+        *,
+        standard_year: int | None = None,
+        collapse_revisions: bool = False,
+        diagnostics: dict[str, Any] | None = None,
+    ) -> Optional[LandCharacteristics]:
         if not self.configured:
             raise ProviderError("VWORLD_API_KEY_MISSING", f"{self.ENV_NAME} is not configured")
         if not re.fullmatch(r"\d{19}", pnu):
@@ -234,7 +299,9 @@ class VWorldLandCharacteristicsProvider(LandCharacteristicsProvider):
         year = standard_year or self._default_year
         try:
             payload = self._transport(self._request_url(pnu, year), self._timeout)
-            return parse_vworld_land_characteristics(payload, expected_pnu=pnu, expected_year=year)
+            return parse_vworld_land_characteristics(
+                payload, expected_pnu=pnu, expected_year=year, collapse_revisions=collapse_revisions, diagnostics=diagnostics
+            )
         except ProviderError:
             raise
         except (TimeoutError, urllib.error.URLError, urllib.error.HTTPError, ssl.SSLError, ConnectionError, http.client.RemoteDisconnected) as exc:

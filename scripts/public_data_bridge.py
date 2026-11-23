@@ -182,13 +182,22 @@ def vworld_land(payload: dict[str, Any]) -> dict[str, Any]:
     provider = VWorldLandCharacteristicsProvider()
     if not provider.configured:
         return {"ok": False, "error_code": "VWORLD_API_KEY_MISSING", "record": None}
+    # 상담 시뮬레이터만 dedupe_revisions=true를 보낸다. Release v1 요청은 기존 계약(복수 행 보류) 그대로.
+    collapse = payload.get("dedupe_revisions") is True
+    diagnostics: dict[str, Any] = {}
     try:
-        record = provider.get_by_pnu(pnu, standard_year=year)
+        record = provider.get_by_pnu(pnu, standard_year=year, collapse_revisions=collapse, diagnostics=diagnostics if collapse else None)
     except ProviderError as exc:
-        return {"ok": False, "error_code": exc.code, "error_message": str(exc), "record": None}
+        result = {"ok": False, "error_code": exc.code, "error_message": str(exc), "record": None}
+        if collapse and diagnostics:
+            result["selection"] = diagnostics
+        return result
     if record is None:
         return {"ok": True, "status": "NO_DATA", "record": None, "review_required": True}
-    return {"ok": True, "status": "SUCCESS_REVIEW_REQUIRED", "record": plain(record), "review_required": True}
+    result = {"ok": True, "status": "SUCCESS_REVIEW_REQUIRED", "record": plain(record), "review_required": True}
+    if collapse and diagnostics:
+        result["selection"] = diagnostics
+    return result
 
 
 def main() -> int:

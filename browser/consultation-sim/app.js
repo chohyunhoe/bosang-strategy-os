@@ -81,6 +81,7 @@ function renderKeyPanel() {
         <button type="button" class="secondary" data-vw-probe>연결 점검</button>
       </div>
       <p class="muted small">호출 도메인: <span class="mono" data-vw-domain></span> — VWorld에 등록한 서비스 URL과 같아야 합니다. 공공데이터포털 키는 브라우저로 보내지 않습니다.</p>
+      <p class="warn-note small" data-vw-key-exposure><b>키 노출 주의</b> · 키는 VWorld 요청 주소에 실려 전송되므로 이 기기의 개발자도구·네트워크 기록·브라우저 확장 프로그램에서 보일 수 있습니다. 본인 기기에서만 입력하고, 키를 다른 사람에게 배포하지 마세요. 도메인 등록만으로는 다른 프로그램의 키 도용을 막지 못합니다.</p>
       <div data-vw-probe-out></div>`;
     $('[data-vw-key-apply]', panel).addEventListener('click', () => {
       const input = $('[data-vw-key]', panel);
@@ -172,6 +173,10 @@ function fieldRow(field, synthetic) {
   </tr>`;
 }
 
+const selectionText = (sel) => (sel.basis ? sel.basis
+  : sel.rule === 'CONFLICT_HOLD' ? `응답 ${sel.row_count}행 간 값 충돌(${(sel.conflict_fields || []).join(', ')}) — 자동 선택 안 함`
+    : `응답 ${sel.row_count}행 · 최종갱신일 외 모든 값 동일 → 최신 갱신행(${sel.selected_last_updated || '갱신일 해석 불가'}) 대표`);
+
 function renderLand(state) {
   const box = $('[data-land]');
   const d = state.draft;
@@ -183,6 +188,7 @@ function renderLand(state) {
     ${groups.map((label) => `<h3>${esc(label)}${label.startsWith('공시지가 산정용') ? ' <small>가격형성 요인 표기 · 실제 현황과 다를 수 있음</small>' : ''}</h3><div class="table-wrap"><table class="fields"><thead><tr><th>항목</th><th>값</th><th>상태</th><th>원천·기준연도·조회시각</th><th></th></tr></thead><tbody>
       ${FIELD_DEFS.filter((def) => def.group_label === label).map((def) => fieldRow(d.fields[def.key], d.synthetic)).join('')}
     </tbody></table></div>`).join('')}
+    ${d.public_selection?.characteristics && d.public_selection.characteristics.row_count > 1 ? `<p class="note" data-selection-basis>${d.public_selection.characteristics.rule === 'CONFLICT_HOLD' ? chip('MISMATCH') : chip('OFFICIAL_OK', '중복 정리')} ${esc(selectionText(d.public_selection.characteristics))}</p>` : ''}
     <p class="note strong">공부·공시지가 산정용 토지특성은 실제 현황과 다를 수 있습니다. 실제 이용상황: ${chip('FIELD_CHECK')} (지번만으로 미확인)</p>`;
   box.querySelectorAll('[data-edit]').forEach((b) => b.addEventListener('click', () => { ui.editing = b.dataset.edit; render(); }));
   box.querySelectorAll('[data-edit-cancel]').forEach((b) => b.addEventListener('click', () => { ui.editing = null; render(); }));
@@ -344,6 +350,11 @@ $('[data-proposal]').addEventListener('click', () => {
   render();
 });
 
+if (RUNTIME.live_test) {
+  document.querySelector('.top').insertAdjacentHTML('afterend', '<p class="warn-note" data-live-test-banner><b>실데이터 연결 테스트판</b> · 대외 공개용 아님 · 본인 VWorld 키를 이 기기에서만 입력 · 결과는 검토 보조</p>');
+  const select = $('[data-mode-select]');
+  select.querySelector('option[value="LIVE_BRIDGE"]')?.remove();
+}
 if (RUNTIME.synthetic_only) {
   const select = $('[data-mode-select]');
   select.querySelector('option[value="LIVE_BRIDGE"]')?.remove();

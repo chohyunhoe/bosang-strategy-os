@@ -2,7 +2,7 @@
 
 기준일: 2026-11-23 (KST) · 브랜치: `feat/consultation-sim-pr1`
 
-상태: `BROWSER_DIRECT_IMPLEMENTED / LIVE_KEY_CHECK_PENDING / WEB_DEPLOY_HOLD (약관·도메인 확인 전)`
+상태: `LIVE_API_PROBE_COMPLETE (ThinkPad) / DUPLICATE_REVISION_RULE_DONE / FOLD8_HOST_ORIGIN_NOT_VERIFIED / WEB_DEPLOY_HOLD`
 
 ## 1. 기존 연동 확인 (저장소 코드 기준)
 
@@ -75,3 +75,46 @@
 ## 6. 터널 방식 (후순위 참고)
 
 Cloudflare Tunnel + Access는 무료지만 ThinkPad 상시 구동과 Cloudflare 도메인이 필요하다. 1·2순위가 막힐 때만 검토한다.
+
+## 7. 2026-11-23 실호출 결과 반영 (PR #23 GPT 검증 댓글)
+
+ThinkPad + 현재 등록 도메인 조합에서 VWorld 검색·지적(`LP_PA_CBND_BUBUN`)·토지특성 3종 모두 JSONP 실응답 성공. 면적 `lndpclAr` 존재. 토지특성은 같은 PNU·연도로 2026년 2행·2025년 3행, 행 간 차이는 `lastUpdtDt`뿐.
+
+### 중복 행 규칙 (`collapseNedRevisions`, Python `collapse_identical_revisions`)
+
+| 경우 | 처리 |
+|---|---|
+| 같은 PNU·연도 1행 | 그대로 |
+| 복수 행, `lastUpdtDt` 외 모든 필드 값 동일 | 날짜로 검증되는 최신 `lastUpdtDt` 행을 대표로 기록(값이 같으므로 결과 동일). 행 수·갱신일 목록·근거 저장 |
+| 복수 행, 다른 필드가 하나라도 다름(한 행에만 있는 값 포함) | **자동 선택 안 함** `VWORLD_REVISION_CONFLICT`. 해당 응답의 모든 필드 값 비움·불일치 표시·전문가 검토 신호. 충돌 필드 이름만 기록(값 미기록) |
+| 다른 연도 행 섞임 | 요청 연도만 사용, 제외 행 수 기록 |
+| `response.status = NOT_FOUND`(미존재 필지·미래연도) | `자료 없음`으로 구분(오류와 분리) |
+
+- 로컬 Python provider는 **옵트인**(`dedupe_revisions: true`를 상담 화면만 보냄). Release v1 요청은 기존 계약(복수 행 보류) 그대로 — `test_transaction_enrichment.py`와 `test_vworld_revisions.py`가 둘 다 고정
+- 미존재·미래연도의 실제 응답 형태가 `NOT_FOUND`인지는 다음 실호출에서 응답 키·상태값만 확인 필요(현재 provider 결과 `VWORLD_SCHEMA_CHANGED`)
+
+## 8. 키 노출 검토 (브라우저 직접 방식)
+
+- JSONP 요청 주소에 `key`가 들어가므로 **해당 기기의 개발자도구·네트워크 기록·브라우저 확장 프로그램에서 보일 수 있다.** 화면에 고지 문구 추가(`data-vw-key-exposure`)
+- VWorld는 브라우저 외 사용 시 `domain` 파라미터로 등록 도메인을 맞추게 하고, 다르면 `INCORRECT_KEY`를 반환한다. 이 값은 요청자가 넣는 값이라 **도메인 등록만으로 키 도용을 막지 못한다**
+- 따라서: 본인 기기·본인 키로만 사용, 키를 번들·저장소·공용 화면에 넣지 않음, 다른 사용자에게 공용 키 배포 금지. 외부 사용자 대상 서비스가 되면 서버 측 비밀관리(무료 서버리스 중계 등)로 전환 판단
+- 일부 API는 일일 호출 한도가 있고 초과 시 별도 신청 필요 → 공용 배포 시 한도 소진 위험
+
+## 9. Fold8 HTTPS 출처 검증 경로
+
+- 빌드: `node scripts/build_consultation_sim_demo.js --host=static --variant=vworld-direct-test` → `dist/consultation-sim-live-test/index.html` (키 없음, 외부 주소는 `https://api.vworld.kr`만 허용, 로컬 브리지 제외, "대외 공개용 아님" 배너)
+- 배포: `consultation-sim-demo-pages.yml`(수동 실행, `variant` 선택). 실행 전 필요:
+  1. 저장소 Settings → Pages → Source "GitHub Actions" (이 세션은 Pages API 권한 없음)
+  2. VWorld 개발자센터에서 키의 서비스 URL에 `https://chohyunhoe.github.io` 등록(또는 테스트용 키 별도 발급)
+  3. 약관 원문 확인 기록
+- 검증: Fold8 삼성 인터넷/Chrome에서 `…/?mode=vworld` → 키 입력 → 연결 점검 4줄
+- localhost·ThinkPad 등록 도메인 성공을 새 도메인 성공으로 간주하지 않는다
+
+## 10. 약관 검토 상태
+
+| 항목 | 상태 |
+|---|---|
+| 브라우저(HTTPS) 사용 시 `domain` 파라미터·등록 도메인 일치 요구 | VWorld 개발자 문서로 확인 |
+| 도메인 불일치 시 `INCORRECT_KEY` | VWorld WMS/WFS 문서 오류코드로 확인 |
+| 일부 API 일일 호출 한도·초과 신청 | 2차 자료로 확인, 원문 미확인 |
+| 이용약관 원문(재제공·영리·저장·국외 이전)과 2026년 개정 | **미확인** — 이 작업 환경에서 vworld.kr 본문 접근 불가 |

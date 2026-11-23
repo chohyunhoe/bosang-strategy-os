@@ -31,7 +31,7 @@ export function createBridgeAdapter({ fetchImpl = (...args) => fetch(...args), n
     const key = `${pnu}|${year}`;
     // 동시 요청은 하나로 묶되, 실패 응답은 캐시에서 제거해 재조회 시 브리지를 다시 호출한다.
     if (!recordCache.has(key)) {
-      const pending = post(fetchImpl, '/vworld_land', { pnu, standard_year: Number(year) })
+      const pending = post(fetchImpl, '/vworld_land', { pnu, standard_year: Number(year), dedupe_revisions: true })
         .then((data) => { if (!data || !data.ok) recordCache.delete(key); return data; });
       recordCache.set(key, pending);
     }
@@ -87,7 +87,7 @@ export function createBridgeAdapter({ fetchImpl = (...args) => fetch(...args), n
     async getLandCharacteristics(pnu, year) {
       if (!validatePnu(pnu).ok) return { ok: false, code: 'PNU_LENGTH_INVALID', fetched_at: fetched() };
       const data = await landRecord(pnu, year);
-      if (!data.ok) return { ok: false, code: data.error_code || 'API_FAILED', fetched_at: fetched() };
+      if (!data.ok) return { ok: false, code: data.error_code || 'API_FAILED', selection: data.selection || null, fetched_at: fetched() };
       if (!data.record) return { ok: true, status: 'NO_DATA', record: null, source: SOURCE.characteristics, fetched_at: fetched() };
       const r = data.record;
       return {
@@ -97,11 +97,12 @@ export function createBridgeAdapter({ fetchImpl = (...args) => fetch(...args), n
           land_use: r.land_use ?? null, road_access: r.road_access ?? null, shape: r.shape ?? null, elevation: r.elevation ?? null,
         },
         missing_reason: { area_m2: 'BRIDGE_RECORD_HAS_NO_AREA_FIELD' },
+        selection: data.selection || null,
       };
     },
     async getIndividualPrice(pnu, year) {
       const data = await landRecord(pnu, year);
-      if (!data.ok) return { ok: false, code: data.error_code || 'API_FAILED', fetched_at: fetched() };
+      if (!data.ok) return { ok: false, code: data.error_code || 'API_FAILED', selection: data.selection || null, fetched_at: fetched() };
       const r = data.record;
       if (!r || r.individual_official_price == null) return { ok: true, status: 'NO_DATA_FOR_YEAR', record: null, source: SOURCE.price, fetched_at: fetched() };
       const priceYear = Number(r.price_year || 0);

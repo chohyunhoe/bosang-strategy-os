@@ -9,6 +9,8 @@ on:
       - 'scripts/serve_product_v2.js'
       - 'scripts/public_data_bridge.*'
       - 'tests/consultation-sim/**'
+      - 'tests/test_vworld_revisions.py'
+      - 'transaction_enrichment/providers.py'
       - 'tests/consultation-sim-browser/**'
       - 'playwright.consultation-sim.config.js'
       - 'package.json'
@@ -30,12 +32,18 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
       - name: Deterministic core (synthetic data only)
         run: npm run consult:test
+      - name: VWorld revision rule (Python provider opt-in, Release v1 default unchanged)
+        run: python -m unittest tests.test_vworld_revisions -v
       - name: Public demo bundle safety checks (synthetic only, no bridge, no network)
         run: |
           node scripts/build_consultation_sim_demo.js --host=claude-artifact
           node scripts/build_consultation_sim_demo.js --host=static
+          node scripts/build_consultation_sim_demo.js --host=static --variant=vworld-direct-test
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
       - name: PC / Fold open / Fold cover E2E
