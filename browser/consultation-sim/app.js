@@ -17,14 +17,19 @@ const chip = (status, label) => `<span class="chip ${esc(status)}">${esc(label |
 const fieldChip = (status, synthetic) => chip(status, status === STATUS.OK && synthetic ? `${STATUS_LABEL[status]}(합성)` : undefined);
 
 const params = new URLSearchParams(location.search);
+// 공개 시연판 빌드(build_consultation_sim_demo.js)는 합성 전용 플래그를 주입한다.
+// synthetic_only면 로컬 브리지(실데이터) 경로 자체를 만들지 않는다.
+const RUNTIME = Object.freeze({ synthetic_only: false, host: 'local', ...(window.BSO_CONSULT_RUNTIME || {}) });
+const IN_ARTIFACT = RUNTIME.host === 'claude-artifact';
 const ui = {
-  mode: params.get('mode') === 'live' ? 'LIVE_BRIDGE' : 'SYNTHETIC',
+  mode: !RUNTIME.synthetic_only && params.get('mode') === 'live' ? 'LIVE_BRIDGE' : 'SYNTHETIC',
   scenario: ['NO_MAP_KEY', 'API_DOWN'].includes(params.get('scenario')) ? params.get('scenario') : 'DEFAULT',
   tab: 'map', editing: null, saveOpen: false, footer: '', adapterStatus: null,
 };
 let adapter; let session;
 
 function buildAdapter() {
+  if (RUNTIME.synthetic_only) ui.mode = 'SYNTHETIC';
   adapter = ui.mode === 'LIVE_BRIDGE' ? createBridgeAdapter() : createSyntheticAdapter({ scenario: ui.scenario });
   session = createConsultationSession({ adapter, onChange: render });
   ui.editing = null; ui.saveOpen = false; ui.footer = ''; ui.adapterStatus = null;
@@ -42,7 +47,7 @@ function renderModeBar() {
   const st = ui.adapterStatus;
   if (ui.mode === 'SYNTHETIC') {
     badge.className = 'badge synthetic';
-    badge.textContent = `합성 데이터 · 실데이터 미연결${ui.scenario !== 'DEFAULT' ? ` · ${$('[data-scenario-select]').selectedOptions[0].textContent}` : ''}`;
+    badge.textContent = `${RUNTIME.synthetic_only ? '공개 시연판 · ' : ''}합성 데이터 · 실데이터 미연결${ui.scenario !== 'DEFAULT' ? ` · ${$('[data-scenario-select]').selectedOptions[0].textContent}` : ''}`;
   } else if (!st) {
     badge.className = 'badge'; badge.textContent = '브리지 확인 중…';
   } else if (!st.ok || !st.characteristics) {
@@ -178,8 +183,13 @@ function summaryText(d) {
   lines.push(`필지: ${d.parcel.legal_dong_name} ${d.parcel.lot_label} (PNU ${d.parcel.pnu}) · 기준연도 ${d.binding.base_year}`);
   lines.push('', '■ 확인된 공적 사실');
   Object.values(d.fields).filter((f) => f.value != null && f.status !== STATUS.NOT_QUERIED).forEach((f) => {
-    lines.push(`- ${f.label}: ${fmtNumber(f.value)}${f.unit ? ` ${f.unit}` : ''} [${STATUS_LABEL[f.status]}${d.synthetic && f.status === STATUS.OK ? '(합성)' : ''} · ${f.source} · ${f.base_year || '-'}]${f.override ? ` / 수정값 ${f.override.value}(${f.override.by})` : ''}`);
+    lines.push(`- ${f.label}: ${fmtNumber(f.value)}${f.unit ? ` ${f.unit}` : ''} [${STATUS_LABEL[f.status]}${d.synthetic && f.status === STATUS.OK ? '(합성)' : ''} · ${f.source} · ${f.base_year || '-'}]`);
   });
+  const overrides = Object.values(d.fields).filter((f) => f.override);
+  if (overrides.length) {
+    lines.push('', '■ 상담자 수정·입력값(공적자료 아님 · 검수 전)');
+    overrides.forEach((f) => lines.push(`- ${f.label}: ${f.override.value}${f.unit ? ` ${f.unit}` : ''} (입력 ${f.override.by}${f.override.reason ? ` · 근거 ${f.override.reason}` : ''}${f.reviewed ? ' · 검수완료' : ''}) / 공적자료: ${f.value == null ? '미확보' : fmtNumber(f.value)}`));
+  }
   lines.push('', '■ 확인 필요 신호(결론 아님)');
   (d.analysis.signals.length ? d.analysis.signals : [{ title: '자동 신호 없음', detail: '' }]).forEach((s) => lines.push(`- ${s.title}${s.detail ? `: ${s.detail}` : ''}`));
   lines.push('', '■ 지번만으로 미확인', ...d.analysis.unknowns.map((u) => `- ${u.label}`));
@@ -205,12 +215,40 @@ function renderSavePanel(state) {
   $('[data-save-commit]', panel).addEventListener('click', () => {
     const result = session.saveExplicit({ confirmedByUser: $('[data-save-confirm]', panel).checked });
     if (!result.ok) { panel.querySelector('label').classList.add('invalid'); return; }
-    const blob = new Blob([JSON.stringify(result.payload, null, 2)], { type: 'application/json' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob); a.download = `bso-consultation-draft-${result.payload.draft_id}.json`;
-    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-    ui.saveOpen = false; render();
+    ui.saveOpen = false;
+    deliverSaved(result.payload);
   });
+}
+
+async function deliverSaved(payload) {
+  const filename = `bso-consultation-draft-${payload.draft_id}.json`;
+  const data = JSON.stringify(payload, null, 2);
+  const jsonBox = `<textarea readonly data-saved-json rows="8">${esc(data)}</textarea>`;
+  if (!IN_ARTIFACT) {
+    const blob = new Blob([data], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    ui.footer = `<p class="muted small" data-save-result="download">세션에 저장하고 JSON을 내려받았습니다.</p>`;
+    render();
+    return;
+  }
+  // claude.ai 아티팩트 뷰어: 직접 다운로드가 막혀 있어 downloads 기능(사용자 확인)으로만 저장. 실패 시 JSON 텍스트 제공.
+  ui.footer = '<p class="muted small" data-save-result="pending">세션에 저장했습니다. 파일 저장 확인창을 여는 중…</p>' + jsonBox;
+  render();
+  let note = '이 화면에서는 파일 내려받기를 쓸 수 없습니다. 아래 JSON을 길게 눌러 복사해 보관하세요.';
+  let state = 'text-only';
+  try {
+    const downloads = window.claude && typeof window.claude.use === 'function' ? await window.claude.use('downloads') : null;
+    if (downloads) {
+      await downloads.save({ filename, data });
+      note = '세션에 저장하고 JSON 파일 저장을 요청했습니다.'; state = 'saved';
+    }
+  } catch (error) {
+    if (error && error.code === 'declined') { note = '파일 저장을 취소했습니다. 세션 저장은 유지되며 아래 JSON으로도 보관할 수 있습니다.'; state = 'declined'; }
+  }
+  ui.footer = `<p class="muted small" data-save-result="${state}">${esc(note)}</p>${jsonBox}`;
+  render();
 }
 
 function renderTabs() {
@@ -256,6 +294,16 @@ $('[data-proposal]').addEventListener('click', () => {
   render();
 });
 
+if (RUNTIME.synthetic_only) {
+  const select = $('[data-mode-select]');
+  select.querySelector('option[value="LIVE_BRIDGE"]')?.remove();
+  select.disabled = true;
+}
+if (IN_ARTIFACT) {
+  // 아티팩트 뷰어는 window.print를 차단한다. 작동하지 않는 버튼을 노출하지 않는다.
+  $('[data-print]').hidden = true;
+  $('[data-print]').insertAdjacentHTML('afterend', '<span class="muted small" data-print-note>인쇄는 이 시연 화면에서 제한됩니다 · 검토서 복사 후 문서에 붙여넣기</span>');
+}
 renderLegend();
 buildAdapter();
 window.BSOConsultationSim = { get state() { return session.state; } };

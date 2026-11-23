@@ -1,0 +1,43 @@
+name: Consultation Simulator Demo Pages (manual)
+
+# 선택 배포: 합성 데이터 전용 시연판을 GitHub Pages에 올린다.
+# - 수동 실행(workflow_dispatch)만. push/PR로는 실행되지 않는다.
+# - 저장소 Settings → Pages → Source를 "GitHub Actions"로 켠 뒤에만 동작한다(이 워크플로는 설정을 바꾸지 않는다).
+# - 기존 Cloudflare(wrangler.toml)·Netlify(netlify.toml) 배포와 무관하다.
+# - 배포물은 dist/consultation-sim-demo/index.html 1개 파일뿐이다. 빌드 스크립트가 브리지·키·외부 호출·실제 PNU를 검사해 있으면 실패한다.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: consultation-sim-demo-pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Build synthetic-only demo (static host)
+        run: node scripts/build_consultation_sim_demo.js --host=static
+      - name: Keep only the demo page
+        run: |
+          mkdir -p site
+          cp dist/consultation-sim-demo/index.html site/index.html
+          printf 'User-agent: *\nDisallow: /\n' > site/robots.txt
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deployment
+        uses: actions/deploy-pages@v4

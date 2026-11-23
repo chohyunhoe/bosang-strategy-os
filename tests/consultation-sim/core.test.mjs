@@ -196,3 +196,54 @@ test('브리지 어댑터: 키 없으면 합성 대체 없이 API 키/권한 필
   assert.equal(s.state.draft.map.status, 'KEY_REQUIRED');
   assert.equal(s.state.draft.fields.land_category.value, null);
 });
+
+test('리뷰 반영: 폐지 법정동은 PNU 직접입력으로도 선택 불가', async () => {
+  const r = resolveConsultationInput(SYNTHETIC_REGIONS, { context: '', lotText: '9901199000100100000' });
+  assert.equal(r.code, 'REGION_ADMIN_CHANGED');
+  assert.equal(r.candidates[0].pnu, null);
+  const s = session();
+  await s.lookup({ context: '', lotText: '9901199000100100000', baseYear: 2026 });
+  assert.notEqual(s.state.phase, 'READY');
+  assert.equal(s.state.draft, null);
+});
+
+test('리뷰 반영: 브리지 실패 응답은 캐시하지 않아 재조회 시 다시 호출', async () => {
+  let calls = 0; let healthy = false;
+  const fetchImpl = async (url) => ({ json: async () => {
+    if (String(url).endsWith('/vworld_land')) { calls += 1; return healthy ? { ok: true, record: { land_category: '대', individual_official_price: 1000, price_year: 2026 } } : { ok: false, error_code: 'API_RATE_LIMITED' }; }
+    return { ok: true };
+  } });
+  const adapter = createBridgeAdapter({ fetchImpl });
+  const pnu = '9901101000101230004';
+  const [a, b] = await Promise.all([adapter.getLandCharacteristics(pnu, 2026), adapter.getIndividualPrice(pnu, 2026)]);
+  assert.equal(a.ok, false); assert.equal(b.ok, false);
+  assert.equal(calls, 1, '동시 요청은 1회로 묶음');
+  healthy = true;
+  const retry = await adapter.getLandCharacteristics(pnu, 2026);
+  assert.equal(retry.ok, true);
+  assert.equal(calls, 2, '실패 후 재조회는 브리지를 다시 호출');
+  await adapter.getIndividualPrice(pnu, 2026);
+  assert.equal(calls, 2, '성공 응답은 재사용');
+});
+
+test('리뷰 반영: 브리지 주소는 정규화된 지번 구성요소로 전달', async () => {
+  const sent = [];
+  const fetchImpl = async (url, init) => { sent.push(JSON.parse(init.body)); return { json: async () => ({ ok: false, error_code: 'LEGAL_DONG_NOT_FOUND' }) }; };
+  const adapter = createBridgeAdapter({ fetchImpl });
+  await adapter.resolveParcel({ context: '어느시 어느구', lotText: '어느동 １２３ － ４번지' });
+  await adapter.resolveParcel({ context: '어느군 어느면 어느리', lotText: '산 12 - 3' });
+  assert.equal(sent[0].parcel_address, '어느시 어느구 어느동 123-4');
+  assert.equal(sent[1].parcel_address, '어느군 어느면 어느리 산12-3');
+});
+
+test('배포 보안: 실데이터 브리지 서버는 루프백(127.0.0.1)에만 바인딩, 시연판은 브리지·네트워크 코드 없음', async () => {
+  const server = fs.readFileSync(path.join(root, 'scripts', 'serve_product_v2.js'), 'utf8');
+  assert.match(server, /const host = '127\.0\.0\.1';/);
+  assert.match(server, /server\.listen\(port, host,/);
+  const { execFileSync } = await import('node:child_process');
+  execFileSync(process.execPath, [path.join(root, 'scripts', 'build_consultation_sim_demo.js'), '--host=static'], { stdio: 'pipe' });
+  const demo = fs.readFileSync(path.join(root, 'dist', 'consultation-sim-demo', 'index.html'), 'utf8');
+  assert.doesNotMatch(demo, /__public_data_bridge|\bfetch\s*\(|XMLHttpRequest|api\.vworld\.kr/);
+  assert.match(demo, /"synthetic_only":true/);
+  assert.match(demo, /LIVE_BRIDGE_EXCLUDED_FROM_PUBLIC_DEMO/);
+});

@@ -5,6 +5,7 @@ on:
     paths:
       - 'browser/consultation-sim/**'
       - 'scripts/build_consultation_sim.js'
+      - 'scripts/build_consultation_sim_demo.js'
       - 'scripts/serve_product_v2.js'
       - 'scripts/public_data_bridge.*'
       - 'tests/consultation-sim/**'
@@ -31,6 +32,10 @@ jobs:
       - run: npm ci
       - name: Deterministic core (synthetic data only)
         run: npm run consult:test
+      - name: Public demo bundle safety checks (synthetic only, no bridge, no network)
+        run: |
+          node scripts/build_consultation_sim_demo.js --host=claude-artifact
+          node scripts/build_consultation_sim_demo.js --host=static
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
       - name: PC / Fold open / Fold cover E2E

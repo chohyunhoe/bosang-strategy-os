@@ -135,7 +135,8 @@ export function resolveConsultationInput(records, { context = '', lotText = '' }
   if (parsed.kind === 'PNU') {
     const region = (records || []).find((row) => row.code === parsed.parts.region_code && row.level === 'LEAF');
     if (!region) return { ok: false, code: 'PNU_REGION_UNKNOWN', message: PNU_CODES.PNU_REGION_UNKNOWN, candidates: [] };
-    const candidate = { ...candidateFrom(region, parsed.parts), pnu: parsed.pnu };
+    // 폐지·변경 법정동은 PNU 직접입력이어도 선택 가능한 PNU를 만들지 않는다 (이름 입력 경로와 동일한 게이트)
+    const candidate = { ...candidateFrom(region, parsed.parts), pnu: region.status === 'ABOLISHED' ? null : parsed.pnu };
     if (region.status === 'ABOLISHED') {
       return { ok: false, code: 'REGION_ADMIN_CHANGED', message: PNU_CODES.REGION_ADMIN_CHANGED, candidates: [candidate] };
     }

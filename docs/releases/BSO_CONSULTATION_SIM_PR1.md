@@ -71,8 +71,8 @@ npm run consult:e2e    # PC 1440 · Fold 펼침 884 · Fold 커버 412 E2E
 
 | 항목 | 결과 |
 |---|---|
-| 코어 결정론 테스트 (`consult:test`) | 13/13 PASS |
-| E2E 11시나리오 × 3뷰포트 (`consult:e2e`) | 33/33 PASS |
+| 코어 결정론 테스트 (`consult:test`) | 17/17 PASS (리뷰 반영·배포 보안 포함) |
+| E2E 17시나리오 × 3뷰포트 (`consult:e2e`, 시연판 포함) | 50 PASS / 1 skip(가로·세로 전환은 PC 해당 없음) |
 | `product:v2:test` | PASS (변경 전·후 동일) |
 | `test:static`, `validate_static_site.js`, `git diff --check` | PASS |
 | `parser:test`, `privacy_purge_guard` | PASS |
@@ -91,3 +91,23 @@ npm run consult:e2e    # PC 1440 · Fold 펼침 884 · Fold 커버 412 E2E
 6. **PR-3**: 3구역 상담 멘트, 사용자 검수 플래그, 명시적 BSO 사건 초안 전달
 
 신규 비용: 0원 (새 API 계약·유료 호출·n8n 없음).
+
+## 공개 시연판 (2026-11-23 추가)
+
+- 주소: https://claude.ai/artifact/P6C1TZpbUH4Z9oFDyzyb2X (Claude 아티팩트, HTTPS, 무료)
+- 공개 범위: 현재 **소유자 본인만** 열람(claude.ai 로그인 필요). 다른 사람에게 보이려면 소유자가 아티팩트 페이지에서 공유를 켜야 한다.
+- 빌드: `node scripts/build_consultation_sim_demo.js --host=claude-artifact` → `dist/consultation-sim-demo/index.html` 단일 파일
+  - 합성 전용(`synthetic_only:true`). 실데이터 브리지 어댑터는 번들에서 제외하고 호출 시 예외를 던지는 스텁으로 대체
+  - 빌드 시 브리지 경로·fetch/XHR·외부 URL·키 값·실제 사건명·브라우저 영구저장·비합성 PNU를 검사해 있으면 실패
+- 아티팩트 뷰어 제약 대응: 인쇄(`window.print`) 차단 → 인쇄 버튼 숨기고 "복사 후 붙여넣기" 안내. 파일 다운로드 차단 → `downloads` 기능(사용자 확인창)으로 저장, 불가 시 JSON 텍스트 제공
+- 실데이터 브리지(`serve_product_v2.js`)는 `127.0.0.1`에만 바인딩되어 공개 인터넷에서 접근할 수 없음(테스트로 고정)
+- 선택: `.github/workflows/consultation-sim-demo-pages.yml`(수동 실행 전용). Settings → Pages → Source를 "GitHub Actions"로 켜고 main에서 실행하면 로그인 없이 열리는 공개 주소가 생긴다. 이 세션은 Pages 설정 API 권한이 없어 켜지 않았다.
+
+### 검증 구분
+
+| 구분 | 상태 |
+|---|---|
+| 데스크톱 Chromium의 모바일 에뮬레이션 (412·884, 세로/가로, 터치 탭, 입력, 탭 이동, 복사·저장, 후보 선택, API 오류) | PASS |
+| 게시본 = 검증 빌드 동일성 (SHA-256 `dc963494e181`) | 확인 |
+| claude.ai 아티팩트 뷰어 안에서의 실제 렌더링 | **미실행** (이 세션에서 뷰어 검사 도구 사용 불가) |
+| Fold8 실기기 (삼성 인터넷·Chrome·Claude 앱) | **미실행** (실기기 접근 없음) |

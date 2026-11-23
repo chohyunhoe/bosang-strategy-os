@@ -5,7 +5,8 @@
   font-family:"Pretendard","Apple SD Gothic Neo","Malgun Gothic","Noto Sans KR",system-ui,sans-serif;
 }
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--ink);font-size:14px;line-height:1.5;padding:0 clamp(10px,2vw,24px) 24px}
+body{margin:0;background:var(--bg);color:var(--ink);font-size:14px;line-height:1.5;padding:0 max(clamp(10px,2vw,24px),env(safe-area-inset-right)) max(24px,env(safe-area-inset-bottom)) max(clamp(10px,2vw,24px),env(safe-area-inset-left))}
+.top{padding-top:max(16px,env(safe-area-inset-top))!important}
 button,input,select{font:inherit}
 .top{display:flex;flex-wrap:wrap;gap:12px;justify-content:space-between;align-items:flex-end;padding:16px 0 10px;border-bottom:2px solid var(--ink)}
 .eyebrow{display:block;font-size:11px;letter-spacing:.06em;color:var(--muted);text-transform:uppercase}

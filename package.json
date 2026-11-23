@@ -45,7 +45,8 @@
     "consult:build": "node scripts/build_consultation_sim.js",
     "consult:test": "npm run consult:build && node --test tests/consultation-sim/core.test.mjs",
     "consult:e2e": "playwright test -c playwright.consultation-sim.config.js",
-    "consult:gate": "npm run consult:test && npm run consult:e2e"
+    "consult:gate": "npm run consult:test && npm run consult:e2e",
+    "consult:demo:build": "node scripts/build_consultation_sim_demo.js"
   },
   "devDependencies": {
     "@playwright/test": "1.54.1",

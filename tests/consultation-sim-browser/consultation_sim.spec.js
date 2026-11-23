@@ -180,6 +180,24 @@ test('1차 검토서 복사는 확인값·신호·미확인 구분, 과업 제�
   await expect(page.locator('[data-proposal-panel]')).toContainText('자동 계약·청구·결제는 발생하지 않습니다');
 });
 
+test('리뷰 반영: 공적자료 미확보 필드의 상담자 입력값은 복사본에 별도 구역으로 포함', async ({ page }, testInfo) => {
+  await open(page);
+  await lookup(page, NURI, '125');
+  await ready(page);
+  await showTab(page, testInfo, 'land');
+  await page.click('[data-edit="road_access"]');
+  await page.fill('[data-edit-row] [data-edit-value]', '세로한면(가)');
+  await page.fill('[data-edit-row] [data-edit-by]', '상담자B(합성)');
+  await page.click('[data-edit-save="road_access"]');
+  await page.click('[data-copy]');
+  const summary = await page.locator('[data-summary]').inputValue();
+  expect(summary).toContain('■ 상담자 수정·입력값(공적자료 아님 · 검수 전)');
+  expect(summary).toContain('도로접면: 세로한면(가) (입력 상담자B(합성)) / 공적자료: 미확보');
+  const official = summary.split('■ 상담자 수정·입력값')[0];
+  expect(official).toContain('■ 확인된 공적 사실');
+  expect(official).not.toContain('세로한면(가)');
+});
+
 test('실데이터 모드: 키 없으면 합성 대체 없이 API 키/권한 필요', async ({ page }) => {
   await page.route('**/__public_data_bridge/status', (route) => route.fulfill({ json: { ok: true, vworld_configured: false, public_data_configured: false, secrets_exposed: false } }));
   await page.route('**/__public_data_bridge/resolve_pnu', (route) => route.fulfill({ status: 422, json: { ok: false, error_code: 'PUBLIC_DATA_KEY_MISSING' } }));

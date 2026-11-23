@@ -29,7 +29,12 @@ export function createBridgeAdapter({ fetchImpl = (...args) => fetch(...args), n
 
   async function landRecord(pnu, year) {
     const key = `${pnu}|${year}`;
-    if (!recordCache.has(key)) recordCache.set(key, post(fetchImpl, '/vworld_land', { pnu, standard_year: Number(year) }));
+    // 동시 요청은 하나로 묶되, 실패 응답은 캐시에서 제거해 재조회 시 브리지를 다시 호출한다.
+    if (!recordCache.has(key)) {
+      const pending = post(fetchImpl, '/vworld_land', { pnu, standard_year: Number(year) })
+        .then((data) => { if (!data || !data.ok) recordCache.delete(key); return data; });
+      recordCache.set(key, pending);
+    }
     return recordCache.get(key);
   }
 
@@ -62,7 +67,9 @@ export function createBridgeAdapter({ fetchImpl = (...args) => fetch(...args), n
       if (!parsed.names.length && !String(context || '').trim()) {
         return { ok: false, code: 'REGION_CONTEXT_REQUIRED', message: PNU_CODES.REGION_CONTEXT_REQUIRED, candidates: [] };
       }
-      const parcelAddress = [context, String(lotText || '').trim()].filter(Boolean).join(' ');
+      // 원문 대신 정규화된 구성요소(법정동명·산·본번·부번)로 브리지 주소를 만든다 (전각·공백 하이픈 대응)
+      const lot = `${parsed.mountain ? '산' : ''}${parsed.bun}${parsed.ji ? `-${parsed.ji}` : ''}`;
+      const parcelAddress = [String(context || '').trim(), ...parsed.names, lot].filter(Boolean).join(' ');
       const result = await post(fetchImpl, '/resolve_pnu', { parcel_address: parcelAddress, address_context: context || '' });
       if (!result.ok || !result.candidate) {
         const code = result.error_code === 'LEGAL_DONG_MULTIPLE_CANDIDATES' ? 'REGION_MULTIPLE_UNLISTED' : (result.error_code || 'PNU_RESOLVE_FAILED');
