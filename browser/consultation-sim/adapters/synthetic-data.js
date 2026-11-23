@@ -45,7 +45,7 @@ export const SYNTHETIC_PARCELS = Object.freeze({
     scenario: 'PARTIAL_BLANK', cell: [2, 0],
     years: { 2026: { ...base2026, road_access: null, shape: null, area_m2: 296.0, price: 1_880_000 }, 2025: { ...base2026, road_access: null, shape: null, area_m2: 296.0, price: 1_830_000 } },
   },
-  // 연도별 지목·이용상황 모순 (전년 전/전 → 기준연도 대/주거나지) + 지목과 이용상황 상이
+  // 연도 간 조사값 변경 사례 (지목 전/이용상황 주거나지는 자체로 모순 아님)
   [p(NURI_SAESOL, false, 130)]: {
     scenario: 'YEAR_CONFLICT', cell: [0, 1],
     years: {

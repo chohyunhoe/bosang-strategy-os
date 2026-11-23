@@ -116,9 +116,9 @@ test('연도 모순·빈칸·연도 자료 없음·API 제한은 빈 숫자 없�
   await ready(page);
   await showTab(page, testInfo, 'analysis');
   await expect(page.locator('[data-signal="YEAR_CHANGE"]').first()).toBeVisible();
-  await expect(page.locator('[data-signal="CATEGORY_USE_DIFF"]')).toContainText('현장 확인');
+  await expect(page.locator('[data-signal="CATEGORY_USE_DIFF"]')).toHaveCount(0);
   await showTab(page, testInfo, 'land');
-  await expect(page.locator('[data-field="land_use"]')).toHaveAttribute('data-status', 'FIELD_CHECK');
+  await expect(page.locator('[data-field="land_use"]')).toHaveAttribute('data-status', 'MISMATCH');
   await lookup(page, NURI, '180');
   await ready(page);
   await expect(page.locator('[data-field="price_per_m2"]')).toHaveAttribute('data-status', 'NOT_QUERIED');

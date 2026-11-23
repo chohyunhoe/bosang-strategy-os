@@ -109,8 +109,8 @@ test('3 연도별 모순·필수값 빈칸·연도 자료 없음·API 제한/장
   await y.lookup({ context: NURI, lotText: '130', baseYear: 2026 });
   const kinds = y.state.draft.analysis.signals.map((s) => s.kind);
   assert.ok(kinds.includes('YEAR_CHANGE'));
-  assert.ok(kinds.includes('CATEGORY_USE_DIFF'));
-  assert.equal(y.state.draft.fields.land_use.status, STATUS.FIELD_CHECK);
+  assert.ok(!kinds.includes('CATEGORY_USE_DIFF'));
+  assert.equal(y.state.draft.fields.land_use.status, STATUS.MISMATCH, '연도 변경 표시는 유지');
   assert.equal(y.state.draft.fields.road_access.status, STATUS.MISMATCH);
 
   const blank = session();
@@ -354,4 +354,27 @@ test('세션: 중복 정리 근거는 저장, 충돌이면 필드 불일치·값
   assert.equal(f.land_category.value, null, '같은 응답의 다른 필드도 자동 채택하지 않음');
   assert.match(f.price_per_m2.note, /pblntfPclnd/);
   assert.ok(conflict.state.draft.analysis.signals.some((s) => s.kind === 'REVISION_CONFLICT' && s.status === STATUS.EXPERT_REVIEW));
+});
+
+test('지목 대·토지이용상황 단독은 서로 다른 분류로 허위 불일치·쟁점 금지', async () => {
+  const s = session();
+  await s.lookup({ context: NURI, lotText: '123-4', baseYear: 2026 });
+  const d = s.state.draft;
+  assert.equal(d.fields.land_category.value, '대');
+  assert.equal(d.fields.land_use.value, '단독');
+  assert.equal(d.fields.land_use.status, STATUS.OK);
+  assert.equal(d.analysis.signals.some((x) => x.kind === 'CATEGORY_USE_DIFF'), false);
+  assert.equal(d.analysis.opinion.issues.some((x) => x.title === '현실적 이용상황'), false);
+  assert.match(d.analysis.opinion.script, /가상 조사자료상/);
+  assert.doesNotMatch(d.analysis.opinion.script, /공적자료로 보면/);
+});
+test('지목 전·이용상황 주거나지는 자동 현황 불일치로 취급하지 않음', async () => {
+  const s = session();
+  await s.lookup({ context: NURI, lotText: '130', baseYear: 2026 });
+  const d = s.state.draft;
+  assert.equal(d.fields.land_category.value, '전');
+  assert.equal(d.fields.land_use.value, '주거나지');
+  assert.ok(d.analysis.signals.some((x) => x.kind === 'YEAR_CHANGE'));
+  assert.equal(d.analysis.signals.some((x) => x.kind === 'CATEGORY_USE_DIFF'), false);
+  assert.equal(d.analysis.opinion.issues.some((x) => x.title === '현실적 이용상황'), false);
 });

@@ -34,13 +34,9 @@ export const UNKNOWN_FROM_LOT = Object.freeze([
 
 const KEY_REQUIRED_CODES = new Set(['MAP_KEY_REQUIRED', 'VWORLD_API_KEY_MISSING', 'PUBLIC_DATA_KEY_MISSING', 'MAP_LIVE_PENDING_TERMS_REVIEW', 'API_KEY_REQUIRED', 'BRIDGE_UNREACHABLE']);
 
-const LAND_USE_EXPECT = Object.freeze({
-  '대': /(주거|상업|업무|공업|주택|다세대|아파트|연립|나지)/,
-  '전': /^(전|답|과수원|전기타)$/,
-  '답': /^(전|답|답기타)$/,
-  '임야': /(임야|자연림|조림|토지임야)/,
-  '도로': /도로/,
-});
+// 지목과 공시지가 산정용 이용상황은 서로 다른 분류다.
+// 예: '대/단독', '전/주거나지'만으로 실현황 불일치를 판정하지 않는다.
+// 실제 현황 판단은 별도 현장·건축물 등 독립증거가 있어야 가능하다.
 
 function text(value) { return value == null ? '' : String(value).trim(); }
 function clone(value) { return value == null ? value : JSON.parse(JSON.stringify(value)); }
@@ -183,13 +179,8 @@ function applyMap(draft, geometryResponse, neighborhood) {
 export function computeSignals(draft) {
   const signals = [];
   const f = draft.fields;
-  const category = f.land_category.value;
-  const use = f.land_use.value;
-  if (category && use && LAND_USE_EXPECT[category] && !LAND_USE_EXPECT[category].test(use)) {
-    signals.push({ kind: 'CATEGORY_USE_DIFF', status: STATUS.FIELD_CHECK, title: '지목과 공시지가 이용상황 표기 상이',
-      detail: `지목 '${category}' · 이용상황 '${use}' — 실제 현황은 현장 확인 필요`, fields: ['land_category', 'land_use'] });
-    f.land_use.status = f.land_use.status === STATUS.OK ? STATUS.FIELD_CHECK : f.land_use.status;
-  }
+  // 서로 다른 공적 분류 값을 문자열 비교하여 허위 쟁점을 만들지 않는다.
+  // 독립 현황증거가 없는 경우에는 지목·이용상황을 각각 원문 값으로 보존한다.
   const prev = draft.previous_year;
   if (prev.status === 'OK' && prev.record) {
     ['land_category', 'land_use', 'road_access', 'zoning', 'shape', 'elevation'].forEach((key) => {

@@ -15,6 +15,9 @@ test('후보 3건·가장 가까운 표준지 배제·8개 요인(확인/가설/
   await expect(page.locator('[data-standard-status="FOUND"]')).toBeAttached();
   await analysis(page, testInfo);
   await expect(page.locator('[data-standard-candidate]')).toHaveCount(3);
+  await expect(page.locator('[data-signal="CATEGORY_USE_DIFF"]')).toHaveCount(0);
+  await expect(page.locator('[data-issue="현실적 이용상황"]')).toHaveCount(0);
+  await expect(page.locator('[data-op-script]')).toContainText('가상 조사자료상');
   await expect(page.locator('[data-nearest-excluded]')).toContainText('용도지역 상이');
   const first = page.locator('[data-standard-candidate="1"]');
   await expect(first.locator('[data-factor-details]')).toHaveAttribute('open', '');
@@ -49,14 +52,13 @@ test('후보 0건(상업 대상): 후보 미확보·선정 적정성 쟁점, 후
   await expect(page.locator('[data-standard-candidate]')).toHaveCount(1);
 });
 
-test('현실적 이용상황 쟁점(지목 전·이용상황 주거나지)과 근거 표시', async ({ page }, testInfo) => {
+test('지목 전·이용상황 주거나지는 자동 현황 불일치 아님, 연도변경만 표시', async ({ page }, testInfo) => {
   await page.goto('/');
   await lookup(page, NURI, '130');
   await expect(page.locator('[data-standard-status="FOUND"]')).toBeAttached();
   await analysis(page, testInfo);
-  const issue = page.locator('[data-issue="현실적 이용상황"]');
-  await expect(issue).toContainText('근거: 지목, 이용상황');
-  await expect(issue).toContainText('필요자료');
+  await expect(page.locator('[data-issue="현실적 이용상황"]')).toHaveCount(0);
+  await expect(page.locator('[data-issue="연도 간 토지특성 변경"]').first()).toContainText('필요자료');
 });
 
 test('표준지 분석이 늦게 끝나도 입력 중인 수정값·펼친 표가 지워지지 않음(CI 재현 회귀)', async ({ page }, testInfo) => {
