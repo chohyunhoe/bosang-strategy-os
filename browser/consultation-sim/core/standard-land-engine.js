@@ -273,6 +273,11 @@ export function analyzeStandardCandidates({ target, rows, baseYear, distances = 
     evaluated.push({ row, reasons, eligible: reasons.length === 0 });
   }
   evaluated.forEach((e) => { e.distance_m = distances[e.row.pnu] ?? null; });
+  const distanceCoverage = {
+    total_count: evaluated.length,
+    located_count: evaluated.filter((e) => Number.isFinite(e.distance_m)).length,
+    complete: evaluated.length > 0 && evaluated.every((e) => Number.isFinite(e.distance_m)),
+  };
   const eligible = evaluated.filter((e) => e.eligible).map((e) => ({ ...e, ...similarityScore(t, e.row) }));
   eligible.sort((a, b) => (b.score - a.score) || ((a.distance_m ?? Infinity) - (b.distance_m ?? Infinity)) || a.row.pnu.localeCompare(b.row.pnu));
   const located = evaluated.filter((e) => e.distance_m != null).sort((a, b) => a.distance_m - b.distance_m);
@@ -287,7 +292,7 @@ export function analyzeStandardCandidates({ target, rows, baseYear, distances = 
       `용도지역 동일(${e.row.zoning})`,
       `이용상황군 동일(${useGroup(e.row.land_use)}: 표준지 ${e.row.land_use} / 대상 ${t.land_use})`,
       ...e.matched.filter((m) => m !== '이용상황 동일'),
-      e.distance_m != null ? `거리 ${fmtM(e.distance_m)}(조회 표준지 중 ${distRank.get(e.row.pnu)}번째로 가까움)` : '거리 미산출',
+      e.distance_m != null ? `거리 ${fmtM(e.distance_m)}(위치가 확인된 표준지 중 ${distRank.get(e.row.pnu)}번째로 가까움)` : '거리 미산출',
     ],
     factors: compareFactors(t, e.row, e.distance_m),
   }));
@@ -296,12 +301,18 @@ export function analyzeStandardCandidates({ target, rows, baseYear, distances = 
     ...eligible.slice(maxCandidates).map((e, i) => ({ row: e.row, distance_m: e.distance_m, reasons: [`유사 후보 ${maxCandidates}건 초과(순위 ${maxCandidates + i + 1})`] })),
   ].sort((a, b) => (a.distance_m ?? Infinity) - (b.distance_m ?? Infinity));
   const nearestExcluded = nearest && !candidates.some((c) => c.row.pnu === nearest.row.pnu)
-    ? { pnu: nearest.row.pnu, label: nearest.row.label, distance_m: nearest.distance_m, reasons: excluded.find((x) => x.row.pnu === nearest.row.pnu)?.reasons || [] }
+    ? { pnu: nearest.row.pnu, label: nearest.row.label, distance_m: nearest.distance_m, reasons: excluded.find((x) => x.row.pnu === nearest.row.pnu)?.reasons || [],
+      scope_label: distanceCoverage.complete ? '조회된 표준지 중 가장 가까운' : '위치가 확인된 표준지 중 가장 가까운' }
     : null;
   return {
     status: candidates.length ? 'FOUND' : 'NONE',
     candidates, excluded, nearest_excluded: nearestExcluded,
-    notes: candidates.length ? notes : [...notes, '조회 범위 안에서 용도지역·이용상황이 유사한 표준지 후보 미확보 — 범위 확대 여부는 전문가 판단'],
+    distance_coverage: distanceCoverage,
+    notes: [
+      ...notes,
+      ...(distanceCoverage.total_count > 0 && !distanceCoverage.complete ? [`직선거리 확인 ${distanceCoverage.located_count}/${distanceCoverage.total_count}건 — 위치 미확인 표준지가 있어 전체 최근접 여부는 판정 불가`] : []),
+      ...(!candidates.length ? ['조회 범위 안에서 용도지역·이용상황이 유사한 표준지 후보 미확보 — 범위 확대 여부는 전문가 판단'] : []),
+    ],
     scope, total_rows: (rows || []).length, base_year: Number(baseYear), mapping,
   };
 }

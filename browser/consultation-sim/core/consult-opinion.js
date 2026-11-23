@@ -45,7 +45,7 @@ export function buildConsultOpinion(draft) {
       ));
     });
     if (std.nearest_excluded) {
-      standard.push(item(`가장 가까운 표준지 ${std.nearest_excluded.label || std.nearest_excluded.pnu}(${fmtM(std.nearest_excluded.distance_m)})는 ${std.nearest_excluded.reasons.join(', ')}로 후보에서 제외했습니다.`, [`standard:${std.nearest_excluded.pnu}`]));
+      standard.push(item(`${std.nearest_excluded.scope_label || '위치가 확인된 표준지 중 가장 가까운'} ${std.nearest_excluded.label || std.nearest_excluded.pnu}(${fmtM(std.nearest_excluded.distance_m)})는 ${std.nearest_excluded.reasons.join(', ')}로 후보에서 제외했습니다.`, [`standard:${std.nearest_excluded.pnu}`]));
     }
     standard.push(item(`위 후보는 ${std.scope?.label || '같은 법정동'} 표준지 ${std.total_rows || 0}건 안에서의 공적자료 기준 유사도 순서일 뿐입니다. 인접 법정동 등 다른 지역 표준지는 비교하지 않았고, 평가서가 실제로 선정한 비교표준지와 다를 수 있습니다.`, ['standard:scope']));
   } else if (std.status === 'NONE') {

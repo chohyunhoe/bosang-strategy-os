@@ -314,8 +314,13 @@ export function createConsultationSession({ adapter, onChange = () => {} }) {
     }
     const target = targetFromDraft(d);
     const pre = analyzeStandardCandidates({ target, rows: list.rows, baseYear, scope: list.scope });
-    const nearbyPnus = [...pre.candidates.map((c) => c.row.pnu), ...pre.excluded.filter((x) => x.reasons.some((r) => r.startsWith('유사 후보'))).map((x) => x.row.pnu)].slice(0, 10);
-    const toLocate = [...new Set([d.parcel.pnu, ...nearbyPnus, ...(list.synthetic ? list.rows.map((r) => r.pnu) : [])])];
+    // 실제 API에서도 배제 표준지의 거리를 확인해야 '가까운 표준지가 배제된 이유'가 표시된다.
+    // 라이브 단건 지적 호출 상한(대상 포함 11필지)을 지키고, 미조회는 전체 최근접으로 단정하지 않는다.
+    const eligiblePnus = [...pre.candidates.map((c) => c.row.pnu),
+      ...pre.excluded.filter((x) => x.reasons.some((r) => r.startsWith('유사 후보'))).map((x) => x.row.pnu)];
+    const excludedPnus = pre.excluded.filter((x) => !x.reasons.some((r) => r.startsWith('유사 후보'))).map((x) => x.row.pnu);
+    const maxLocations = list.synthetic ? Number.MAX_SAFE_INTEGER : 11;
+    const toLocate = [...new Set([d.parcel.pnu, ...eligiblePnus, ...excludedPnus])].slice(0, maxLocations);
     const loc = typeof adapter.locateParcels === 'function' ? await adapter.locateParcels(toLocate).catch(() => ({ ok: false })) : { ok: false };
     if (!isCurrent(token)) { state.discarded_responses += 1; notify(); return; }
     const origin = loc.ok ? loc.centroids[d.parcel.pnu] : null;
