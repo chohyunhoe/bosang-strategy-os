@@ -159,3 +159,44 @@ test('의견 ②는 조회 범위 한계(인접 법정동 미비교)를 밝힘',
   const fake = { ...d, analysis: { ...d.analysis, standard: analyzeStandardCandidates({ target: TARGET, rows: sevenRows(2026).map(({ prposAreaNm1, ...r }) => r), baseYear: 2026 }) } };
   assert.match(buildConsultOpinion(fake).standard[0].text, /해석하지 못해 후보 판정을 보류/);
 });
+
+test('실데이터 어댑터 모의: 배제 표준지까지 거리조회하여 근접 후보의 제외사유 표시', async () => {
+  const base = createSyntheticAdapter({ baseDelayMs: 1 });
+  const requested = [];
+  const adapter = {
+    ...base,
+    async listStandardLands(args) {
+      const list = await base.listStandardLands(args);
+      return { ...list, synthetic: false }; // 실제 API와 동일한 거리조회 분기만 모의
+    },
+    async locateParcels(pnus) {
+      requested.push([...pnus]);
+      return base.locateParcels(pnus);
+    },
+  };
+  const session = createConsultationSession({ adapter });
+  await session.lookup({ context: NURI, lotText: '123-4', baseYear: 2026 });
+  const result = session.state.draft.analysis.standard;
+  assert.equal(result.status, 'FOUND');
+  assert.equal(result.distance_coverage.complete, true);
+  assert.ok(result.nearest_excluded);
+  assert.match(result.nearest_excluded.scope_label, /조회된 표준지 중 가장 가까운/);
+  assert.ok(requested[0].includes(result.nearest_excluded.pnu), '배제 표준지도 실제 모드에서 위치를 조회해야 함');
+});
+
+test('위치 미조회 필지가 있으면 전체 최근접 표현을 금지하고 거리 표본 수를 표시', async () => {
+  const base = createSyntheticAdapter({ baseDelayMs: 1 });
+  const d = await run(NURI, '123-4');
+  const list = await base.listStandardLands({ pnu: d.parcel.pnu, year: 2026 });
+  const excluded = d.analysis.standard.nearest_excluded.pnu;
+  const result = analyzeStandardCandidates({
+    target: { zoning: d.fields.zoning.value, land_use: d.fields.land_use.value },
+    rows: list.rows, baseYear: 2026, distances: { [excluded]: 40 }, scope: list.scope,
+  });
+  assert.equal(result.distance_coverage.complete, false);
+  assert.equal(result.distance_coverage.located_count, 1);
+  assert.equal(result.distance_coverage.total_count, list.rows.length);
+  assert.match(result.notes.join(' '), /전체 최근접 여부는 판정 불가/);
+  assert.match(result.nearest_excluded.scope_label, /위치가 확인된 표준지 중 가장 가까운/);
+  assert.doesNotMatch(result.candidates[0].selection_reasons.join(' '), /조회 표준지 중 .*번째로 가까움/);
+});

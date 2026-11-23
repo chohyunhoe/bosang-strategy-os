@@ -234,7 +234,7 @@ function renderStandard(st) {
   if (st.status === 'INSUFFICIENT_TARGET') return `<div class="callout" data-standard-status="INSUFFICIENT_TARGET">${chip('FIELD_CHECK', '대상 자료 부족')} 대상 용도지역·이용상황이 확보되지 않아 후보를 고르지 않았습니다.</div>`;
   const head = `<p class="muted small" data-standard-scope>${esc(st.scope?.label || '')} · ${esc(st.source || '')} · 조회 ${st.total_rows}건${st.truncated ? ' (일부만 조회)' : ''}</p>`;
   const notes = `<ul class="notes small">${st.notes.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>`;
-  const nearest = st.nearest_excluded ? `<p class="warn-note small" data-nearest-excluded>가장 가까운 표준지 ${esc(st.nearest_excluded.label || st.nearest_excluded.pnu)}(${fmtDist(st.nearest_excluded.distance_m)})는 ${esc(st.nearest_excluded.reasons.join(', '))}로 제외</p>` : '';
+  const nearest = st.nearest_excluded ? `<p class="warn-note small" data-nearest-excluded>${esc(st.nearest_excluded.scope_label || '위치가 확인된 표준지 중 가장 가까운')} ${esc(st.nearest_excluded.label || st.nearest_excluded.pnu)}(${fmtDist(st.nearest_excluded.distance_m)})는 ${esc(st.nearest_excluded.reasons.join(', '))}로 제외</p>` : '';
   const cards = st.status === 'FOUND' ? st.candidates.map((c) => `
     <article class="std-card" data-standard-candidate="${c.rank}">
       <header><b>후보 ${c.rank}</b> ${esc(c.row.label || '')} <span class="mono">${esc(c.row.pnu)}</span>
