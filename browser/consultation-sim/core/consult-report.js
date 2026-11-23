@@ -3,7 +3,8 @@
 //                → 4 증빙요건 충족·미충족·판정 보류 → 5 현재 절차와 다음 조치 → 6 정밀검토 과업 및 확보자료
 // - 보상금·보정률·법정기한을 계산하지 않는다. 쟁점 성립·법률효과를 판단하지 않는다.
 // - 기본서 발췌는 지식팩 원문을 그대로 줄여 옮기며(요약 생성 없음), 부족하면 '원본 확인 필요'로 표시한다.
-import { STATUS, STATUS_LABEL } from './consultation-session.js';
+import { STATUS, STATUS_LABEL, scrubSecrets } from './consultation-session.js';
+import { recordMatches } from './consult-record.js';
 import { evaluateIntake, nextActionsFor, INTAKE_STATUS_LABEL } from './consult-intake.js';
 import { buildEvidenceGates, EVIDENCE_STATE, EVIDENCE_STATE_LABEL } from './manual-pack.js';
 import { FORBIDDEN_PHRASES } from './consult-opinion.js';
@@ -127,8 +128,15 @@ export function buildTasks({ gates, opinion, intakeEval }) {
   return tasks;
 }
 
-export function buildConsultReport({ draft, intake = null, evidence = {}, pack = null, now = new Date() } = {}) {
+// record를 넘기면 현재 draft와 결속이 맞는 기록만 사용한다. 불일치면 상담 4요소·증빙 표시를 비우고 binding_ok=false.
+export function buildConsultReport({ draft, record, intake = null, evidence = {}, pack = null, now = new Date() } = {}) {
   const d = draft;
+  let recordBinding = { status: 'NOT_PROVIDED', record_id: null };
+  if (record !== undefined) {
+    if (recordMatches(record, d)) { intake = record.intake; evidence = record.evidence || {}; recordBinding = { status: 'MATCHED', record_id: record.record_id }; }
+    else { intake = null; evidence = {}; recordBinding = { status: 'MISMATCH', record_id: record?.record_id || null }; }
+  }
+  intake = intake ? scrubSecrets(intake) : null;
   const opinion = d.analysis?.opinion || null;
   const intakeEval = evaluateIntake(intake, { now });
   const gates = buildEvidenceGates({ pack, draft: d, evidence });
@@ -142,6 +150,8 @@ export function buildConsultReport({ draft, intake = null, evidence = {}, pack =
   const header = [
     `[1차 상담 검토서 · 검토 보조${d.synthetic ? ' · 합성 데이터(실제 필지 아님)' : ''}${pack ? ' · 내부 전용(기본서 발췌 포함)' : ''}]`,
     `필지: ${d.parcel.legal_dong_name} ${d.parcel.lot_label} (PNU ${d.parcel.pnu}) · 기준연도 ${d.binding.base_year}`,
+    ...(recordBinding.status === 'MATCHED' ? [`상담 ID: ${recordBinding.record_id} (이 필지·기준연도·데이터 모드 조회에 결속)`] : []),
+    ...(recordBinding.status === 'MISMATCH' ? ['상담 기록 결속 불일치 — 상담 4요소·증빙 표시를 포함하지 않음'] : []),
   ];
   const s1 = [
     ...factLines(d),
@@ -176,6 +186,7 @@ export function buildConsultReport({ draft, intake = null, evidence = {}, pack =
   return {
     text, sections: REPORT_SECTIONS.map((title, i) => ({ no: i + 1, title, lines: bodies[i] })),
     intake: intakeEval, gates, tasks, materials, actions,
+    record_binding: recordBinding, binding_ok: recordBinding.status !== 'MISMATCH',
     internal_excerpt_included: Boolean(pack),
     forbidden_hits: generated.filter((t) => FORBIDDEN_PHRASES.some((re) => re.test(t))),
   };

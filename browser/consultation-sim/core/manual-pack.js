@@ -124,7 +124,9 @@ const PLACEHOLDER = /^(-+|—+|없음|미기재|해당\s*없음|요약\s*없음|
 export function sectionStatus(value) {
   const t = Array.isArray(value) ? value.join('\n') : String(value == null ? '' : value);
   const c = t.normalize('NFKC').trim();
-  if (!c || c.replace(/\s+/g, '').length < 2 || PLACEHOLDER.test(c)) return { ok: false, text: '', status: 'SOURCE_CHECK_REQUIRED' };
+  // 줄마다 검사: 모든 비어 있지 않은 줄이 자리표시뿐이면('-\n-', 'TODO\nTODO') 내용 없음으로 본다.
+  const lines = c.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  if (!c || c.replace(/\s+/g, '').length < 2 || !lines.length || lines.every((l) => PLACEHOLDER.test(l))) return { ok: false, text: '', status: 'SOURCE_CHECK_REQUIRED' };
   return { ok: true, text: c, status: 'FROM_PACK' };
 }
 

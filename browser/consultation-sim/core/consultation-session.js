@@ -42,6 +42,7 @@ function text(value) { return value == null ? '' : String(value).trim(); }
 function clone(value) { return value == null ? value : JSON.parse(JSON.stringify(value)); }
 
 let requestSeq = 0;
+let draftSeq = 0;
 function nextRequestId() { requestSeq += 1; return `REQ-${Date.now().toString(36)}-${requestSeq}`; }
 
 export function evaluateGeometry(requestedPnu, response) {
@@ -65,7 +66,8 @@ function emptyField(def) {
 export function createDraft({ dataMode, input, candidate, baseYear, requestId }) {
   return {
     schema: 'bso-consultation-draft/0.1',
-    draft_id: `CD-${Date.now().toString(36)}`,
+    // 조회마다 고유. 상담 기록(consult-record) 결속 키로 쓰이므로 같은 ms 안의 연속 조회도 구분한다.
+    draft_id: `CD-${Date.now().toString(36)}-${(draftSeq += 1).toString(36)}`,
     created_at: new Date().toISOString(),
     data_mode: dataMode,
     synthetic: dataMode === 'SYNTHETIC',
@@ -353,6 +355,9 @@ export function createConsultationSession({ adapter, onChange = () => {} }) {
 
 const SECRET_KEY = /(api[_-]?key|service[_-]?key|servicekey|secret|token|authorization|password|^key$)/i;
 const SECRET_VALUE = /([?&](key|serviceKey|apiKey)=)[^&\s"]+/gi;
+
+// 저장·복사 출력의 자유입력에도 같은 규칙을 적용한다(상담 4요소 근거 칸에 붙여 넣은 URL의 키 등).
+export function scrubSecrets(value) { return scrub(value); }
 
 function scrub(value) {
   if (Array.isArray(value)) return value.map(scrub);

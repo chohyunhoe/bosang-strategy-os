@@ -187,3 +187,5 @@ table.fields td.ops{white-space:nowrap}
 @media (max-width:720px){.req-grid{grid-template-columns:1fr}.intake-grid{grid-template-columns:1fr 1fr}}
 @media (max-width:359px){.intake-grid{grid-template-columns:1fr}}
 @media print{.intake-grid,[data-intake-reset],.reqs select{display:none!important}}
+.record-bar{background:#f7f8f9;border-radius:6px;padding:4px 6px;margin:6px 0;overflow-wrap:anywhere}
+.record-actions{display:flex;flex-wrap:wrap;gap:4px 10px;margin-top:2px}
