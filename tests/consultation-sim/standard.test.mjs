@@ -91,7 +91,8 @@ test('상담 초동의견 4부: 근거 연결, 합성 표시, 단정 표현 없�
     assert.ok(o.materials.includes('사업인정 고시문·보상계획 공고문'));
   }
   const d130 = await run(NURI, '130');
-  assert.ok(d130.analysis.opinion.issues.some((i) => i.title === '현실적 이용상황'));
+  assert.ok(!d130.analysis.opinion.issues.some((i) => i.title === '현실적 이용상황'));
+  assert.ok(d130.analysis.opinion.issues.some((i) => i.title === '연도 간 토지특성 변경'));
   const d123 = await run(NURI, '123-4');
   assert.ok(d123.analysis.opinion.issues.some((i) => i.title === '획지조건' || i.title === '가로(도로)조건' || i.title.startsWith('행정적')));
   assert.ok(FORBIDDEN_PHRASES.some((re) => re.test('보상금이 오릅니다')), '금지 표현 검사기 자체 동작');

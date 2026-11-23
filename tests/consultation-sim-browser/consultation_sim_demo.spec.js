@@ -62,7 +62,8 @@ test('상담 시나리오 ①~⑥: 입력→지도→토지정보·출처→확�
   await expect(price).toContainText('공식조회 성공(합성)');
   // ④ 확인 사항과 검토 쟁점 구분
   await tab(page, testInfo, 'analysis');
-  await expect(page.locator('[data-signal="CATEGORY_USE_DIFF"]')).toContainText('현장 확인');
+  await expect(page.locator('[data-signal="CATEGORY_USE_DIFF"]')).toHaveCount(0);
+  await expect(page.locator('[data-signal="YEAR_CHANGE"]').first()).toBeVisible();
   await expect(page.locator('[data-standard-candidate]').first()).toBeVisible();
   await expect(page.locator('[data-nearest-excluded]')).toContainText('제외');
   await expect(page.locator('[data-op-script]')).toContainText('말씀드릴 수는 없고');

@@ -29,7 +29,7 @@ export function buildConsultOpinion(draft) {
   if (pr) features.push(item(`${prefix}개별공시지가 ${fmtWon(pr.value)}(${pr.base_year || d.binding.base_year}년 기준)`, ['price_per_m2']));
   const chars = ['land_use', 'road_access', 'shape', 'elevation'].map((k) => f(k) && `${d.fields[k].label} ${d.fields[k].value}`).filter(Boolean);
   if (chars.length) features.push(item(`${prefix}공시지가 산정용 토지특성: ${chars.join(' · ')} (실제 현황과 다를 수 있음)`, ['land_use', 'road_access', 'shape', 'elevation'].filter((k) => f(k))));
-  signals.filter((s) => ['CATEGORY_USE_DIFF', 'YEAR_CHANGE', 'REVISION_CONFLICT'].includes(s.kind))
+  signals.filter((s) => ['YEAR_CHANGE', 'REVISION_CONFLICT'].includes(s.kind))
     .forEach((s) => features.push(item(`확인 필요: ${s.title} — ${s.detail}`, s.fields, { kind: 'signal' })));
   if (!features.length) features.push(item('공적자료에서 확인된 토지 특성이 없습니다(조회 실패 또는 자료 없음).', []));
 
@@ -64,11 +64,7 @@ export function buildConsultOpinion(draft) {
   const issues = [];
   const top = std.status === 'FOUND' ? std.candidates[0] : null;
   const fac = (key) => top?.factors.find((x) => x.key === key);
-  const diffSignal = signals.find((s) => s.kind === 'CATEGORY_USE_DIFF');
-  if (diffSignal) {
-    issues.push(item(`현실적 이용상황: 지목(${d.fields.land_category.value})과 공시지가 이용상황(${d.fields.land_use.value})이 달라, 평가 시 현실 이용상황을 기준으로 했는지 검토할 수 있습니다.`,
-      ['land_category', 'land_use'], { title: '현실적 이용상황', needs: ['현장 사진', '건축물대장·이용 증빙'] }));
-  }
+  // 지목과 조사용 이용상황의 명칭 차이만으로 현황불일치 주장을 만들지 않는다.
   const street = fac('street');
   if (street?.hypothesis && ['TARGET_WORSE', 'TARGET_BETTER'].includes(street.hypothesis.direction)) {
     issues.push(item(street.hypothesis.direction === 'TARGET_WORSE'
@@ -99,7 +95,7 @@ export function buildConsultOpinion(draft) {
   ])];
   const sentences = [];
   if (zn || lc || pr) {
-    sentences.push(`${d.synthetic ? '(시연자료 기준) ' : ''}공적자료로 보면 이 토지는 ${[zn?.value, lc && `지목 ${lc.value}`, ar && `${Number(ar.value).toLocaleString('ko-KR')}㎡`].filter(Boolean).join(', ')}이고${pr ? `, 개별공시지가는 ${pr.base_year || d.binding.base_year}년 ㎡당 ${Number(pr.value).toLocaleString('ko-KR')}원` : ''}으로 확인됩니다.`);
+    sentences.push(`${d.synthetic ? '(시연자료 기준) 가상 조사자료상 ' : '공적자료로 보면 '}이 토지는 ${[zn?.value, lc && `지목 ${lc.value}`, ar && `${Number(ar.value).toLocaleString('ko-KR')}㎡`].filter(Boolean).join(', ')}이고${pr ? `, 개별공시지가는 ${pr.base_year || d.binding.base_year}년 ㎡당 ${Number(pr.value).toLocaleString('ko-KR')}원` : ''}으로 확인됩니다.`);
   }
   if (top) {
     const diffLabels = top.factors.filter((x) => x.hypothesis && ['TARGET_WORSE', 'TARGET_BETTER'].includes(x.hypothesis.direction)).map((x) => x.label);
