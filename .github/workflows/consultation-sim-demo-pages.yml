@@ -1,0 +1,86 @@
+name: Consultation Simulator Demo Pages (manual)
+
+# 선택 배포: 상담 시뮬레이터 시연판만 GitHub Pages(https://<owner>.github.io/<repo>/)에 올린다.
+# - 수동 실행(workflow_dispatch)만. push/PR로는 실행되지 않는다.
+# - 기존 Cloudflare(wrangler.toml)·Netlify(netlify.toml)·Release v1 빌드와 무관하다. 올라가는 파일은 index.html·robots.txt 2개뿐.
+# - 키는 번들에 없다. 빌드 스크립트가 브리지 경로·키 값·외부 호출·실제 PNU를 검사해 있으면 실패한다.
+# - vworld-direct-test(실데이터 연결 테스트판)는 terms_reviewed=true일 때만 배포된다.
+on:
+  workflow_dispatch:
+    inputs:
+      variant:
+        description: 'synthetic = 합성 시연판 / vworld-direct-test = Fold8 실데이터 연결 테스트(키 미포함, 사용자가 화면에서 입력)'
+        type: choice
+        options: [synthetic, vworld-direct-test]
+        default: synthetic
+      terms_reviewed:
+        description: 'vworld-direct-test 배포 전: VWorld 약관·서비스 URL 등록을 확인했는가'
+        type: boolean
+        default: false
+      source_ref:
+        description: '빌드할 브랜치/커밋(비우면 실행한 브랜치). 예: feat/consultation-sim-pr1'
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: consultation-sim-demo-pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    env:
+      VARIANT: ${{ inputs.variant }}
+      TERMS_REVIEWED: ${{ inputs.terms_reviewed }}
+    steps:
+      - name: Gate live-test variant on terms review
+        run: |
+          if [ "$VARIANT" = "vworld-direct-test" ] && [ "$TERMS_REVIEWED" != "true" ]; then
+            echo "::error::vworld-direct-test requires terms_reviewed=true (VWorld 약관·서비스 URL 확인 후 실행)"
+            exit 1
+          fi
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_ref || github.ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Build demo (static host, safety checks inside)
+        run: node scripts/build_consultation_sim_demo.js --host=static --variant="$VARIANT"
+      - name: Keep only the demo page
+        run: |
+          mkdir -p site
+          if [ "$VARIANT" = "vworld-direct-test" ]; then src=dist/consultation-sim-live-test/index.html; else src=dist/consultation-sim-demo/index.html; fi
+          cp "$src" site/index.html
+          printf 'User-agent: *\nDisallow: /\n' > site/robots.txt
+          ls -la site
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deployment
+        uses: actions/deploy-pages@v4
+      - name: Verify the published page over HTTPS
+        env:
+          PAGE_URL: ${{ steps.deployment.outputs.page_url }}
+        run: |
+          for i in $(seq 1 24); do
+            code=$(curl -s -L -o page.html -w '%{http_code}' "$PAGE_URL" || echo 000)
+            if [ "$code" = "200" ] && grep -q 'BSO 지번 상담' page.html; then
+              echo "HTTPS OK: $PAGE_URL ($(wc -c < page.html) bytes)"
+              if grep -q '__public_data_bridge' page.html; then echo "::error::bridge path found in published page"; exit 1; fi
+              if [ "$VARIANT" = "synthetic" ] && ! grep -q '"synthetic_only":true' page.html; then echo "::error::synthetic flag missing"; exit 1; fi
+              exit 0
+            fi
+            echo "attempt $i: HTTP $code"; sleep 10
+          done
+          echo "::error::published page not reachable over HTTPS"; exit 1
