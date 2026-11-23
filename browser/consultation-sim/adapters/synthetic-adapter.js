@@ -30,7 +30,7 @@ function parcelPolygon(pnu, parcel) {
   return { type: 'Polygon', coordinates: [[[x, y], [x + w, y], [x + w, y + h], [x, y + h], [x, y]]] };
 }
 
-export function createSyntheticAdapter({ scenario = 'DEFAULT', baseDelayMs = 80, now = () => new Date() } = {}) {
+export function createSyntheticAdapter({ scenario = 'DEFAULT', baseDelayMs = 80, standardDelayMs = 0, now = () => new Date() } = {}) {
   const fetched = () => now().toISOString();
   async function delayFor(pnu) {
     const parcel = SYNTHETIC_PARCELS[pnu];
@@ -90,7 +90,7 @@ export function createSyntheticAdapter({ scenario = 'DEFAULT', baseDelayMs = 80,
     },
     // PR-2: 같은 법정동(ldCode = PNU 앞 10자리) 표준지 목록 — 범위 확대는 하지 않는다
     async listStandardLands({ pnu, year }) {
-      await sleep(baseDelayMs);
+      await sleep(baseDelayMs + standardDelayMs);
       if (scenario === 'API_DOWN') return failure('API_UNAVAILABLE');
       const ldCode = String(pnu || '').slice(0, 10);
       const all = SYNTHETIC_STANDARD_LANDS[ldCode] || [];

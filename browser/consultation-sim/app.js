@@ -27,16 +27,17 @@ const ui = {
   scenario: ['NO_MAP_KEY', 'API_DOWN'].includes(params.get('scenario')) ? params.get('scenario') : 'DEFAULT',
   tab: 'map', editing: null, saveOpen: false, footer: '', adapterStatus: null, probe: null, probing: false,
 };
-let adapter; let session; let lastMapHtml = '';
+let adapter; let session; let lastMapHtml = ''; let lastLandHtml = ''; let lastAnalysisHtml = '';
 
 function buildAdapter() {
   if (RUNTIME.synthetic_only) ui.mode = 'SYNTHETIC';
   adapter = ui.mode === 'LIVE_BRIDGE' ? createBridgeAdapter()
     : ui.mode === 'VWORLD_DIRECT' ? createVworldDirectAdapter()
-      : createSyntheticAdapter({ scenario: ui.scenario });
+      : createSyntheticAdapter({ scenario: ui.scenario, standardDelayMs: Math.min(5000, Number(params.get('std_delay')) || 0) });
   ui.probe = null;
   session = createConsultationSession({ adapter, onChange: render });
   ui.editing = null; ui.saveOpen = false; ui.footer = ''; ui.adapterStatus = null;
+  lastMapHtml = ''; lastLandHtml = ''; lastAnalysisHtml = '';
   $('[data-region-hints]').innerHTML = adapter.regionHints().map((name) => `<option value="${esc(name)}"></option>`).join('');
   adapter.status().then((status) => { ui.adapterStatus = status; render(); });
   render();
@@ -180,16 +181,24 @@ const selectionText = (sel) => (sel.basis ? sel.basis
 function renderLand(state) {
   const box = $('[data-land]');
   const d = state.draft;
-  if (!d) { box.innerHTML = '<p class="muted">조회 전입니다.</p>'; return; }
+  if (!d) { if (lastLandHtml !== 'EMPTY') { lastLandHtml = 'EMPTY'; box.innerHTML = '<p class="muted">조회 전입니다.</p>'; } return; }
   const groups = [];
   FIELD_DEFS.forEach((def) => { if (!groups.includes(def.group_label)) groups.push(def.group_label); });
-  box.innerHTML = `
+  const html = `
     <dl class="kv"><div><dt>PNU</dt><dd class="mono">${esc(d.parcel.pnu)}</dd></div><div><dt>법정동</dt><dd>${esc(d.parcel.legal_dong_name)}</dd></div><div><dt>지번</dt><dd>${esc(d.parcel.lot_label)}${d.parcel.mountain ? ' (산번지)' : ''}</dd></div></dl>
     ${groups.map((label) => `<h3>${esc(label)}${label.startsWith('공시지가 산정용') ? ' <small>가격형성 요인 표기 · 실제 현황과 다를 수 있음</small>' : ''}</h3><div class="table-wrap"><table class="fields"><thead><tr><th>항목</th><th>값</th><th>상태</th><th>원천·기준연도·조회시각</th><th></th></tr></thead><tbody>
       ${FIELD_DEFS.filter((def) => def.group_label === label).map((def) => fieldRow(d.fields[def.key], d.synthetic)).join('')}
     </tbody></table></div>`).join('')}
     ${d.public_selection?.characteristics && d.public_selection.characteristics.row_count > 1 ? `<p class="note" data-selection-basis>${d.public_selection.characteristics.rule === 'CONFLICT_HOLD' ? chip('MISMATCH') : chip('OFFICIAL_OK', '중복 정리')} ${esc(selectionText(d.public_selection.characteristics))}</p>` : ''}
     <p class="note strong">공부·공시지가 산정용 토지특성은 실제 현황과 다를 수 있습니다. 실제 이용상황: ${chip('FIELD_CHECK')} (지번만으로 미확인)</p>`;
+  // 비동기 후속 결과(표준지 분석 등)로 다시 그려도 내용이 같으면 건드리지 않는다 — 입력 중인 수정값 보존
+  if (html === lastLandHtml) return;
+  const editRow = box.querySelector('[data-edit-row]');
+  const pending = editRow ? { key: editRow.dataset.editRow, value: $('[data-edit-value]', editRow).value, by: $('[data-edit-by]', editRow).value, reason: $('[data-edit-reason]', editRow).value } : null;
+  lastLandHtml = html;
+  box.innerHTML = html;
+  const restored = pending && box.querySelector(`[data-edit-row="${pending.key}"]`);
+  if (restored) { $('[data-edit-value]', restored).value = pending.value; $('[data-edit-by]', restored).value = pending.by; $('[data-edit-reason]', restored).value = pending.reason; }
   box.querySelectorAll('[data-edit]').forEach((b) => b.addEventListener('click', () => { ui.editing = b.dataset.edit; render(); }));
   box.querySelectorAll('[data-edit-cancel]').forEach((b) => b.addEventListener('click', () => { ui.editing = null; render(); }));
   box.querySelectorAll('[data-review]').forEach((b) => b.addEventListener('click', () => session.markReviewed(b.dataset.review, !d.fields[b.dataset.review].reviewed)));
@@ -231,9 +240,9 @@ function renderStandard(st) {
         <div class="small">${c.row.price != null ? `${esc(c.row.price.toLocaleString('ko-KR'))}원/㎡ (${esc(c.row.year)})` : '공시지가 미기재'} · ${fmtDist(c.distance_m)}</div></header>
       <div class="reasons small"><span class="f-cap">선정 근거</span>${c.selection_reasons.map((r) => `<span class="reason">${esc(r)}</span>`).join('')}</div>
       <div class="diffs small" data-candidate-diffs><span class="f-cap">차이 검토 항목</span>${(() => { const ds = c.factors.filter((x) => x.hypothesis && x.hypothesis.direction !== 'SIMILAR'); return ds.length ? ds.map((x) => chip('EXPERT_REVIEW', `${x.label} · ${HYP_LABEL[x.hypothesis.direction]}`)).join('') : '<span class="muted">확인된 자료상 뚜렷한 차이 없음</span>'; })()}</div>
-      <details class="factor-details" data-factor-details ${c.rank === 1 ? 'open' : ''}><summary>8개 가격형성요인 비교 (확인 자료 · 우열 가설 · 확인 필요)</summary><div class="factors">${factorRows(c)}</div></details>
+      <details class="factor-details" data-factor-details data-key="factor-${esc(c.row.pnu)}" ${c.rank === 1 ? 'open' : ''}><summary>8개 가격형성요인 비교 (확인 자료 · 우열 가설 · 확인 필요)</summary><div class="factors">${factorRows(c)}</div></details>
     </article>`).join('') : `<div class="callout" data-standard-none>${chip('NOT_QUERIED', '후보 미확보')} 표준지 후보 미확보 — 조회 범위에서 용도지역·이용상황이 유사한 표준지가 없습니다.</div>`;
-  const excluded = st.excluded.length ? `<details class="excluded" data-standard-excluded><summary>배제 ${st.excluded.length}건과 사유</summary><ul>${st.excluded.map((x) => `<li><span class="mono">${esc(x.row.pnu)}</span> ${esc(x.row.label || '')} · ${fmtDist(x.distance_m)} — ${esc(x.reasons.join(', '))}</li>`).join('')}</ul></details>` : '';
+  const excluded = st.excluded.length ? `<details class="excluded" data-standard-excluded data-key="excluded"><summary>배제 ${st.excluded.length}건과 사유</summary><ul>${st.excluded.map((x) => `<li><span class="mono">${esc(x.row.pnu)}</span> ${esc(x.row.label || '')} · ${fmtDist(x.distance_m)} — ${esc(x.reasons.join(', '))}</li>`).join('')}</ul></details>` : '';
   return `<div data-standard-status="${esc(st.status)}">${head}${nearest}${cards}${excluded}${notes}</div>`;
 }
 
@@ -258,15 +267,23 @@ function renderOpinion(o, d) {
 function renderAnalysis(state) {
   const box = $('[data-analysis]');
   const d = state.draft;
-  if (!d) { box.innerHTML = '<p class="muted">조회 전입니다.</p>'; return; }
+  if (!d) { if (lastAnalysisHtml !== 'EMPTY') { lastAnalysisHtml = 'EMPTY'; box.innerHTML = '<p class="muted">조회 전입니다.</p>'; } return; }
   const signals = d.analysis.signals;
-  box.innerHTML = `
+  const html = `
     <h3>비교표준지 후보 <small>최대 3건 · 확보 수량만 · 확정 아님</small></h3>
     ${renderStandard(d.analysis.standard)}
     <h3>확인 필요 신호 <small>공적자료 필드 연결 · 결론 아님</small></h3>
     ${state.phase === 'LOADING' ? '<p class="muted">조회 중…</p>' : signals.length ? `<ul class="signals" data-signals>${signals.map((s) => `<li data-signal="${esc(s.kind)}">${chip(s.status)} <b>${esc(s.title)}</b><div class="note">${esc(s.detail)}</div>${s.fields.length ? `<div class="muted small">근거 필드: ${s.fields.map((k) => esc(d.fields[k]?.label || k)).join(', ')}</div>` : ''}</li>`).join('')}</ul>` : '<p class="muted" data-signals-empty>자동 확인 신호 없음 (전문가 검토는 별도)</p>'}
     <h2 class="op-head">상담 초동의견 <span class="sub">${d.synthetic ? '합성 시연자료 기준' : '공적자료 기준'} · 검토 보조</span></h2>
     ${renderOpinion(d.analysis.opinion, d)}`;
+  if (html === lastAnalysisHtml) return;
+  // 같은 필지 안에서 다시 그릴 때 사용자가 펼치거나 접은 표는 그대로 둔다
+  const samePnu = box.dataset.renderedFor === d.parcel.pnu;
+  const openState = samePnu ? [...box.querySelectorAll('details[data-key]')].map((el) => [el.dataset.key, el.open]) : [];
+  lastAnalysisHtml = html;
+  box.innerHTML = html;
+  box.dataset.renderedFor = d.parcel.pnu;
+  openState.forEach(([key, open]) => { const el = box.querySelector(`details[data-key="${key}"]`); if (el) el.open = open; });
 }
 
 function renderLegend() {

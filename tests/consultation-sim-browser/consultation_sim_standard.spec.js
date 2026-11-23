@@ -58,3 +58,17 @@ test('현실적 이용상황 쟁점(지목 전·이용상황 주거나지)과 �
   await expect(issue).toContainText('근거: 지목, 이용상황');
   await expect(issue).toContainText('필요자료');
 });
+
+test('표준지 분석이 늦게 끝나도 입력 중인 수정값·펼친 표가 지워지지 않음(CI 재현 회귀)', async ({ page }, testInfo) => {
+  await page.goto('/?std_delay=1500');
+  await lookup(page, NURI, '123-4');
+  await expect(page.locator('body')).toHaveAttribute('data-phase', 'READY');
+  if (!wide(testInfo)) await page.click('[data-tab="land"]');
+  await page.click('[data-edit="road_access"]');
+  await page.fill('[data-edit-row] [data-edit-value]', '소로한면');
+  await page.fill('[data-edit-row] [data-edit-by]', '상담자C(합성)');
+  await expect(page.locator('[data-standard-status="FOUND"]')).toBeAttached({ timeout: 6000 });
+  await expect(page.locator('[data-edit-row] [data-edit-by]')).toHaveValue('상담자C(합성)');
+  await page.click('[data-edit-save="road_access"]');
+  await expect(page.locator('[data-override="road_access"]')).toContainText('소로한면');
+});
