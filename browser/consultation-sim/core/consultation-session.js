@@ -173,6 +173,7 @@ function applyMap(draft, geometryResponse, neighborhood) {
     point: gate.status === 'POINT_FALLBACK' ? (geometryResponse?.point || null) : null,
     neighbors: neighborhood?.ok ? neighborhood.parcels : [],
     synthetic: Boolean(geometryResponse?.synthetic),
+    basemap_image: geometryResponse?.basemap_image || null,
   };
 }
 

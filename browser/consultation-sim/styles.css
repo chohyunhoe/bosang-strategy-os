@@ -82,7 +82,11 @@ table.fields td.ops{white-space:nowrap}
 .signals li{border:1px solid var(--line);border-radius:8px;padding:6px 8px}
 .materials li{padding-left:14px;position:relative}.materials li:before{content:"□";position:absolute;left:0;color:var(--muted)}
 .callout{font-size:12.5px;background:#fafafa}
+.map-frame{position:relative}
 .map-frame svg{width:100%;aspect-ratio:4/3;border-radius:8px;display:block;background:#2e4430}
+.map-frame.has-basemap canvas{position:absolute;left:0;top:0;width:100%;aspect-ratio:4/3;border-radius:8px;background:#1f2a20}
+.map-frame.has-basemap svg{position:relative;background:transparent}
+.map-frame.has-basemap .target{fill:rgba(255,196,0,.22)}
 .map-frame .cad{fill:rgba(255,255,255,.06);stroke:#f2f2f2;stroke-width:.8}
 .map-frame .target{fill:rgba(255,196,0,.38);stroke:#ffcf33;stroke-width:2.4}
 .map-frame .pt{fill:#ff4d4d;stroke:#fff;stroke-width:1.5}.map-frame .pt-ring{fill:none;stroke:#ff4d4d;stroke-dasharray:3 2;stroke-width:1.2}

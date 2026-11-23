@@ -69,7 +69,7 @@ test('상담 시나리오 ①~⑥: 입력→지도→토지정보·출처→확�
   // ⑤ 복사 (클립보드가 막혀도 텍스트 제공)
   await press(page, testInfo, '[data-copy]');
   const summary = await page.locator('[data-summary]').inputValue();
-  expect(summary).toContain('■ 확인된 공적 사실');
+  expect(summary).toContain('■ 합성 시연자료(실제 공적자료 아님)');
   expect(summary).toContain('■ 확인 필요 신호(결론 아님)');
   expect(summary).toContain('합성 데이터(실제 필지 아님)');
   // ⑤ 저장: 명시 확인 → 아티팩트 호스트에서는 downloads 기능이 없으면 JSON 텍스트로 제공

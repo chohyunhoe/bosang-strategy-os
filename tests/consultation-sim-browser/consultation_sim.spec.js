@@ -172,7 +172,7 @@ test('1차 검토서 복사는 확인값·신호·미확인 구분, 과업 제�
   await page.click('[data-copy]');
   const summary = await page.locator('[data-summary]').inputValue();
   expect(summary).toContain('합성 데이터');
-  expect(summary).toContain('■ 확인된 공적 사실');
+  expect(summary).toContain('■ 합성 시연자료(실제 공적자료 아님)');
   expect(summary).toContain('■ 확인 필요 신호(결론 아님)');
   expect(summary).toContain('■ 지번만으로 미확인');
   expect(summary).not.toMatch(/증액 가능|확정적|위법 확정/);
@@ -194,7 +194,7 @@ test('리뷰 반영: 공적자료 미확보 필드의 상담자 입력값은 복
   expect(summary).toContain('■ 상담자 수정·입력값(공적자료 아님 · 검수 전)');
   expect(summary).toContain('도로접면: 세로한면(가) (입력 상담자B(합성)) / 공적자료: 미확보');
   const official = summary.split('■ 상담자 수정·입력값')[0];
-  expect(official).toContain('■ 확인된 공적 사실');
+  expect(official).toContain('■ 합성 시연자료(실제 공적자료 아님)');
   expect(official).not.toContain('세로한면(가)');
 });
 

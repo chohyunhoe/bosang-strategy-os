@@ -100,11 +100,37 @@ function ringOf(geometry) {
 }
 
 // 경위도 → 표시용 로컬 평면(m, y 아래쪽). 저장하지 않으며 화면 그리기에만 쓴다.
-function projector(lon0, lat0) {
-  const kx = 111320 * Math.cos((lat0 * Math.PI) / 180);
-  const ky = 110540;
-  const pt = ([lon, lat]) => [(lon - lon0) * kx, -(lat - lat0) * ky];
-  const geom = (g) => ({ type: 'Polygon', coordinates: [ringOf(g).map((p) => pt([Number(p[0]), Number(p[1])]))] });
+// 항공사진 정합: Release v1(vworld-api-map.js)과 같은 방식 — VWorld 정적 영상(/req/image, basemap=PHOTO)을
+// 중심·줌으로 받고, 경위도를 웹 메르카토르 픽셀(256·2^zoom)로 투영해 지적선을 같은 좌표계에 그린다.
+export const MAP_IMAGE = Object.freeze({ width: 1024, height: 768, maxZoom: 18, minZoom: 12 });
+export function mercatorNormalized([lon, lat]) {
+  const safeLat = Math.max(-85.05112878, Math.min(85.05112878, Number(lat)));
+  const sin = Math.sin((safeLat * Math.PI) / 180);
+  return [(Number(lon) + 180) / 360, 0.5 - Math.log((1 + sin) / (1 - sin)) / (4 * Math.PI)];
+}
+function inverseMercator([x, y]) {
+  return [x * 360 - 180, (Math.atan(Math.sinh(Math.PI * (1 - 2 * y))) * 180) / Math.PI];
+}
+// 대상 필지가 영상 폭·높이의 절반 안에 들어오는 가장 큰 줌(최대 18, Release v1과 동일 상한)
+export function fitView(lonLatPoints) {
+  const pts = lonLatPoints.map(mercatorNormalized);
+  const xs = pts.map((p) => p[0]); const ys = pts.map((p) => p[1]);
+  const minX = Math.min(...xs); const maxX = Math.max(...xs); const minY = Math.min(...ys); const maxY = Math.max(...ys);
+  const center = [(minX + maxX) / 2, (minY + maxY) / 2];
+  let zoom = MAP_IMAGE.maxZoom;
+  for (; zoom > MAP_IMAGE.minZoom; zoom -= 1) {
+    const scale = 256 * 2 ** zoom;
+    if ((maxX - minX) * scale <= MAP_IMAGE.width / 2 && (maxY - minY) * scale <= MAP_IMAGE.height / 2) break;
+  }
+  return { center, centerLonLat: inverseMercator(center), zoom };
+}
+function projector(view) {
+  const scale = 256 * 2 ** view.zoom;
+  const pt = ([lon, lat]) => {
+    const [mx, my] = mercatorNormalized([Number(lon), Number(lat)]);
+    return [(mx - view.center[0]) * scale + MAP_IMAGE.width / 2, (my - view.center[1]) * scale + MAP_IMAGE.height / 2];
+  };
+  const geom = (g) => ({ type: 'Polygon', coordinates: [ringOf(g).map((p) => pt(p))] });
   return { pt, geom };
 }
 
@@ -187,11 +213,33 @@ export function createVworldDirectAdapter({ now = () => new Date(), timeoutMs = 
   }
   const validPnuStr = (v) => validatePnu(v).ok;
   const lastPoint = new Map();
+  const views = new Map();
+
+  function staticImageUrl(view) {
+    const url = new URL(`${API}/req/image`);
+    const [lon, lat] = view.centerLonLat;
+    Object.entries({
+      service: 'image', version: '2.0', request: 'getmap', format: 'png', basemap: 'PHOTO', crs: 'EPSG:4326',
+      zoom: String(view.zoom), size: `${MAP_IMAGE.width},${MAP_IMAGE.height}`, center: `${lon},${lat}`, key: sessionKey, domain: domainValue(),
+    }).forEach(([k, v]) => url.searchParams.set(k, v));
+    return url.toString();
+  }
+  async function viewFor(pnu) {
+    if (views.has(pnu)) return views.get(pnu);
+    const geo = await cadastral(pnu);
+    const target = geo.ok ? geo.features.find((f) => text(f?.properties?.pnu) === pnu) : null;
+    const ring = target ? ringOf(target.geometry).map((p) => [Number(p[0]), Number(p[1])]) : null;
+    const raw = lastPoint.get(pnu);
+    const pts = ring?.length ? ring : (raw && Number.isFinite(raw.x) && Number.isFinite(raw.y) ? [[raw.x, raw.y]] : null);
+    const view = pts ? fitView(pts) : null;
+    if (view) views.set(pnu, view);
+    return view;
+  }
 
   return {
     describe() { return { mode: 'VWORLD_DIRECT', label: 'VWorld 직접(실데이터)', live: true, mark: '실데이터 · 검토 보조 · 서버 경유 없음' }; },
-    setKey(value) { const next = text(value); if (next !== sessionKey) { nedCache.clear(); geoCache.clear(); } sessionKey = next; return Boolean(sessionKey); },
-    clearKey() { sessionKey = ''; nedCache.clear(); geoCache.clear(); },
+    setKey(value) { const next = text(value); if (next !== sessionKey) { nedCache.clear(); geoCache.clear(); views.clear(); } sessionKey = next; return Boolean(sessionKey); },
+    clearKey() { sessionKey = ''; nedCache.clear(); geoCache.clear(); views.clear(); },
     hasKey() { return Boolean(sessionKey); },
     domain() { return domainValue(); },
     async status() { return { ok: Boolean(sessionKey), characteristics: Boolean(sessionKey), price: Boolean(sessionKey), map: Boolean(sessionKey), code: sessionKey ? null : 'VWORLD_KEY_REQUIRED' }; },
@@ -234,27 +282,48 @@ export function createVworldDirectAdapter({ now = () => new Date(), timeoutMs = 
     },
     async getCadastralGeometry(pnu) {
       const r = await cadastral(pnu);
-      const meta = { source: SOURCE.cadastral, basemap_source: '항공사진 미연결(지적선만 표시)', capture_date: null, crs: 'EPSG:4326 → 표시용 로컬 평면', fetched_at: fetched() };
       if (!r.ok) return { ok: false, code: r.code, fetched_at: fetched() };
-      const exact = r.features.filter((f) => text(f?.properties?.pnu) === pnu);
-      const centerSrc = exact[0] ? ringOf(exact[0].geometry) : null;
-      const raw = lastPoint.get(pnu);
-      const lon0 = centerSrc ? Number(centerSrc[0][0]) : raw?.x; const lat0 = centerSrc ? Number(centerSrc[0][1]) : raw?.y;
-      if (!Number.isFinite(lon0) || !Number.isFinite(lat0)) return { ok: true, features: r.features.map((f) => ({ pnu: text(f?.properties?.pnu), geometry: null })), point: null, ...meta };
-      const proj = projector(lon0, lat0);
+      const view = await viewFor(pnu);
+      const meta = {
+        source: SOURCE.cadastral, capture_date: null, fetched_at: fetched(),
+        crs: view ? `EPSG:4326 → 웹 메르카토르 화면좌표(zoom ${view.zoom})` : 'EPSG:4326',
+        basemap_source: view ? 'VWorld 영상지도(PHOTO) · 화면 표시 전용 · 저장 안 함' : '항공사진 미연결',
+      };
+      if (!view) return { ok: true, features: r.features.map((f) => ({ pnu: text(f?.properties?.pnu), geometry: null })), point: null, ...meta };
+      const proj = projector(view);
       const features = r.features.map((f) => ({ pnu: text(f?.properties?.pnu), geometry: proj.geom(f.geometry) }));
+      const raw = lastPoint.get(pnu);
       const point = raw ? (([x, y]) => ({ x, y, source: SOURCE.search }))(proj.pt([raw.x, raw.y])) : null;
-      return { ok: true, features, point, ...meta, _origin: [lon0, lat0] };
+      // 영상 URL에는 키가 들어가므로 상태·DOM에는 키 없는 토큰만 둔다. 실제 영상은 paintBasemap이 DOM 밖 Image로 받아 canvas에 그린다.
+      const basemap_image = { token: `${pnu}|${view.zoom}`, width: MAP_IMAGE.width, height: MAP_IMAGE.height };
+      return { ok: true, features, point, basemap_image, ...meta };
+    },
+    // canvas에 항공사진 일부(viewBox 영역)를 그린다. 교차 출처 영상이라 canvas는 읽기 불가(tainted)가 되며, 그래도 표시는 된다.
+    paintBasemap(canvas, image, vb) {
+      const pnu = text(image?.token).split('|')[0];
+      const view = views.get(pnu);
+      if (!view || !canvas || typeof win.Image !== 'function') return Promise.resolve(false);
+      return new Promise((resolve) => {
+        const img = new win.Image();
+        const t = setTimeout(() => resolve(false), timeoutMs);
+        img.onload = () => {
+          clearTimeout(t);
+          try {
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, vb.x, vb.y, vb.w, vb.h, 0, 0, canvas.width, canvas.height);
+            resolve(true);
+          } catch (_error) { resolve(false); }
+        };
+        img.onerror = () => { clearTimeout(t); resolve(false); };
+        img.referrerPolicy = 'no-referrer-when-downgrade';
+        img.src = staticImageUrl(view);
+      });
     },
     async getNeighborhood(pnu) {
-      const geo = await cadastral(pnu);
-      if (!geo.ok) return { ok: false, code: geo.code };
-      const target = geo.features.find((f) => text(f?.properties?.pnu) === pnu);
-      const ring = target ? ringOf(target.geometry) : null;
-      const raw = lastPoint.get(pnu);
-      const lon0 = ring ? Number(ring[0][0]) : raw?.x; const lat0 = ring ? Number(ring[0][1]) : raw?.y;
-      if (!Number.isFinite(lon0) || !Number.isFinite(lat0)) return { ok: true, parcels: [] };
-      const d = 0.0012;
+      const view = await viewFor(pnu);
+      if (!view) return { ok: true, parcels: [] };
+      const [lon0, lat0] = view.centerLonLat;
+      const d = 0.0015;
       try {
         const payload = await jsonp('/req/data', {
           service: 'data', version: '2.0', request: 'GetFeature', format: 'json', size: '100', page: '1',
@@ -262,7 +331,7 @@ export function createVworldDirectAdapter({ now = () => new Date(), timeoutMs = 
           geomFilter: `BOX(${lon0 - d},${lat0 - d},${lon0 + d},${lat0 + d})`,
         });
         const fc = payload?.response?.result?.featureCollection || payload?.response?.result;
-        const proj = projector(lon0, lat0);
+        const proj = projector(view);
         const parcels = arr(fc?.features).filter((f) => text(f?.properties?.pnu) !== pnu && ringOf(f?.geometry).length >= 3)
           .map((f) => ({ pnu: text(f?.properties?.pnu), geometry: proj.geom(f.geometry) }));
         return { ok: true, parcels };
@@ -283,6 +352,18 @@ export function createVworldDirectAdapter({ now = () => new Date(), timeoutMs = 
         const geo = await cadastral(pnu);
         const exact = geo.ok ? geo.features.filter((f) => text(f?.properties?.pnu) === pnu).length : 0;
         step('cadastral', { ok: geo.ok && exact === 1, detail: geo.ok ? `exact ${exact}건 · 속성 ${Object.keys(geo.features[0]?.properties || {}).sort().join(',') || '없음'}` : geo.code });
+        const view = await viewFor(pnu);
+        if (view && typeof win.Image === 'function') {
+          const loaded = await new Promise((resolve) => {
+            const img = new win.Image();
+            const t = setTimeout(() => resolve(false), timeoutMs);
+            img.onload = () => { clearTimeout(t); resolve(img.naturalWidth > 0); };
+            img.onerror = () => { clearTimeout(t); resolve(false); };
+            img.referrerPolicy = 'no-referrer-when-downgrade';
+            img.src = staticImageUrl(view);
+          });
+          step('aerial_image', { ok: loaded, detail: loaded ? `영상 수신 · zoom ${view.zoom} · 촬영일 미확인` : '영상 미수신(키·도메인·권한 확인)' });
+        }
         const year = now().getFullYear();
         for (const y of [year, year - 1]) {
           const r = await ned(pnu, y);

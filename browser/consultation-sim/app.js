@@ -27,7 +27,7 @@ const ui = {
   scenario: ['NO_MAP_KEY', 'API_DOWN'].includes(params.get('scenario')) ? params.get('scenario') : 'DEFAULT',
   tab: 'map', editing: null, saveOpen: false, footer: '', adapterStatus: null, probe: null, probing: false,
 };
-let adapter; let session;
+let adapter; let session; let lastMapHtml = '';
 
 function buildAdapter() {
   if (RUNTIME.synthetic_only) ui.mode = 'SYNTHETIC';
@@ -236,8 +236,9 @@ function summaryText(d) {
   const lines = [];
   lines.push(`[1차 상담 검토서 · 검토 보조${d.synthetic ? ' · 합성 데이터(실제 필지 아님)' : ''}]`);
   lines.push(`필지: ${d.parcel.legal_dong_name} ${d.parcel.lot_label} (PNU ${d.parcel.pnu}) · 기준연도 ${d.binding.base_year}`);
-  lines.push('', '■ 확인된 공적 사실');
-  Object.values(d.fields).filter((f) => f.value != null && f.status !== STATUS.NOT_QUERIED).forEach((f) => {
+  // 합성 결과는 '합성 시연자료', 실제 API 조회가 성공한 값만 '확인된 공적자료'로 표시한다.
+  lines.push('', d.synthetic ? '■ 합성 시연자료(실제 공적자료 아님)' : '■ 확인된 공적자료(검토 보조)');
+  Object.values(d.fields).filter((f) => f.value != null && f.status !== STATUS.NOT_QUERIED && (d.synthetic || f.source)).forEach((f) => {
     lines.push(`- ${f.label}: ${fmtNumber(f.value)}${f.unit ? ` ${f.unit}` : ''} [${STATUS_LABEL[f.status]}${d.synthetic && f.status === STATUS.OK ? '(합성)' : ''} · ${f.source} · ${f.base_year || '-'}]`);
   });
   const overrides = Object.values(d.fields).filter((f) => f.override);
@@ -252,11 +253,18 @@ function summaryText(d) {
   return lines.join('\n');
 }
 
+// 실데이터의 저장·복사·인쇄(제3자 제공 경로)는 API별 이용조건 확인 후에만 허용한다. 확인 전에는 화면 열람만.
+const LIVE_EXPORT_ALLOWED = RUNTIME.live_export_policy === 'TERMS_CONFIRMED';
+function liveExportBlocked(draft) { return Boolean(draft && !draft.synthetic && !LIVE_EXPORT_ALLOWED); }
+
 function renderFooter(state) {
   const ready = state.phase === 'READY' && state.draft;
-  ['[data-copy]', '[data-print]', '[data-proposal]'].forEach((sel) => { $(sel).disabled = !ready; });
-  $('[data-save-open]').disabled = !ready;
-  $('[data-footer-out]').innerHTML = ui.footer;
+  const blocked = liveExportBlocked(state.draft);
+  ['[data-copy]', '[data-print]'].forEach((sel) => { $(sel).disabled = !ready || blocked; });
+  $('[data-proposal]').disabled = !ready;
+  $('[data-save-open]').disabled = !ready || blocked;
+  const note = blocked ? '<p class="warn-note small" data-live-export-note>실데이터 복사·저장·인쇄는 VWorld 등 API 이용조건 확인 전까지 막혀 있습니다(화면 열람만).</p>' : '';
+  $('[data-footer-out]').innerHTML = note + ui.footer;
 }
 
 function renderSavePanel(state) {
@@ -317,7 +325,19 @@ function render() {
   renderModeBar();
   renderKeyPanel();
   renderNotice(state);
-  $('[data-map]').innerHTML = renderMap(state.draft);
+  const mapHtml = renderMap(state.draft);
+  if (mapHtml !== lastMapHtml) {
+    lastMapHtml = mapHtml;
+    $('[data-map]').innerHTML = mapHtml;
+    const canvas = $('[data-basemap-canvas]');
+    if (canvas && typeof adapter.paintBasemap === 'function') {
+      const [x, y, w, h] = canvas.dataset.vb.split(',').map(Number);
+      adapter.paintBasemap(canvas, state.draft.map.basemap_image, { x, y, w, h }).then((ok) => {
+        canvas.dataset.basemapState = ok ? 'painted' : 'failed';
+        if (!ok) canvas.insertAdjacentHTML('afterend', '<p class="map-reason" data-basemap-failed>항공사진을 받지 못했습니다(키·도메인·권한 확인). 지적선만 표시합니다.</p>');
+      });
+    }
+  }
   renderLand(state);
   renderAnalysis(state);
   renderFooter(state);

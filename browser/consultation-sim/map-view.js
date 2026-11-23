@@ -35,8 +35,18 @@ export function renderMap(draft) {
   const neighborRings = (map.neighbors || []).map((n) => ({ pnu: n.pnu, pts: ring(n.geometry) })).filter((n) => n.pts.length);
   const focus = target.length ? target : map.point ? [[map.point.x, map.point.y]] : neighborRings[0]?.pts || [[0, 0]];
   const b = bounds(focus);
-  const pad = 70;
-  const vb = { x: b.minX - pad, y: b.minY - pad, w: (b.maxX - b.minX) + pad * 2, h: (b.maxY - b.minY) + pad * 2 };
+  const img = map.basemap_image;
+  let vb;
+  if (img) {
+    // 실데이터 영상: 화면 비율(4:3)에 맞춰 대상 주변을 자르고, 영상 범위를 벗어나지 않게 한다.
+    const span = Math.max(b.maxX - b.minX, (b.maxY - b.minY) * 4 / 3);
+    const w = Math.min(img.width, Math.max(320, span * 2.4)); const h = w * 3 / 4;
+    const cx = (b.minX + b.maxX) / 2; const cy = (b.minY + b.maxY) / 2;
+    vb = { x: Math.min(Math.max(0, cx - w / 2), img.width - w), y: Math.min(Math.max(0, cy - h / 2), img.height - h), w, h };
+  } else {
+    const pad = 70;
+    vb = { x: b.minX - pad, y: b.minY - pad, w: (b.maxX - b.minX) + pad * 2, h: (b.maxY - b.minY) + pad * 2 };
+  }
   const poly = (pts) => pts.map((p) => `${p[0]},${p[1]}`).join(' ');
   const neighbors = neighborRings.map((n) => `<polygon class="cad" points="${poly(n.pts)}"><title>${esc(n.pnu)}</title></polygon>`).join('');
   const highlight = target.length ? `<polygon class="target" data-target-polygon points="${poly(target)}"/>` : '';
@@ -47,12 +57,13 @@ export function renderMap(draft) {
   const reason = map.status === 'POINT_FALLBACK'
     ? `<p class="map-reason" data-map-reason>${esc(mapReason(map.code))}${map.point ? '' : ' 좌표 점도 확보되지 않았습니다.'}</p>` : '';
   return `
-    <div class="map-frame" data-map-state="${esc(map.status)}">
+    <div class="map-frame${img ? ' has-basemap' : ''}" data-map-state="${esc(map.status)}">
+      ${img ? `<canvas data-basemap-canvas data-basemap-state="pending" data-vb="${[vb.x, vb.y, vb.w, vb.h].map((n) => n.toFixed(2)).join(',')}" width="1024" height="768" aria-hidden="true"></canvas>` : ''}
       <svg viewBox="${vb.x} ${vb.y} ${vb.w} ${vb.h}" role="img" aria-label="대상 필지 지도 (${map.synthetic ? '합성' : '실데이터'})" preserveAspectRatio="xMidYMid meet">
         <defs>
           <pattern id="aerial" width="18" height="18" patternUnits="userSpaceOnUse"><rect width="18" height="18" fill="#3f5a3a"/><circle cx="4" cy="5" r="3" fill="#4c6b44"/><circle cx="13" cy="12" r="4" fill="#38513a"/><rect x="9" y="1" width="3" height="3" fill="#5b6e4e"/></pattern>
         </defs>
-        <rect class="aerial" x="${vb.x}" y="${vb.y}" width="${vb.w}" height="${vb.h}" fill="url(#aerial)"/>
+        ${img ? '' : `<rect class="aerial" x="${vb.x}" y="${vb.y}" width="${vb.w}" height="${vb.h}" fill="url(#aerial)"/>`}
         ${neighbors}${highlight}${point}
       </svg>
       <div class="map-legend">

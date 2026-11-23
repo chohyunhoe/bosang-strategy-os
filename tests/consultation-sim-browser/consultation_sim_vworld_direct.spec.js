@@ -37,6 +37,10 @@ async function mockVworld(page, { ned = 'jsonp' } = {}) {
       const neighbors = [1, 2, 3].map((i) => ({ type: 'Feature', properties: { pnu: `99011010001012300${i}0` }, geometry: square(127 + i * 0.00025, 37.5) }));
       return js({ response: { status: 'OK', result: { featureCollection: { features: neighbors } } } });
     }
+    if (url.pathname === '/req/image') {
+      // 1x1 PNG (합성) — 실제 항공사진 아님
+      return route.fulfill({ status: 200, contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64') });
+    }
     if (url.pathname === '/ned/data/getLandCharacteristics') {
       const pnu = url.searchParams.get('pnu'); const year = Number(url.searchParams.get('stdrYear'));
       if (ned === 'blocked') return route.abort('blockedbyclient');
@@ -91,12 +95,15 @@ test('키 적용 후 조회: 지번 정확 일치 후보·exact-one 지적·토�
   expect(html).not.toContain(FAKE_KEY);
   expect(await page.evaluate(() => ({ l: localStorage.length, s: sessionStorage.length }))).toEqual({ l: 0, s: 0 });
   expect(await page.evaluate(() => JSON.stringify(window.BSOConsultationSim.state))).not.toContain(FAKE_KEY);
-  await page.click('[data-save-open]');
-  await page.check('[data-save-confirm]');
-  const [download] = await Promise.all([page.waitForEvent('download'), page.click('[data-save-commit]')]);
-  const body = require('node:fs').readFileSync(await download.path(), 'utf8');
-  expect(body).not.toContain(FAKE_KEY);
-  expect(JSON.parse(body).map.geometry).toBeUndefined();
+  // 항공사진: DOM 밖 Image로 받아 canvas에 그림 → 화면 HTML·상태에 키 없음
+  await expect(page.locator('[data-basemap-canvas]')).toHaveAttribute('data-basemap-state', 'painted');
+  expect(calls.some((c) => c.path === '/req/image')).toBe(true);
+  expect(await page.content()).not.toContain(FAKE_KEY);
+  // 실데이터 복사·저장·인쇄는 이용조건 확인 전 차단(화면 열람만)
+  await expect(page.locator('[data-live-export-note]')).toBeVisible();
+  await expect(page.locator('[data-copy]')).toBeDisabled();
+  await expect(page.locator('[data-save-open]')).toBeDisabled();
+  await expect(page.locator('[data-print]')).toBeDisabled();
 });
 
 test('토지특성 브라우저 호출이 막히면 미조회로 남기고 추정값 없음, 지적은 계속 표시', async ({ page }, testInfo) => {
