@@ -63,9 +63,9 @@ test('상담 시나리오 ①~⑥: 입력→지도→토지정보·출처→확�
   // ④ 확인 사항과 검토 쟁점 구분
   await tab(page, testInfo, 'analysis');
   await expect(page.locator('[data-signal="CATEGORY_USE_DIFF"]')).toContainText('현장 확인');
-  await expect(page.locator('[data-standard-status]')).toContainText('표준지 후보 미확보');
-  await expect(page.locator('[data-standard-status]')).toContainText('PR-2');
-  await expect(page.locator('[data-pr3-placeholder]')).toContainText('현재 자동 문구를 만들지 않습니다');
+  await expect(page.locator('[data-standard-candidate]').first()).toBeVisible();
+  await expect(page.locator('[data-nearest-excluded]')).toContainText('제외');
+  await expect(page.locator('[data-op-script]')).toContainText('말씀드릴 수는 없고');
   // ⑤ 복사 (클립보드가 막혀도 텍스트 제공)
   await press(page, testInfo, '[data-copy]');
   const summary = await page.locator('[data-summary]').inputValue();

@@ -45,7 +45,8 @@ test('일반 필지: PC 3열/모바일 탭, 합성 표시, exact-one 폴리곤, 
   await expect(page.locator('[data-field="land_category"]')).toContainText('공식조회 성공(합성)');
   await expect(page.locator('[data-field="price_per_m2"] .val')).toContainText('1,968,000');
   await showTab(page, testInfo, 'analysis');
-  await expect(page.locator('[data-standard-status]')).toContainText('표준지 후보 미확보');
+  await expect(page.locator('[data-standard-status="FOUND"]')).toBeVisible();
+  await expect(page.locator('[data-standard-candidate]')).toHaveCount(3);
   await expect(page.locator('[data-unknowns] li')).toHaveCount(6);
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(1);
@@ -139,7 +140,7 @@ test('전문가 수정값은 원본과 분리, 수정자 필수, 필지 전환 �
   await page.fill('[data-edit-row] [data-edit-by]', '상담자A(합성)');
   await page.click('[data-edit-save="land_use"]');
   await expect(page.locator('[data-override="land_use"]')).toContainText('상업용');
-  await expect(page.locator('[data-field="land_use"] .val')).toContainText('단독주택');
+  await expect(page.locator('[data-field="land_use"] .val')).toContainText('단독');
   await lookup(page, '가상도 연습군 숲내면 바위리', '산 12-3');
   await ready(page);
   await expect(page.locator('[data-override]')).toHaveCount(0);

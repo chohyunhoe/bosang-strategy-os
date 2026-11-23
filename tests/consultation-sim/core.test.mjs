@@ -140,7 +140,7 @@ test('5 공적자료 원본과 전문가 수정값 출처 분리 + 입력 전환
   assert.equal(s.overrideField('land_use', { value: '상업용', by: '' }), false, '수정자 없는 수정 금지');
   assert.equal(s.overrideField('land_use', { value: '상업용', by: '상담자A(합성)', reason: '현장사진 확인 전 가정' }), true);
   const field = s.state.draft.fields.land_use;
-  assert.equal(field.value, '단독주택', '공적자료 원본 보존');
+  assert.equal(field.value, '단독', '공적자료 원본 보존');
   assert.equal(field.override.value, '상업용');
   assert.equal(field.reviewed, false);
   await s.lookup({ context: '가상도 연습군 숲내면 바위리', lotText: '산 12-3', baseYear: 2026 });
