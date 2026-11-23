@@ -39,7 +39,7 @@ export function buildConsultOpinion(draft) {
     std.candidates.forEach((c) => {
       const diffs = c.factors.filter((x) => x.hypothesis && x.hypothesis.direction !== 'SIMILAR').map((x) => `${x.label}(${x.hypothesis.text})`);
       standard.push(item(
-        `후보 ${c.rank} ${c.row.label || c.row.pnu} — 공시지가 ${c.row.price != null ? fmtWon(c.row.price) : '미기재'}, ${fmtM(c.distance_m)}. 선정 근거: ${c.selection_reasons.slice(0, 3).join(', ')}.${diffs.length ? ` 차이 검토 항목: ${diffs.join('; ')}.` : ' 확인된 자료상 뚜렷한 차이 항목 없음.'}`,
+        `후보 ${c.rank}(검토 순서 · 적정성 순위 아님) ${c.row.label || c.row.pnu} — 공시지가 ${c.row.price != null ? fmtWon(c.row.price) : '미기재'}, ${fmtM(c.distance_m)}. 선정 근거: ${c.selection_reasons.slice(0, 3).join(', ')}.${diffs.length ? ` 차이 검토 항목: ${diffs.join('; ')}.` : ' 확인된 자료상 뚜렷한 차이 항목 없음.'}`,
         [`standard:${c.row.pnu}`, ...c.factors.flatMap((x) => x.basis)].filter((v, i, a) => a.indexOf(v) === i),
         { candidate: c.rank },
       ));

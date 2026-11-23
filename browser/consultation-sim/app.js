@@ -4,7 +4,10 @@ import { createSyntheticAdapter } from './adapters/synthetic-adapter.js';
 import { createBridgeAdapter } from './adapters/bridge-adapter.js';
 import { createVworldDirectAdapter, DIRECT_PROBE } from './adapters/vworld-direct-adapter.js';
 import { renderMap } from './map-view.js';
-import { validateManualPack, searchManualPack, suggestManualReferences, getManualEvidenceGates } from './core/manual-pack.js';
+import { validateManualPack, searchManualPack, suggestManualReferences, EVIDENCE_STATE, EVIDENCE_STATE_LABEL, EVIDENCE_INPUT_OPTIONS } from './core/manual-pack.js';
+import { emptyIntake, evaluateIntake, GOAL_OPTIONS, STAGE_OPTIONS, AUTHORITY_OPTIONS, INTAKE_STATUS_LABEL } from './core/consult-intake.js';
+import { buildConsultReport } from './core/consult-report.js';
+import { REVIEW_REQUIREMENT_STATUS } from './core/standard-land-engine.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -27,8 +30,10 @@ const ui = {
   mode: RUNTIME.synthetic_only ? 'SYNTHETIC' : ({ live: 'LIVE_BRIDGE', vworld: 'VWORLD_DIRECT' }[params.get('mode')] || 'SYNTHETIC'),
   scenario: ['NO_MAP_KEY', 'API_DOWN'].includes(params.get('scenario')) ? params.get('scenario') : 'DEFAULT',
   tab: 'map', editing: null, saveOpen: false, footer: '', adapterStatus: null, probe: null, probing: false,
+  // 상담 4요소·증빙 확보 표시는 이 화면 메모리에만 둔다(저장·전송 없음, 명시 저장 시에만 JSON에 포함).
+  intake: emptyIntake(), evidence: {},
 };
-let adapter; let session; let lastMapHtml = ''; let lastLandHtml = ''; let lastAnalysisHtml = '';
+let adapter; let session; let lastMapHtml = ''; let lastLandHtml = ''; let lastAnalysisHtml = ''; let lastEvidenceHtml = '';
 let privateManualPack = null;
 const MANUAL_MAX_BYTES = 8 * 1024 * 1024;
 
@@ -40,7 +45,7 @@ function buildAdapter() {
   ui.probe = null;
   session = createConsultationSession({ adapter, onChange: render });
   ui.editing = null; ui.saveOpen = false; ui.footer = ''; ui.adapterStatus = null;
-  lastMapHtml = ''; lastLandHtml = ''; lastAnalysisHtml = '';
+  lastMapHtml = ''; lastLandHtml = ''; lastAnalysisHtml = ''; lastEvidenceHtml = '';
   $('[data-region-hints]').innerHTML = adapter.regionHints().map((name) => `<option value="${esc(name)}"></option>`).join('');
   adapter.status().then((status) => { ui.adapterStatus = status; render(); });
   render();
@@ -240,10 +245,13 @@ function renderStandard(st) {
   const nearest = st.nearest_excluded ? `<p class="warn-note small" data-nearest-excluded>${esc(st.nearest_excluded.scope_label || '위치가 확인된 표준지 중 가장 가까운')} ${esc(st.nearest_excluded.label || st.nearest_excluded.pnu)}(${fmtDist(st.nearest_excluded.distance_m)})는 ${esc(st.nearest_excluded.reasons.join(', '))}로 제외</p>` : '';
   const cards = st.status === 'FOUND' ? st.candidates.map((c) => `
     <article class="std-card" data-standard-candidate="${c.rank}">
-      <header><b>후보 ${c.rank}</b> ${esc(c.row.label || '')} <span class="mono">${esc(c.row.pnu)}</span>
+      <header><b>후보 ${c.rank}</b> ${chip('NOT_QUERIED', '검토 순서 · 적정성 순위 아님')} ${esc(c.row.label || '')} <span class="mono">${esc(c.row.pnu)}</span>
         <div class="small">${c.row.price != null ? `${esc(c.row.price.toLocaleString('ko-KR'))}원/㎡ (${esc(c.row.year)})` : '공시지가 미기재'} · ${fmtDist(c.distance_m)}</div></header>
       <div class="reasons small"><span class="f-cap">선정 근거</span>${c.selection_reasons.map((r) => `<span class="reason">${esc(r)}</span>`).join('')}</div>
       <div class="diffs small" data-candidate-diffs><span class="f-cap">차이 검토 항목</span>${(() => { const ds = c.factors.filter((x) => x.hypothesis && x.hypothesis.direction !== 'SIMILAR'); return ds.length ? ds.map((x) => chip('EXPERT_REVIEW', `${x.label} · ${HYP_LABEL[x.hypothesis.direction]}`)).join('') : '<span class="muted">확인된 자료상 뚜렷한 차이 없음</span>'; })()}</div>
+      <div class="req-grid small" data-standard-requirements><span class="f-cap">검토요건 · 공적자료 확인분과 미확인분 구분</span>${(c.review_requirements || []).map((r) => `<div class="req" data-req="${esc(r.key)}" data-req-status="${esc(r.status)}">
+        <b>${esc(r.label)}</b> ${chip(r.status === 'RECORD_DIFF' ? 'MISMATCH' : r.status === 'NOT_VERIFIED' ? 'NOT_QUERIED' : 'FIELD_CHECK', REVIEW_REQUIREMENT_STATUS[r.status])}
+        <div class="muted">${esc(r.confirmed.join(' · ') || '공적자료 없음')}</div><div>미확인: ${esc(r.unverified.join(' · '))}</div></div>`).join('')}</div>
       <details class="factor-details" data-factor-details data-key="factor-${esc(c.row.pnu)}" ${c.rank === 1 ? 'open' : ''}><summary>8개 가격형성요인 비교 (확인 자료 · 우열 가설 · 확인 필요)</summary><div class="factors">${factorRows(c)}</div></details>
     </article>`).join('') : `<div class="callout" data-standard-none>${chip('NOT_QUERIED', '후보 미확보')} 표준지 후보 미확보 — 조회 범위에서 용도지역·이용상황이 유사한 표준지가 없습니다.</div>`;
   const excluded = st.excluded.length ? `<details class="excluded" data-standard-excluded data-key="excluded"><summary>배제 ${st.excluded.length}건과 사유</summary><ul>${st.excluded.map((x) => `<li><span class="mono">${esc(x.row.pnu)}</span> ${esc(x.row.label || '')} · ${fmtDist(x.distance_m)} — ${esc(x.reasons.join(', '))}</li>`).join('')}</ul></details>` : '';
@@ -294,40 +302,88 @@ function renderLegend() {
   $('[data-legend]').innerHTML = Object.keys(STATUS_LABEL).map((s) => chip(s)).join('');
 }
 
-function summaryText(d) {
-  const lines = [];
-  lines.push(`[1차 상담 검토서 · 검토 보조${d.synthetic ? ' · 합성 데이터(실제 필지 아님)' : ''}]`);
-  lines.push(`필지: ${d.parcel.legal_dong_name} ${d.parcel.lot_label} (PNU ${d.parcel.pnu}) · 기준연도 ${d.binding.base_year}`);
-  // 합성 결과는 '합성 시연자료', 실제 API 조회가 성공한 값만 '확인된 공적자료'로 표시한다.
-  lines.push('', d.synthetic ? '■ 합성 시연자료(실제 공적자료 아님)' : '■ 확인된 공적자료(검토 보조)');
-  Object.values(d.fields).filter((f) => f.value != null && f.status !== STATUS.NOT_QUERIED && (d.synthetic || f.source)).forEach((f) => {
-    lines.push(`- ${f.label}: ${fmtNumber(f.value)}${f.unit ? ` ${f.unit}` : ''} [${STATUS_LABEL[f.status]}${d.synthetic && f.status === STATUS.OK ? '(합성)' : ''} · ${f.source} · ${f.base_year || '-'}]`);
-  });
-  const overrides = Object.values(d.fields).filter((f) => f.override);
-  if (overrides.length) {
-    lines.push('', '■ 상담자 수정·입력값(공적자료 아님 · 검수 전)');
-    overrides.forEach((f) => lines.push(`- ${f.label}: ${f.override.value}${f.unit ? ` ${f.unit}` : ''} (입력 ${f.override.by}${f.override.reason ? ` · 근거 ${f.override.reason}` : ''}${f.reviewed ? ' · 검수완료' : ''}) / 공적자료: ${f.value == null ? '미확보' : fmtNumber(f.value)}`));
+function currentReport(d = session?.state?.draft) {
+  if (!d) return null;
+  return buildConsultReport({ draft: d, intake: ui.intake, evidence: ui.evidence[d.parcel.pnu] || {}, pack: privateManualPack, now: new Date() });
+}
+function summaryText(d) { return currentReport(d).text; }
+
+// ── 상담 4요소 입력(한 번만 만들고 값은 ui.intake에 보관) ─────────────────────────
+const optionsHtml = (opts, value) => opts.map(([v, l]) => `<option value="${esc(v)}" ${v === value ? 'selected' : ''}>${esc(l)}</option>`).join('');
+function renderIntake() {
+  const box = $('[data-intake]');
+  if (!box) return;
+  if (box.dataset.built !== '1') {
+    box.dataset.built = '1';
+    box.innerHTML = `<details class="intake-box" data-intake-box open><summary><b>상담 4요소</b> <span class="muted small" data-intake-count></span></summary>
+      <p class="muted small">입력하지 않은 요소는 '미확정'으로 표시합니다. 기한은 통지서·재결서 등 문서에 적힌 날짜만 옮겨 적으며 BSO는 법정기한을 계산하지 않습니다. 이 화면 메모리에만 보관됩니다.</p>
+      <div class="intake-grid">
+        <label>고객의 목표 <select data-intake-field="goal">${optionsHtml(GOAL_OPTIONS, ui.intake.goal)}</select></label>
+        <label>목표 메모 <input data-intake-field="goal_note" placeholder="예: 협의금액 수락 여부 판단"></label>
+        <label>현재 절차 단계 <select data-intake-field="stage">${optionsHtml(STAGE_OPTIONS, ui.intake.stage)}</select></label>
+        <label>단계 근거 문서 <input data-intake-field="stage_basis" placeholder="예: 협의요청서(사업시행자)"></label>
+        <label>기산 사유 <input data-intake-field="trigger_event" placeholder="예: 재결서 정본 수령"></label>
+        <label>기산일 <input type="date" data-intake-field="trigger_date"></label>
+        <label>기산일 근거 <input data-intake-field="trigger_source" placeholder="예: 송달 봉투 소인·수령증"></label>
+        <label>문서 기재 기한 <input type="date" data-intake-field="stated_deadline"></label>
+        <label>기한 근거 문서 <input data-intake-field="deadline_source" placeholder="예: 협의요청서 기재 협의기간"></label>
+        <label>판단·결정 권한자 <select data-intake-field="authority">${optionsHtml(AUTHORITY_OPTIONS, ui.intake.authority)}</select></label>
+        <label>권한자 메모 <input data-intake-field="authority_note" placeholder="예: ○○도 지방토지수용위원회"></label>
+      </div>
+      <ul class="intake-status" data-intake-status></ul>
+      <button type="button" class="link" data-intake-reset>상담 4요소 지우기</button></details>`;
+    box.querySelectorAll('[data-intake-field]').forEach((el) => {
+      el.value = ui.intake[el.dataset.intakeField] || '';
+      el.addEventListener(el.tagName === 'SELECT' ? 'change' : 'input', () => { ui.intake[el.dataset.intakeField] = el.value; render(); });
+    });
+    $('[data-intake-reset]', box).addEventListener('click', () => {
+      ui.intake = emptyIntake();
+      box.querySelectorAll('[data-intake-field]').forEach((el) => { el.value = ''; });
+      render();
+    });
   }
-  lines.push('', '■ 확인 필요 신호(결론 아님)');
-  (d.analysis.signals.length ? d.analysis.signals : [{ title: '자동 신호 없음', detail: '' }]).forEach((s) => lines.push(`- ${s.title}${s.detail ? `: ${s.detail}` : ''}`));
-  const o = d.analysis.opinion;
-  if (o) {
-    lines.push('', '■ 비교표준지 검토(후보 · 확정 아님)', ...o.standard.map((x) => `- ${x.text}`));
-    lines.push('', '■ 향후 주장 가능 쟁점(후보)', ...(o.issues.length ? o.issues.map((x) => `- [${x.title}] ${x.text}`) : ['- 공적자료만으로 제시할 쟁점 후보 없음']));
-    lines.push('', '■ 추가 확보자료', ...o.materials.map((m) => `- ${m}`));
-    lines.push('', '■ 상담 멘트(초안)', o.script);
+  const items = evaluateIntake(ui.intake, { now: new Date() }).items;
+  $('[data-intake-count]', box).textContent = `기록 ${items.filter((i) => i.status === 'RECORDED_BY_COUNSELOR').length}/4 · 나머지 미확정`;
+  $('[data-intake-status]', box).innerHTML = items.map((i) => `<li data-intake-element="${esc(i.element)}" data-intake-state="${esc(i.status)}">${chip(i.status === 'RECORDED_BY_COUNSELOR' ? 'OFFICIAL_OK' : i.status === 'INPUT_INVALID' ? 'MISMATCH' : 'NOT_QUERIED', INTAKE_STATUS_LABEL[i.status])} <b>${esc(i.label)}</b> ${esc(i.value_text)}<div class="note">${esc(i.note)}</div></li>`).join('');
+}
+// ── 증빙요건 판단(T-01·T-05·T-09·T-12) ─────────────────────────────────────────
+const GATE_CHIP = { READY_FOR_EXPERT: 'OFFICIAL_OK', NOT_SATISFIED: 'MISMATCH', HOLD: 'FIELD_CHECK', NOT_TRIGGERED: 'NOT_QUERIED' };
+const REQ_CHIP = { SATISFIED: 'OFFICIAL_OK', NOT_SATISFIED: 'MISMATCH', HOLD: 'NOT_QUERIED' };
+function requirementRow(r) {
+  const control = r.auto
+    ? `<span class="muted small">자동: ${esc(r.basis)}</span>`
+    : `<select data-evidence-input="${esc(r.id)}" aria-label="${esc(r.label)} 확보 상태">${optionsHtml(EVIDENCE_INPUT_OPTIONS, r.input || '')}</select>`;
+  return `<li data-requirement="${esc(r.id)}" data-requirement-state="${esc(r.state)}">${chip(REQ_CHIP[r.state], EVIDENCE_STATE_LABEL[r.state])} <span>${esc(r.label)}</span> ${control}</li>`;
+}
+function renderEvidence(state) {
+  const box = $('[data-evidence]');
+  if (!box) return;
+  const d = state.draft;
+  let html;
+  if (!d) html = '<p class="muted small">조회 후 실무기본서 핵심 유형(T-01·T-05·T-09·T-12)의 증빙요건을 표시합니다.</p>';
+  else {
+    const report = currentReport(d);
+    html = `<h3>증빙요건 판단 <small>충족 = 자료 확보 · 쟁점 성립 판단 아님</small></h3>
+      ${privateManualPack ? '' : '<p class="warn-note small" data-evidence-pack-missing>실무기본서 지식팩 미연결 — 원문 위치·판단기준을 확인할 수 없어 모든 유형을 판정 보류합니다. 아래 확보 표시는 자료요청 체크리스트로만 쓰입니다.</p>'}
+      <ul class="gates" data-manual-gates>${report.gates.map((g) => `<li data-gate="${esc(g.code)}" data-gate-state="${esc(g.state)}">
+        <div class="gate-head"><b>${esc(g.code)} · ${esc(g.source.title || g.topic)}</b> ${chip(GATE_CHIP[g.state], g.state_label)}</div>
+        <div class="muted small" data-gate-reason>${esc(g.reason)}</div>
+        ${g.source.entry_found ? `<div class="small gate-src" data-gate-source>원문 위치: ${esc(g.source.book_page != null ? `책 ${g.source.book_page}쪽 · ` : '')}PDF ${esc(g.source.pdf_page_start)}쪽 · 성립요건: ${esc(g.source.criteria.ok ? g.source.criteria.text.slice(0, 120) : '원본 확인 필요')}${g.source.criteria.ok && g.source.criteria.text.length > 120 ? '…' : ''}<div class="muted">근거는 기본서 기재 — 현행 법령·판례 공식 원문 미대조</div></div>` : ''}
+        ${g.trigger ? `<ul class="reqs trigger">${requirementRow(g.trigger)}</ul>` : ''}
+        ${g.state === EVIDENCE_STATE.NOT_TRIGGERED ? '' : `<ul class="reqs">${g.requirements.map(requirementRow).join('')}</ul>`}
+      </li>`).join('')}</ul>
+      <h3>현재 절차와 다음 조치</h3><ul class="materials" data-next-actions>${report.actions.map((a) => `<li>${esc(a)}</li>`).join('')}</ul>`;
   }
-  if (privateManualPack) {
-    const checks = getManualEvidenceGates(privateManualPack, d);
-    lines.push('', '■ 내부 실무기본서 증빙 게이트(내부 검토용 · 법률판단 아님)');
-    checks.forEach((g) => lines.push(`- ${g.code} ${g.title} [${g.state_label}] · 확인자료: ${g.requires.join(', ')} · 기본서 PDF ${g.pdf_page}쪽(제1판 검토본)`));
-    lines.push('- 위 유형은 원문 참조와 자료요청 항목이며 주장 성립 여부를 자동 판단하지 않았습니다.');
-  } else {
-    lines.push('', '■ 내부 실무기본서 참조 상태', '- 비공개 지식팩 미연결: 이 검토서에는 기본서 T-01·T-05·T-09·T-12의 근거 검토가 반영되지 않았습니다.');
-  }
-  lines.push('', '■ 지번만으로 미확인', ...d.analysis.unknowns.map((u) => `- ${u.label}`));
-  lines.push('', '※ 비교표준지는 조회 범위 내 검토 후보만 추출하였으며, 최종 비교표준지 선정·보정률·보상금 산정은 수행하지 않았습니다. 법령·평가서·현장 원문과 전문가 검토가 필요합니다.');
-  return lines.join('\n');
+  if (html === lastEvidenceHtml) return;
+  lastEvidenceHtml = html;
+  box.innerHTML = html;
+  box.querySelectorAll('[data-evidence-input]').forEach((sel) => sel.addEventListener('change', () => {
+    const pnu = session.state.draft?.parcel.pnu;
+    if (!pnu) return;
+    ui.evidence[pnu] = { ...(ui.evidence[pnu] || {}), [sel.dataset.evidenceInput]: sel.value };
+    render();
+    box.querySelector(`[data-evidence-input="${sel.dataset.evidenceInput}"]`)?.focus();
+  }));
 }
 
 // 실데이터의 저장·복사·인쇄(제3자 제공 경로)는 API별 이용조건 확인 후에만 허용한다. 확인 전에는 화면 열람만.
@@ -356,6 +412,10 @@ function renderSavePanel(state) {
     const result = session.saveExplicit({ confirmedByUser: $('[data-save-confirm]', panel).checked });
     if (!result.ok) { panel.querySelector('label').classList.add('invalid'); return; }
     ui.saveOpen = false;
+    const report = currentReport();
+    // 상담 4요소·증빙 확보 표시만 함께 저장한다. 실무기본서 원문·발췌는 저장 JSON에 넣지 않는다.
+    result.payload.consult_record = { intake: { ...ui.intake }, evidence_inputs: { ...(ui.evidence[result.payload.parcel.pnu] || {}) },
+      gate_states: report.gates.map((g) => ({ code: g.code, state: g.state })), legal_deadline_computed: false, manual_excerpt_persisted: false };
     deliverSaved(result.payload);
   });
 }
@@ -416,7 +476,9 @@ function render() {
     }
   }
   renderLand(state);
+  renderIntake();
   renderAnalysis(state);
+  renderEvidence(state);
   renderFooter(state);
   renderSavePanel(state);
   renderTabs();
@@ -442,9 +504,12 @@ $('[data-copy]').addEventListener('click', async () => {
   render();
 });
 $('[data-proposal]').addEventListener('click', () => {
+  const report = currentReport();
+  if (!report) return;
   ui.footer = `<div class="callout" data-proposal-panel><b>정밀검토 과업 제안(초안)</b> — 영업지원용 안내이며 자동 계약·청구·결제는 발생하지 않습니다.
-    <ul><li>보상평가서 수령 후 비교표준지 선정·개별요인 비교 검토</li><li>실제 이용상황 현장 확인 및 증거 정리</li><li>의견서 쟁점 후보 정리(전문가 검토 전제)</li></ul>
-    <p class="muted small">범위·비용은 담당자가 별도 협의합니다.</p></div>`;
+    <ul data-proposal-tasks>${report.tasks.map((t) => `<li data-task-status="${esc(t.status)}">${chip(t.status === 'READY' ? 'OFFICIAL_OK' : 'FIELD_CHECK', t.status === 'READY' ? '자료 대조 착수 가능' : '선행자료 필요')} ${esc(t.title)}${t.code ? ` (${esc(t.code)})` : ''}${t.prerequisites.length ? `<div class="note">선행: ${esc(t.prerequisites.join(', '))}</div>` : ''}</li>`).join('') || '<li>현재 자료로 제안할 과업 없음</li>'}</ul>
+    <b class="small">확보자료</b><ul class="materials" data-proposal-materials>${report.materials.map((m) => `<li>${esc(m)}</li>`).join('')}</ul>
+    <p class="muted small">범위·비용은 담당자가 별도 협의합니다. 쟁점 성립·보상액은 전문가 검토 전 판단하지 않습니다.</p></div>`;
   render();
 });
 
@@ -517,20 +582,6 @@ function renderManualHints() {
     li.append(button); list.append(li);
   }
   hints.append(list, manualTextNode('p', '지번만으로 법률쟁점을 확정하지 않습니다. 실제 보상평가서·고시·현장 증빙을 대조하세요.', 'muted small'));
-  const gates = getManualEvidenceGates(privateManualPack, session?.state?.draft);
-  if (gates.length) {
-    hints.append(manualTextNode('h3', '실무기본서 핵심 유형: 증빙 게이트(판정 보류)'));
-    const gateList = document.createElement('ul');
-    gateList.dataset.manualGates = 'true';
-    for (const g of gates) {
-      const li = document.createElement('li');
-      li.append(manualTextNode('b', `${g.code} · ${g.title}`),
-        manualTextNode('div', `상태: ${g.state_label}`, 'muted small'),
-        manualTextNode('div', `필요: ${g.requires.join(' · ')}`, 'muted small'));
-      gateList.append(li);
-    }
-    hints.append(gateList);
-  }
 }
 function renderManualSearchResults(query) {
   const results = $('[data-manual-results]');
@@ -568,7 +619,7 @@ $('[data-manual-file]').addEventListener('change', async (event) => {
     status.textContent = `기기 내 지식팩 연결: ${valid.issue_count}개 쟁점 / ${valid.page_count}쪽 / 내부 검토본. 법령 원문 별도 확인 필요.`;
     $('[data-manual-query]').disabled = false;
     $('[data-manual-search]').disabled = false;
-    renderManualHints();
+    render();
   } catch (err) {
     status.textContent = `지식팩을 열 수 없습니다: ${err?.message || '형식 오류'} (원문을 외부로 전송하지 않았습니다).`;
   } finally {

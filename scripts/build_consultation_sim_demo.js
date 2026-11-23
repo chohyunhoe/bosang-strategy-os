@@ -28,6 +28,8 @@ const ORDER = [
   'core/consult-opinion.js',
   'core/consultation-session.js',
   'core/manual-pack.js',
+  'core/consult-intake.js',
+  'core/consult-report.js',
   'adapters/synthetic-adapter.js',
   'map-view.js',
   'app.js',

@@ -40,7 +40,11 @@ test('비공개 지식팩을 사용자가 선택하면 로컬 검색·참조만 
   await expect(page.locator('[data-manual-results]')).toContainText('가상 자료');
   await page.locator('[data-copy]').click();
   const report = await page.locator('[data-summary]').inputValue();
-  expect(report).toContain('■ 내부 실무기본서 증빙 게이트');
+  expect(report).toContain('4. 증빙요건 충족·미충족·판정 보류');
+  expect(report).toContain('3. 기본서 쟁점 코드·원문 위치');
+  expect(report).toContain('내부 전용(기본서 발췌 포함)');
+  expect(report).toContain('성립요건(기본서 판단기준): 법률 판단은 원문 확인');
+  expect(report).toContain('현행 법령·판례 공식 원문 미대조');
   expect(report).toContain('T-01');
   expect(report).toContain('T-05');
   expect(report).toContain('T-09');

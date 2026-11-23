@@ -162,3 +162,28 @@ table.fields td.ops{white-space:nowrap}
 .manual-ref-section p { white-space:pre-wrap; overflow-wrap:anywhere; line-height:1.55; }
 [data-manual-hints] li, [data-manual-results] li { margin:6px 0; }
 [data-manual-hints] button, [data-manual-results] button { text-align:left; white-space:normal; max-width:100%; }
+
+/* 상담 4요소 · 증빙요건 · 표준지 검토요건 */
+.intake-box{border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:10px;padding:8px 10px;margin:0 0 10px;background:#fff}
+.intake-box>summary{cursor:pointer}
+.intake-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px 8px;margin:6px 0}
+.intake-grid label{display:flex;flex-direction:column;gap:2px;font-size:11.5px;font-weight:650;min-width:0}
+.intake-grid input,.intake-grid select{padding:6px 7px;border:1px solid #c7ccd2;border-radius:6px;background:#fff;font-weight:400;min-width:0;width:100%}
+.intake-status{list-style:none;margin:6px 0;padding:0;display:grid;gap:4px;font-size:12px}
+.intake-status li{border-top:1px solid #eef0f2;padding-top:4px}
+.evidence{margin-top:14px;border-top:2px solid var(--ink);padding-top:4px}
+.gates{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.gates>li{border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:#fff}
+.gate-head{display:flex;flex-wrap:wrap;gap:4px 8px;align-items:center}
+.gate-src{background:#f7f8f9;border-radius:6px;padding:4px 6px;margin-top:4px;overflow-wrap:anywhere}
+.reqs{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:4px;font-size:12px}
+.reqs li{display:flex;flex-wrap:wrap;gap:4px 6px;align-items:center;border-top:1px dotted #eef0f2;padding-top:3px}
+.reqs li span{flex:1 1 160px;min-width:0}
+.reqs select{padding:3px 6px;border:1px solid #c7ccd2;border-radius:6px;background:#fff;font-size:12px}
+.reqs.trigger li{background:var(--warn-bg);border-radius:6px;padding:3px 6px}
+.req-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 8px;margin:6px 0}
+.req-grid .f-cap{grid-column:1/-1}
+.req{border-top:1px solid #eef0f2;padding-top:3px;overflow-wrap:anywhere}
+@media (max-width:720px){.req-grid{grid-template-columns:1fr}.intake-grid{grid-template-columns:1fr 1fr}}
+@media (max-width:359px){.intake-grid{grid-template-columns:1fr}}
+@media print{.intake-grid,[data-intake-reset],.reqs select{display:none!important}}
