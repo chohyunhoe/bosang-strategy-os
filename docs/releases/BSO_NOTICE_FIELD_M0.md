@@ -135,3 +135,18 @@ node scripts/field_server.js --page dist/notice-field/molit-2025-456-field.html 
 2. Fold8(같은 tailnet 계정): Chrome에서 `https://<PC>.<tailnet>.ts.net/pair` → PC의 `local-data/field-server/pair-code.txt`에 있는 6자리 코드 입력(10분·1회용·실패 5회 폐기) → 쿠키(Secure·HttpOnly·SameSite=Strict, 12시간) 발급 후 상담 화면.
 3. 다른 기기 추가·쿠키 만료 시 서버를 다시 시작하면 새 코드.
 - 서버 시험(PC→Serve HTTPS): 토큰 없음 401 · 틀린 토큰 401 · 평문 HTTP 토큰 교환 403 · 정상 교환 303+Secure 쿠키 · 허용 안 된 연산 404 · tailnet IP:4190 직접 접속 불가.
+
+### Fold8 실기기 확인 (2026-11-24, 사용자 보고)
+- 경로: Fold8 Chrome → `https://<PC>.<tailnet>.ts.net/pair` 페어링 → 상담 화면(Tailscale Serve, tailnet only).
+- 공개 표본 3건 `궁평리 320-1` · `서울특별시 중구 태평로1가 31` · `세종특별자치시 어진동 560`: 토지특성·공시지가, 항공영상 위 지적경계, 확대/축소·경계 토글, 기타 자유입력 포함 카드 저장 — **사용자가 Fold8에서 3건 모두 정상 확인**(합성 상담정보만 사용).
+- Claude는 Fold8 화면을 직접 보지 않았다. 서버 측 인증·연결은 PC에서 Serve HTTPS로 시험(위 결과).
+- 미검증: 비허용 계정·기기 차단의 실기기 시험(다른 tailnet 계정 없음 — 서버 로그인 허용목록·토큰은 자동 시험으로만 확인), 원격 장애 복원, 현장 셀룰러망에서의 지연.
+
+### 현장 당일 시작
+```powershell
+cd C:\Users\chohy\Documents\GitHub\bosang-strategy-os\.claude\worktrees\notice-index
+powershell -ExecutionPolicy Bypass -File scripts\start_field_server.ps1
+```
+- Tailscale 로그인·실행 확인 → `tailscale serve`(tailnet only) → 서버 시작(토큰 + 이 PC의 Tailscale 계정만) → 페어링 코드를 메모장으로 표시.
+- 끄기: 서버 창 Ctrl+C, `& "C:\Program Files\Tailscale\tailscale.exe" serve --https=443 off`.
+- PC는 켜져 있고 절전 해제 상태여야 Fold8에서 조회된다. PC 꺼짐·인터넷 끊김 시 Fold8는 오프라인 고시 카드만.
