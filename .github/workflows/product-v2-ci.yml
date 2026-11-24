@@ -35,6 +35,14 @@ jobs:
   product-v2-gate:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    # 브라우저와 시스템 의존성이 미리 설치된 공식 Playwright 이미지에서 실행한다.
+    # 매 실행마다 Ubuntu 패키지 미러에서 WebKit 의존성을 apt로 받던 단계(0.7~29.7분, 시간 초과 취소)를 없앤다.
+    # 이미지 태그는 package-lock.json의 @playwright/test 버전과 같아야 한다(아래 검증 단계가 불일치 시 실패).
+    container:
+      image: mcr.microsoft.com/playwright:v1.54.1-noble
+      options: --user 1001 --ipc=host --init
+    env:
+      PLAYWRIGHT_IMAGE_VERSION: '1.54.1'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -55,8 +63,24 @@ jobs:
         run: |
           node tests/local_map_runtime.test.js
           npm run parser:test
-      - name: Install browser engines
-        run: npx playwright install --with-deps chromium webkit
+      - name: Verify preinstalled Playwright browsers (no apt, no download)
+        run: |
+          set -e
+          v=$(npx playwright --version | awk '{print $2}')
+          echo "@playwright/test $v / image $PLAYWRIGHT_IMAGE_VERSION"
+          if [ "$v" != "$PLAYWRIGHT_IMAGE_VERSION" ]; then
+            echo "::error::@playwright/test $v does not match container image v$PLAYWRIGHT_IMAGE_VERSION — update container.image and PLAYWRIGHT_IMAGE_VERSION together"
+            exit 1
+          fi
+          node -e '
+            const fs = require("fs");
+            const { chromium, webkit } = require("@playwright/test");
+            for (const b of [chromium, webkit]) {
+              const p = b.executablePath();
+              if (!fs.existsSync(p)) { console.error("missing preinstalled browser:", b.name(), p); process.exit(1); }
+              console.log("ok", b.name(), p);
+            }
+          '
       - name: Product v2 desktop/mobile E2E
         run: npm run product:v2:e2e
       - name: Verify no legacy runtime entered Product v2 candidate
