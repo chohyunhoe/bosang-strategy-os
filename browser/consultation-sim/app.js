@@ -5,8 +5,9 @@ import { createBridgeAdapter } from './adapters/bridge-adapter.js';
 import { createVworldDirectAdapter, DIRECT_PROBE } from './adapters/vworld-direct-adapter.js';
 import { renderMap } from './map-view.js';
 import { validateManualPack, searchManualPack, suggestManualReferences, EVIDENCE_STATE, EVIDENCE_STATE_LABEL, EVIDENCE_INPUT_OPTIONS } from './core/manual-pack.js';
-import { emptyIntake, evaluateIntake, GOAL_OPTIONS, STAGE_OPTIONS, AUTHORITY_OPTIONS, INTAKE_STATUS_LABEL } from './core/consult-intake.js';
+import { emptyIntake, evaluateIntake, CASE_TYPE_OPTIONS, GOAL_OPTIONS, STAGE_OPTIONS, AUTHORITY_OPTIONS, INTAKE_STATUS_LABEL } from './core/consult-intake.js';
 import { buildConsultReport } from './core/consult-report.js';
+import { TRACK_STATUS_LABEL } from './core/case-tracks.js';
 import { outputSignature, isOutputCurrent, outputAttemptToken, isAttemptCurrent } from './core/output-binding.js';
 import { createConsultRecord, syncRecord, recordForOutput, recordHasInput, canContinueFrom, continueFrom, startNewConsultation } from './core/consult-record.js';
 import { REVIEW_REQUIREMENT_STATUS } from './core/standard-land-engine.js';
@@ -370,6 +371,10 @@ function renderIntake() {
       <div class="record-bar small" data-record-bar></div>
       <p class="muted small" id="intake-date-hint">입력하지 않은 요소는 '미확정'으로 표시합니다. 기한은 통지서·재결서 등 문서에 적힌 날짜만 옮겨 적으며 BSO는 법정기한을 계산하지 않습니다. 이 화면 메모리에만 보관됩니다.</p>
       <div class="intake-grid">
+        <label class="span-all">사업·보상 유형 <span class="hint">상담자가 직접 선택 · 미확인이면 유형별 불복 경로·기한·과업 안내 보류</span><select data-intake-field="case_type">${optionsHtml(CASE_TYPE_OPTIONS, '')}</select></label>
+        <fieldset class="span-all claims" data-remainder-claims hidden><legend>잔여지 청구 유형(복수 선택 가능 · 각각 별도 검토)</legend>
+          <label class="check"><input type="checkbox" data-intake-field="claim_73"> 제73조 가격감소·공사비 보상</label>
+          <label class="check"><input type="checkbox" data-intake-field="claim_74"> 제74조 매수·수용 청구</label></fieldset>
         <label>고객의 목표 <select data-intake-field="goal">${optionsHtml(GOAL_OPTIONS, '')}</select></label>
         <label>목표 메모 <input data-intake-field="goal_note" placeholder="예: 협의금액 수락 여부 판단"></label>
         <label>현재 절차 단계 <select data-intake-field="stage">${optionsHtml(STAGE_OPTIONS, '')}</select></label>
@@ -385,10 +390,11 @@ function renderIntake() {
       <ul class="intake-status" data-intake-status></ul>
       <button type="button" class="link" data-intake-reset>상담 4요소 지우기</button></details>`;
     box.querySelectorAll('[data-intake-field]').forEach((el) => {
-      el.addEventListener(el.tagName === 'SELECT' ? 'change' : 'input', () => {
+      const isCheck = el.type === 'checkbox';
+      el.addEventListener(el.tagName === 'SELECT' || isCheck ? 'change' : 'input', () => {
         // 입력은 지금 화면에 보이는 상담 기록에만 기록한다(기록이 바뀌면 입력란도 다시 채워진다).
         if (box.dataset.renderedRecord !== ui.record.record_id) return;
-        ui.record.intake[el.dataset.intakeField] = el.value;
+        ui.record.intake[el.dataset.intakeField] = isCheck ? (el.checked ? 'Y' : '') : el.value;
         invalidateOutputs('상담 4요소가 바뀌어 이전 검토서·과업·저장 결과를 지웠습니다. 다시 생성하세요.');
         render();
       });
@@ -410,8 +416,12 @@ function renderIntake() {
   // 상담 기록이 바뀌면(새 조회·새 상담·이어 쓰기) 입력란을 그 기록의 값으로 다시 채운다. 같은 기록 안에서는 건드리지 않는다.
   if (box.dataset.renderedRecord !== ui.record.record_id) {
     box.dataset.renderedRecord = ui.record.record_id;
-    box.querySelectorAll('[data-intake-field]').forEach((el) => { el.value = ui.record.intake[el.dataset.intakeField] || ''; });
+    box.querySelectorAll('[data-intake-field]').forEach((el) => {
+      const v = ui.record.intake[el.dataset.intakeField] || '';
+      if (el.type === 'checkbox') el.checked = v === 'Y'; else el.value = v;
+    });
   }
+  $('[data-remainder-claims]', box).hidden = ui.record.intake.case_type !== 'REMAINDER';
   const d = session?.state?.draft;
   const b = ui.record.binding;
   $('[data-record-bar]', box).innerHTML = `<span data-record-id="${esc(ui.record.record_id)}" data-record-bound="${b ? 'true' : 'false'}">상담 ID <span class="mono">${esc(ui.record.record_id)}</span> · ${b ? `결속: PNU ${esc(b.pnu)} · ${esc(b.base_year)}년 · ${esc(b.data_mode === 'SYNTHETIC' ? '합성' : b.data_mode)}` : '조회 전 입력 — 다음 조회 필지에 결속'}</span>
@@ -419,8 +429,10 @@ function renderIntake() {
     <div class="record-actions">${d ? '<button type="button" class="link" data-record-new>새 상담(같은 필지 · 다른 의뢰인)</button>' : ''}
     ${d && canContinueFrom(ui.previousRecord, d, ui.record) ? '<button type="button" class="link" data-record-continue>직전 상담 기록 이어 쓰기(같은 의뢰인일 때만)</button>' : ''}</div>`;
   const items = evaluateIntake(ui.record.intake, { now: new Date() }).items;
-  $('[data-intake-count]', box).textContent = `기록 ${items.filter((i) => i.status === 'RECORDED_BY_COUNSELOR').length}/4 · 나머지 미확정`;
-  $('[data-intake-status]', box).innerHTML = items.map((i) => `<li data-intake-element="${esc(i.element)}" data-intake-state="${esc(i.status)}">${chip(i.status === 'RECORDED_BY_COUNSELOR' ? 'OFFICIAL_OK' : i.status === 'INPUT_INVALID' ? 'MISMATCH' : 'NOT_QUERIED', INTAKE_STATUS_LABEL[i.status])} <b>${esc(i.label)}</b> ${esc(i.value_text)}<div class="note">${esc(i.note)}</div></li>`).join('');
+  const unverified = items.filter((i) => i.status === 'UNVERIFIED_MISMATCH').length;
+  // 미검증 입력은 '기록 완료'로 세지 않는다.
+  $('[data-intake-count]', box).textContent = `기록 ${items.filter((i) => i.status === 'RECORDED_BY_COUNSELOR').length}/4${unverified ? ` · 미검증 ${unverified}` : ''} · 나머지 미확정`;
+  $('[data-intake-status]', box).innerHTML = items.map((i) => `<li data-intake-element="${esc(i.element)}" data-intake-state="${esc(i.status)}">${chip(i.status === 'RECORDED_BY_COUNSELOR' ? 'OFFICIAL_OK' : ['INPUT_INVALID', 'UNVERIFIED_MISMATCH'].includes(i.status) ? 'MISMATCH' : 'NOT_QUERIED', INTAKE_STATUS_LABEL[i.status])} <b>${esc(i.label)}</b> ${esc(i.value_text)}<div class="note">${esc(i.note)}</div></li>`).join('');
 }
 // ── 증빙요건 판단(T-01·T-05·T-09·T-12) ─────────────────────────────────────────
 const GATE_CHIP = { READY_FOR_EXPERT: 'OFFICIAL_OK', NOT_SATISFIED: 'MISMATCH', HOLD: 'FIELD_CHECK', NOT_TRIGGERED: 'NOT_QUERIED' };
@@ -430,6 +442,19 @@ function requirementRow(r) {
     ? `<span class="muted small">자동: ${esc(r.basis)}</span>`
     : `<select data-evidence-input="${esc(r.id)}" aria-label="${esc(r.label)} 확보 상태">${optionsHtml(EVIDENCE_INPUT_OPTIONS, r.input || '')}</select>`;
   return `<li data-requirement="${esc(r.id)}" data-requirement-state="${esc(r.state)}">${chip(REQ_CHIP[r.state], EVIDENCE_STATE_LABEL[r.state])} <span class="req-label">${esc(r.label)}</span> ${control}</li>`;
+}
+function trackPanelHtml(t) {
+  const list = (title, items, attr) => (items.length ? `<div class="small"><span class="f-cap">${esc(title)}</span><ul ${attr}>${items.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>` : '');
+  return `<h3>사업·보상 유형별 확인 <small>전문가 판단 대기 · 요건 충족 판단 아님</small></h3>
+    <div class="track" data-case-track="${esc(t.case_type || 'UNDETERMINED')}" data-track-status="${esc(t.status)}">
+      <div class="gate-head"><b>${esc(t.label)}</b> ${chip(t.status === 'EXPERT_PENDING' ? 'EXPERT_REVIEW' : t.status === 'GENERAL' ? 'CANDIDATE' : 'FIELD_CHECK', TRACK_STATUS_LABEL[t.status])}</div>
+      ${t.warnings.map((w) => `<p class="warn-note small" data-track-warning>${esc(w)}</p>`).join('')}
+      ${t.notes.map((n) => `<p class="muted small" data-track-note>${esc(n)}</p>`).join('')}
+      ${t.checklists.map((c) => `<details class="track-list" data-checklist="${esc(c.id)}" open><summary><b>${esc(c.title)}</b>${c.claim ? ` ${chip('EXPERT_REVIEW', c.claim)}` : ''}</summary>
+        <p class="muted small">관련 조문: ${esc(c.legal_ref)}</p>
+        ${list('확인 필요 사실', c.facts, 'data-cl-facts')}${list('증빙', c.evidence, 'data-cl-evidence')}${list('선택형 증거(해당 시만)', c.optional, 'data-cl-optional')}
+        ${list('절차·기한 원문 확인', c.procedure, 'data-cl-procedure')}${list('다음 조치', c.next, 'data-cl-next')}</details>`).join('')}
+    </div>`;
 }
 function renderEvidence(state) {
   const box = $('[data-evidence]');
@@ -448,6 +473,7 @@ function renderEvidence(state) {
         ${g.trigger ? `<ul class="reqs trigger">${requirementRow(g.trigger)}</ul>` : ''}
         ${g.state === EVIDENCE_STATE.NOT_TRIGGERED ? '' : `<ul class="reqs">${g.requirements.map(requirementRow).join('')}</ul>`}
       </li>`).join('')}</ul>
+      ${trackPanelHtml(report.track)}
       <h3>현재 절차와 다음 조치</h3><ul class="materials" data-next-actions>${report.actions.map((a) => `<li>${esc(a)}</li>`).join('')}</ul>`;
   }
   if (html === lastEvidenceHtml) return;

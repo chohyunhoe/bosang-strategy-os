@@ -72,12 +72,13 @@ test('상담 4요소: 잘못된 날짜·역순 기한은 입력 확인 필요', 
 });
 
 test('다음 조치: 단계별 자료확보만 안내, 기간 수치·법정기한 단정 없음', () => {
-  for (const stage of ['', 'PRE_RECOGNITION', 'RECOGNITION', 'COMPENSATION_PLAN', 'APPRAISAL', 'NEGOTIATION', 'ADJUDICATION_REQUEST', 'ADJUDICATION', 'OBJECTION', 'LITIGATION']) {
-    const actions = nextActionsFor(evaluateIntake({ stage }, { now: NOW }));
+  for (const case_type of ['', 'LAND', 'OBJECTS', 'REMAINDER', 'PRIOR_ASSET', 'OTHER']) for (const stage of ['', 'PRE_RECOGNITION', 'RECOGNITION', 'COMPENSATION_PLAN', 'APPRAISAL', 'NEGOTIATION', 'ADJUDICATION_REQUEST', 'ADJUDICATION', 'OBJECTION', 'LITIGATION']) {
+    const actions = nextActionsFor(evaluateIntake({ stage, case_type }, { now: NOW }));
     assert.ok(actions.length >= 1);
-    for (const a of actions) assert.doesNotMatch(a, /\d+\s*(일|개월|년)\s*(이내|안에|내에|까지)/, `${stage}: ${a}`);
+    for (const a of actions) assert.doesNotMatch(a, /\d+\s*(일|개월|년)\s*(이내|안에|내에|까지)/, `${case_type}/${stage}: ${a}`);
   }
-  const adj = nextActionsFor(evaluateIntake({ stage: 'ADJUDICATION' }, { now: NOW }));
+  // 불복 경로 안내는 사업·보상 유형이 토지보상법 계열로 기록된 경우에만(Issue #31)
+  const adj = nextActionsFor(evaluateIntake({ stage: 'ADJUDICATION', case_type: 'LAND' }, { now: NOW }));
   assert.ok(adj.some((a) => /BSO 미계산/.test(a)));
   assert.ok(adj.some((a) => /권한자/.test(a)));
 });
@@ -202,7 +203,7 @@ test('상담 검토서: 지식팩 연결 시 코드·원문 위치·성립요건
   const d = await syntheticDraft();
   const pack = makePack((p) => { entry(p, 'T-12').sections['판단기준'] = '없음'; entry(p, 'T-01').sections['판단기준'] = `가${'나'.repeat(400)}`; });
   const r = buildConsultReport({ draft: d, pack, now: NOW,
-    intake: { goal: 'OBJECTION', stage: 'ADJUDICATION', stage_basis: '재결서', authority: 'LAND_COMMITTEE_LOCAL',
+    intake: { case_type: 'LAND', goal: 'OBJECTION', stage: 'ADJUDICATION', stage_basis: '재결서', authority: 'LAND_COMMITTEE_LOCAL',
       trigger_event: '재결서 정본 수령', trigger_date: '2026-11-20', trigger_source: '수령증' } });
   assert.match(r.text, /내부 전용\(기본서 발췌 포함\)/);
   assert.match(r.text, /- T-01 합성 유형 T-01 · 책 99쪽 · PDF 101–102쪽/);
