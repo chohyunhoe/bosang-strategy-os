@@ -112,3 +112,42 @@ test('후보가 여럿이면 공적자료를 부르지 않는다 · 늦은 응�
   await expect(page.locator('[data-f-card]')).toBeHidden();
   await expect(page.locator('[data-f-pd-key]')).toHaveCount(0);
 });
+
+test('색인 밖 지번(색인 리): 미편입 판정 없이 색인 밖 카드로 상담 · 저장 문구', async ({ page }) => {
+  await open(page);
+  await search(page, '바위리 99');
+  await expect(page.locator('[data-f-status="NOT_IN_INDEX"]')).toContainText('미편입으로 판정하지 않습니다');
+  await page.locator('[data-f-direct-open]').click();
+  await expect(page.locator('[data-f-direct="INDEX_AREA"]')).toContainText('고시 색인 밖');
+  await expect(page.locator('[data-f-direct-address]')).toHaveText('가상도 연습시 숲내읍 바위리 99');
+  const [download] = await Promise.all([page.waitForEvent('download'), page.locator('[data-f-save]').click()]);
+  const text = fs.readFileSync(await download.path(), 'utf8');
+  expect(text).toContain('고시 색인 밖 필지');
+  expect(text).toContain('미편입 판정 아님');
+});
+
+test('색인 없이 전국 주소: 법정동 확정 입력만 조회 · 결과 값별 출처 · 불완전 주소는 조회 버튼 없음', async ({ page }) => {
+  const calls = [];
+  await page.route('**/__public_data_bridge/**', async (route) => {
+    const op = new URL(route.request().url()).pathname.split('/').pop();
+    const req = route.request().postData() ? JSON.parse(route.request().postData()) : null;
+    calls.push([op, req && req.parcel_address]);
+    const body = op === 'status' ? { ok: true, vworld_configured: true, public_data_configured: true }
+      : op === 'resolve_pnu' ? { ok: true, candidate: { pnu: '9800000000100120003', legal_dong_name: '가상특별시 누리구 새솔동' } }
+        : { ok: true, record: { land_category: '대', zoning: '가상지역', individual_official_price: '1000', price_year: '2026' } };
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+  });
+  await page.goto('/field.html');
+  await expect(page.locator('[data-f-loader]')).toBeVisible();
+  await expect(page.locator('[data-f-q]')).toBeEnabled();
+  await search(page, '새솔동 12-3');
+  await expect(page.locator('[data-f-direct-reason]')).toContainText('시·군·구');
+  await expect(page.locator('[data-f-direct-open]')).toHaveCount(0);
+  await search(page, '가상특별시 누리구 새솔동 12-3');
+  await page.locator('[data-f-direct-open]').click();
+  await expect(page.locator('[data-f-direct="NATIONWIDE"]')).toBeVisible();
+  await page.locator('[data-f-pd-go]').click();
+  await expect(page.locator('[data-f-pd-state="OK"]')).toContainText('가상특별시 누리구 새솔동');
+  await expect(page.locator('[data-f-pd-key="price"]')).toContainText('기준 2026');
+  expect(calls.filter(([op]) => op === 'resolve_pnu')).toEqual([['resolve_pnu', '가상특별시 누리구 새솔동 12-3']]);
+});

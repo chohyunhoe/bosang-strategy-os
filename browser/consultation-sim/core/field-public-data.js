@@ -44,17 +44,27 @@ export const errorText = (code, message) => {
   return rc ? `${base} · VWorld 결과코드 ${rc}${RESULT_TEXT[rc] ? ` — ${RESULT_TEXT[rc]}` : ''}` : base;
 };
 
-// row: 고시 색인 행(법정리 확정). 결과의 각 값은 출처·기준연도·조회시각·상태를 함께 가진다.
-export async function queryPublicData({ fetchImpl, location: loc, index, row, years = [2026, 2025], now = () => new Date() }) {
+// 조회 대상: 고시 색인 행(row, 법정리 확정) 또는 색인 밖 직접 조회 대상(target: {address, context}).
+// 결과의 각 값은 출처·기준연도·조회시각·상태를 함께 가진다.
+export async function queryPublicData({ fetchImpl, location: loc, index, row = null, target = null, years = [2026, 2025], now = () => new Date() }) {
   const at = () => now().toISOString();
   if (!bridgeAllowed(loc)) return { status: PD_STATUS.OFFLINE, reason: '오프라인 — 공적자료 미조회', values: [] };
-  const l = index.location;
-  const address = [l.sido, l.sigungu, row.eupmyeon || l.eupmyeon, row.ri, row.lot_label].filter(Boolean).join(' ');
-  const resolved = await call(fetchImpl, '/resolve_pnu', { parcel_address: address, address_context: [l.sido, l.sigungu, row.eupmyeon || l.eupmyeon].join(' ') });
+  let address; let context;
+  if (row) {
+    const l = index.location;
+    address = [l.sido, l.sigungu, row.eupmyeon || l.eupmyeon, row.ri, row.lot_label].filter(Boolean).join(' ');
+    context = [l.sido, l.sigungu, row.eupmyeon || l.eupmyeon].filter(Boolean).join(' ');
+  } else if (target?.address) {
+    address = target.address; context = target.context || '';
+  } else {
+    return { status: PD_STATUS.NOT_QUERIED, reason: '조회 대상 없음', values: [] };
+  }
+  const resolved = await call(fetchImpl, '/resolve_pnu', { parcel_address: address, address_context: context });
   if (!resolved.ok || !resolved.candidate?.pnu) {
     return { status: PD_STATUS.FAILED, step: 'resolve_pnu', code: resolved.error_code, reason: errorText(resolved.error_code, resolved.error_message), address, fetched_at: at(), values: [] };
   }
   const pnu = resolved.candidate.pnu;
+  const legalDong = resolved.candidate.legal_dong_name || null;
   const attempts = [];
   for (const year of years) {
     const res = await call(fetchImpl, '/vworld_land', { pnu, standard_year: year, dedupe_revisions: true });
@@ -62,9 +72,9 @@ export async function queryPublicData({ fetchImpl, location: loc, index, row, ye
     if (res.ok && res.record) {
       const r = res.record; const src = 'VWorld 토지특성(로컬 브리지 경유)';
       const v = (key, label, value, extra = {}) => ({ key, label, value: value ?? null, source: src, base_year: year, fetched_at: at(), status: value == null ? PD_STATUS.NO_DATA : PD_STATUS.OK, ...extra });
-      const jimokMismatch = r.land_category && row.jimok && r.land_category !== row.jimok;
+      const jimokMismatch = r.land_category && row?.jimok && r.land_category !== row.jimok;
       return {
-        status: PD_STATUS.OK, pnu, pnu_review_required: true, address, attempts,
+        status: PD_STATUS.OK, pnu, legal_dong_name: legalDong, pnu_review_required: true, address, attempts,
         values: [
           v('land_category', '지목(현재 공부)', r.land_category, jimokMismatch ? { mismatch: `고시 기재 지목(${row.jimok})과 다름 — 지목변경·오기 확인` } : {}),
           v('zoning', '용도지역', r.zoning), v('land_use', '이용상황(공시지가 산정용)', r.land_use), v('road_access', '도로접면', r.road_access),
@@ -76,6 +86,6 @@ export async function queryPublicData({ fetchImpl, location: loc, index, row, ye
     if (res.ok && !res.record) continue;
   }
   const last = attempts[attempts.length - 1];
-  return { status: attempts.every((a) => a.ok) ? PD_STATUS.NO_DATA : PD_STATUS.FAILED, step: 'vworld_land', pnu, pnu_review_required: true, address, attempts,
+  return { status: attempts.every((a) => a.ok) ? PD_STATUS.NO_DATA : PD_STATUS.FAILED, step: 'vworld_land', pnu, legal_dong_name: legalDong, pnu_review_required: true, address, attempts,
     code: last?.code, result_code: last?.result_code || null, reason: attempts.every((a) => a.ok) ? '조회 연도에 토지특성 자료 없음' : errorText(last?.code, last?.message), values: [] };
 }

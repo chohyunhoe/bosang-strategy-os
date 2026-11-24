@@ -2,7 +2,8 @@
 // 저장: 이 화면 메모리뿐. 복사·저장(.txt)·인쇄는 상담자가 버튼을 누를 때만.
 import { validateNoticeIndex, searchNoticeIndex, SEARCH_STATUS, noticeFacts } from './core/notice-index.js';
 import { issuesFor } from './core/field-issues.js';
-import { buildFieldCard } from './core/field-card.js';
+import { buildFieldCard, buildDirectCard } from './core/field-card.js';
+import { directLookupTarget } from './core/field-direct.js';
 import { bridgeStatus, queryPublicData, PD_STATUS } from './core/field-public-data.js';
 import { profileForIndex } from './profiles/index.js';
 
@@ -11,7 +12,9 @@ const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&':
 const fmt = (n) => (typeof n === 'number' ? n.toLocaleString('ko-KR', { maximumFractionDigits: 1 }) : '—');
 const fmtTime = (iso) => (iso ? new Date(iso).toLocaleString('ko-KR', { hour12: false }) : '—');
 
-const st = { index: null, profile: null, check: null, search: null, row: null, issues: new Set(), memo: '', pdBridge: null, pd: null, pdBusy: false, epoch: 0 };
+// row: 고시 색인 행 / direct: 색인 밖 전국 직접 조회 대상. 둘 중 하나만 활성.
+const st = { index: null, profile: profileForIndex(null), check: null, search: null, row: null, direct: null, directOffer: null, issues: new Set(), memo: '', pdBridge: null, pd: null, pdBusy: false, epoch: 0 };
+const active = () => st.row || st.direct;
 
 function setIndex(index, origin) {
   const check = validateNoticeIndex(index);
@@ -33,13 +36,14 @@ function setIndex(index, origin) {
 function showIndexError(msg) { const e = $('[data-f-index-error]'); e.hidden = false; e.textContent = msg; $('[data-f-loader]').hidden = false; }
 
 function newConsultation() {
-  st.epoch += 1; st.search = null; st.row = null; st.issues = new Set(); st.memo = ''; st.pd = null; st.pdBusy = false;
+  st.epoch += 1; st.search = null; st.row = null; st.direct = null; st.directOffer = null; st.issues = new Set(); st.memo = ''; st.pd = null; st.pdBusy = false;
   $('[data-f-q]').value = ''; $('[data-f-memo]').value = ''; $('[data-f-out]').textContent = '';
   render();
   if (!$('[data-f-q]').disabled) $('[data-f-q]').focus();
 }
 
-function selectRow(row) { st.epoch += 1; st.row = row; st.issues = new Set(); st.memo = ''; st.pd = null; $('[data-f-memo]').value = ''; $('[data-f-out]').textContent = ''; render(); }
+function openDirect(target) { st.epoch += 1; st.row = null; st.direct = target; st.issues = new Set(); st.memo = ''; st.pd = null; $('[data-f-memo]').value = ''; $('[data-f-out]').textContent = ''; render(); }
+function selectRow(row) { st.epoch += 1; st.direct = null; st.row = row; st.issues = new Set(); st.memo = ''; st.pd = null; $('[data-f-memo]').value = ''; $('[data-f-out]').textContent = ''; render(); }
 
 function renderResult() {
   const box = $('[data-f-result]');
@@ -53,7 +57,13 @@ function renderResult() {
     box.querySelectorAll('[data-f-pick]').forEach((btn) => btn.addEventListener('click', () => selectRow(s.matches.find((r) => String(r.serial) === btn.dataset.fPick))));
     return;
   }
-  box.innerHTML = `<div class="f-msg ${s.status === SEARCH_STATUS.INPUT_INVALID ? 'bad' : ''}" data-f-status="${esc(s.status)}"><p><b>${esc(s.message)}</b></p></div>`;
+  const offer = st.directOffer;
+  const direct = !offer ? '' : offer.ok
+    ? (st.direct ? '' : `<p class="small">고시 색인 밖 필지로 상담카드를 열 수 있습니다(편입 여부 미확인). 공적자료는 법정동이 하나로 확인될 때만 조회합니다.</p>
+      <button type="button" class="secondary" data-f-direct-open>색인 밖 필지로 상담 · ${esc(offer.address)}</button>`)
+    : `<p class="small muted" data-f-direct-reason>${esc(offer.reason)}</p>`;
+  box.innerHTML = `<div class="f-msg ${s.status === SEARCH_STATUS.INPUT_INVALID ? 'bad' : ''}" data-f-status="${esc(s.status)}"><p><b>${esc(s.message)}</b></p>${direct}</div>`;
+  $('[data-f-direct-open]', box)?.addEventListener('click', () => openDirect(offer));
 }
 
 function renderPublicData() {
@@ -63,9 +73,9 @@ function renderPublicData() {
   badge.className = `badge ${!b ? '' : b.status === PD_STATUS.NOT_QUERIED ? 'ok' : 'warn'}`;
   badge.textContent = !b ? '공적자료 확인 중…' : b.status === PD_STATUS.NOT_QUERIED ? '로컬 브리지 연결 · 실조회 가능' : `공적자료 미조회 · ${b.reason}`;
   badge.dataset.pd = b ? b.status : 'CHECKING';
-  if (!st.row) { box.innerHTML = ''; return; }
+  if (!active()) { box.innerHTML = ''; return; }
   if (!b || b.status !== PD_STATUS.NOT_QUERIED) {
-    box.innerHTML = `<p class="small" data-f-pd-state="${esc(b?.status || 'CHECKING')}"><span class="chip warn">미조회</span> ${esc(b?.reason || '확인 중')} · 사용조건 확인 필요. 고시 카드는 그대로 씁니다.</p>`;
+    box.innerHTML = `<p class="small" data-f-pd-state="${esc(b?.status || 'CHECKING')}"><span class="chip warn">미조회</span> ${esc(b?.reason || '확인 중')} · 사용조건 확인 필요. 상담카드는 그대로 씁니다.</p>`;
     return;
   }
   const pd = st.pd;
@@ -77,13 +87,13 @@ function renderPublicData() {
   }
   if (pd.status !== PD_STATUS.OK) {
     box.innerHTML = `<div data-f-pd-state="${esc(pd.status)}" data-f-pd-code="${esc(pd.code || '')}"><p class="small"><span class="chip bad">${pd.status === PD_STATUS.NO_DATA ? '자료 없음' : '조회 실패'}</span> ${esc(pd.reason)} · 합성·추정 값으로 채우지 않습니다.</p>
-      ${pd.pnu ? `<p class="small">PNU 후보 <span class="mono">${esc(pd.pnu)}</span> <span class="chip warn">검토 필요</span></p>` : ''}
+      ${pd.pnu ? `<p class="small">PNU 후보 <span class="mono">${esc(pd.pnu)}</span>${pd.legal_dong_name ? ` · 법정동 ${esc(pd.legal_dong_name)}` : ''} <span class="chip warn">검토 필요</span></p>` : ''}
       ${(pd.attempts || []).map((a) => `<div class="small muted" data-f-pd-attempt="${a.year}">${a.year}년: ${a.ok ? '응답' : '실패'} ${esc(a.code || '')}${a.result_code ? ` (${esc(a.result_code)})` : ''} · ${esc(fmtTime(a.fetched_at))}</div>`).join('')}
       <button type="button" class="ghost" data-f-pd-go>다시 조회</button></div>`;
     $('[data-f-pd-go]', box).addEventListener('click', runPublicData);
     return;
   }
-  box.innerHTML = `<div data-f-pd-state="OK"><p class="small">PNU 후보 <span class="mono">${esc(pd.pnu)}</span> <span class="chip warn">검토 필요</span></p>
+  box.innerHTML = `<div data-f-pd-state="OK"><p class="small">PNU 후보 <span class="mono">${esc(pd.pnu)}</span>${pd.legal_dong_name ? ` · 법정동 ${esc(pd.legal_dong_name)}` : ''} <span class="chip warn">검토 필요</span></p>
     ${pd.values.map((v) => `<div class="f-pd-row" data-f-pd-key="${esc(v.key)}"><b>${esc(v.label)}</b> ${v.value == null ? '<span class="chip">값 없음</span>' : esc(typeof v.value === 'number' ? fmt(v.value) : v.value)}
       ${v.mismatch ? `<span class="chip bad" data-f-pd-mismatch>불일치</span> <span class="small">${esc(v.mismatch)}</span>` : ''}
       <div class="src">${esc(v.source)} · 기준 ${esc(v.base_year)} · ${esc(fmtTime(v.fetched_at))}</div></div>`).join('')}
@@ -91,18 +101,19 @@ function renderPublicData() {
 }
 
 async function runPublicData() {
-  if (!st.row || !st.index) return;
-  const epoch = st.epoch; const row = st.row;
+  const subject = active(); if (!subject) return;
+  const epoch = st.epoch;
   st.pdBusy = true; render();
-  const res = await queryPublicData({ fetchImpl: (...a) => fetch(...a), location, index: st.index, row });
-  if (epoch !== st.epoch || row !== st.row) return; // 새 상담·다른 필지로 바뀌었으면 늦은 응답 폐기
+  const res = await queryPublicData({ fetchImpl: (...a) => fetch(...a), location, index: st.index, row: st.row, target: st.direct });
+  if (epoch !== st.epoch || subject !== active()) return; // 새 상담·다른 필지로 바뀌었으면 늦은 응답 폐기
   st.pd = res; st.pdBusy = false; render();
 }
 
 function renderCard() {
   const main = $('[data-f-card]');
-  main.hidden = !st.row;
-  if (!st.row) return;
+  main.hidden = !active();
+  if (!active()) return;
+  if (st.direct) { renderIssuesBox(renderDirectFacts()); return; }
   const card = buildFieldCard({ profile: st.profile, index: st.index, row: st.row, selectedIssueIds: [...st.issues], memo: st.memo });
   const r = st.row; const f = noticeFacts(r);
   $('[data-f-facts]').innerHTML = `<div class="f-head" data-f-parcel="${r.serial}">${esc(r.ri)} ${esc(r.lot_label)} <span class="chip warn">원문확인 필요</span></div>
@@ -119,6 +130,19 @@ function renderCard() {
     ${r.ri_source === 'CARRIED' ? `<p class="warn-note" data-f-carried>리 이름은 원본 표의 반복 셀에서 이어받았습니다 — PDF ${r.pdf_page}쪽 원문 재확인.</p>` : ''}
     <p class="small muted">2025 고시 기록입니다. 현재 조서·현황·사업변경과 다를 수 있습니다.</p>`;
   $('[data-f-unverified]').innerHTML = card.unverified.map((u) => `<li>${esc(u)}</li>`).join('');
+  renderIssuesBox(card);
+}
+
+function renderDirectFacts() {
+  const card = buildDirectCard({ profile: st.profile, target: st.direct, selectedIssueIds: [...st.issues], memo: st.memo });
+  $('[data-f-facts]').innerHTML = `<div class="f-head" data-f-direct="${esc(st.direct.scope)}">${esc(st.direct.leaf)} ${esc(st.direct.lot_label)} <span class="chip bad">고시 색인 밖 · 편입 여부 미확인</span></div>
+    <dl class="f-kv"><dt>입력 주소</dt><dd data-f-direct-address>${esc(card.address)}</dd><dt>고시 기재값</dt><dd>없음 — 미편입 판정 아님</dd></dl>
+    <p class="small muted">법정동은 공적자료 조회 때 행정안전부 법정동코드로 다시 확인하며, 후보가 여럿이면 조회하지 않습니다.</p>`;
+  $('[data-f-unverified]').innerHTML = card.unverified.map((u) => `<li>${esc(u)}</li>`).join('');
+  return card;
+}
+
+function renderIssuesBox(card) {
   const issueBox = $('[data-f-issues]');
   if (issueBox.dataset.for !== `${st.epoch}`) {
     issueBox.dataset.for = `${st.epoch}`;
@@ -134,7 +158,8 @@ function renderCard() {
 
 function render() { renderResult(); renderCard(); renderPublicData(); }
 
-const currentCardText = () => (st.row ? buildFieldCard({ profile: st.profile, index: st.index, row: st.row, selectedIssueIds: [...st.issues], memo: st.memo }).text : '');
+const currentCardText = () => (st.row ? buildFieldCard({ profile: st.profile, index: st.index, row: st.row, selectedIssueIds: [...st.issues], memo: st.memo }).text
+  : st.direct ? buildDirectCard({ profile: st.profile, target: st.direct, selectedIssueIds: [...st.issues], memo: st.memo }).text : '');
 
 async function copyCard() {
   const text = currentCardText(); if (!text) return;
@@ -148,7 +173,7 @@ async function copyCard() {
 }
 function saveCard() {
   const text = currentCardText(); if (!text) return;
-  const r = st.row;
+  const r = st.row || { ri: st.direct.leaf, lot_label: st.direct.lot_label };
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' }));
   a.download = `상담카드_${r.ri}_${r.lot_label}_${new Date().toISOString().slice(0, 10)}.txt`;
@@ -158,10 +183,13 @@ function saveCard() {
 
 function init() {
   $('[data-f-form]').addEventListener('submit', (e) => {
-    e.preventDefault(); if (!st.index) return;
-    st.epoch += 1; st.row = null; st.pd = null; st.issues = new Set(); st.memo = ''; $('[data-f-memo]').value = ''; $('[data-f-out]').textContent = '';
-    st.search = searchNoticeIndex(st.index, $('[data-f-q]').value);
+    e.preventDefault();
+    st.epoch += 1; st.row = null; st.direct = null; st.directOffer = null; st.pd = null; st.issues = new Set(); st.memo = ''; $('[data-f-memo]').value = ''; $('[data-f-out]').textContent = '';
+    const q = $('[data-f-q]').value;
+    st.search = st.index ? searchNoticeIndex(st.index, q)
+      : (q.trim() ? { status: SEARCH_STATUS.NOT_IN_INDEX, message: '고시 색인이 없습니다. 전체 주소로 전국 공적자료만 조회할 수 있습니다(편입 여부 미확인).', matches: [] } : { status: SEARCH_STATUS.EMPTY, matches: [] });
     if (st.search.status === SEARCH_STATUS.UNIQUE) { st.row = st.search.matches[0]; }
+    else if ([SEARCH_STATUS.NOT_IN_INDEX, SEARCH_STATUS.OUTSIDE_NOTICE_AREA].includes(st.search.status)) st.directOffer = directLookupTarget(st.index, q);
     render();
   });
   $('[data-f-new]').addEventListener('click', newConsultation);
@@ -177,7 +205,12 @@ function init() {
   const embedded = document.getElementById('bso-notice-index');
   let loaded = false;
   if (embedded) { try { loaded = setIndex(JSON.parse(embedded.textContent), '내장 오프라인 색인'); } catch (_e) { showIndexError('내장 색인이 손상됐습니다.'); } }
-  if (!loaded) $('[data-f-loader]').hidden = false;
+  if (!loaded) {
+    $('[data-f-loader]').hidden = false;
+    // 색인 없이도 전체 주소로 전국 직접 조회는 가능
+    $('[data-f-q]').disabled = false; $('[data-f-go]').disabled = false;
+    $('[data-f-hint]').textContent = '색인 없음 — 전체 주소(시·군·구 + 읍·면·동·리 + 지번)로 전국 공적자료만 조회';
+  }
   bridgeStatus({ fetchImpl: (...a) => fetch(...a), location }).then((b) => { st.pdBridge = b; render(); });
   render();
 }

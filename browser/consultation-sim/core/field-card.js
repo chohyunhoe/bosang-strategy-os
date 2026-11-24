@@ -14,6 +14,30 @@ export const UNVERIFIED_BASE = Object.freeze([
   '공시지가·보상액(이 카드는 산정하지 않음)',
 ]);
 
+// 고시 색인 밖 필지(전국 직접 조회) 카드 — 고시 기재값이 없으므로 '확인 사실'은 입력 주소뿐이다.
+export function buildDirectCard({ profile, target, selectedIssueIds = [], memo = '', now = new Date() }) {
+  if (!target?.ok) return null;
+  const issues = issuesFor(profile);
+  const chosen = issues.filter((it) => selectedIssueIds.includes(it.id));
+  const documents = [...new Set(chosen.flatMap((it) => it.documents))];
+  const next = [...new Set(['받은 통지문 원문으로 사업·고시 해당 여부와 현재 절차 단계 확인', ...chosen.flatMap((it) => it.next)])];
+  const unverified = ['사업 편입 여부·편입면적(고시 색인에 없음 — 미편입 판정 아님)', ...UNVERIFIED_BASE];
+  const memoText = String(memo || '').trim();
+  const confirmed = [`입력 주소: ${target.address} (상담자 입력 · 법정동은 조회 시 행안부 코드로 재확인)`];
+  const text = [
+    `[BSO 현장 상담카드 · 검토 보조 · 고시 색인 밖 필지]`,
+    `작성 ${now.toISOString().slice(0, 16).replace('T', ' ')} · 고시 기재값 없음`,
+    '', '■ 확인 사실', ...confirmed.map((s) => `- ${s}`),
+    '', '■ 미확인', ...unverified.map((s) => `- ${s}`),
+    '', '■ 상담자가 선택한 쟁점', ...(chosen.length ? chosen.map((it) => `- ${it.label}`) : ['- (선택 없음)']),
+    '', '■ 확보할 문서', ...(documents.length ? documents.map((s) => `- ${s}`) : ['- (쟁점 선택 후 표시)']),
+    '', '■ 후속조치', ...next.map((s) => `- ${s}`),
+    ...(memoText ? ['', '■ 상담 메모', memoText] : []),
+    '', '※ 보상액·법률 결론·기간을 정하지 않으며 증액을 약속하지 않습니다. 공적자료 실조회 값은 이용조건 확인 전이라 이 카드에 넣지 않았습니다.',
+  ].join('\n');
+  return { address: target.address, confirmed, unverified, chosen, documents, next, memo: memoText, text };
+}
+
 export function buildFieldCard({ profile, index, row, selectedIssueIds = [], memo = '', now = new Date() }) {
   if (!row) return null;
   const facts = noticeFacts(row);

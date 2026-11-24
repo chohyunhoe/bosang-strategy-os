@@ -217,3 +217,49 @@ test('단일 HTML 빌드: 합성 색인 내장 · 안전 검사 통과 · 개인
   fs.writeFileSync(badPath, JSON.stringify(bad));
   assert.throws(() => execFileSync(process.execPath, [path.join(root, 'scripts', 'build_notice_field.js'), '--index', badPath, '--out', out], { stdio: 'pipe' }));
 });
+
+// ── 고시 색인 밖 전국 직접 조회(Issue #34 잔여: 색인 없는 실제 지번) ─────────────────────
+const { directLookupTarget } = await import('../../browser/consultation-sim/core/field-direct.js');
+const { buildDirectCard } = await import('../../browser/consultation-sim/core/field-card.js');
+
+test('직접 조회 대상: 색인 리면 색인 위치로 주소 완성, 그 밖은 시군구+읍면동리 필수', () => {
+  const idx = load();
+  assert.deepEqual(
+    (({ ok, scope, address }) => ({ ok, scope, address }))(directLookupTarget(idx, '바위리 99')),
+    { ok: true, scope: 'INDEX_AREA', address: '가상도 연습시 숲내읍 바위리 99' });
+  const nat = directLookupTarget(idx, '서울특별시 강남구 역삼동 12-3');
+  assert.equal(nat.scope, 'NATIONWIDE');
+  assert.equal(nat.address, '서울특별시 강남구 역삼동 12-3');
+  assert.equal(nat.context, '서울특별시 강남구');
+  assert.equal(directLookupTarget(idx, '99').ok, false);           // 지번만
+  assert.equal(directLookupTarget(idx, '역삼동 12-3').ok, false);   // 상위 행정구역 없음
+  assert.equal(directLookupTarget(idx, '동쪽리 12-3').ok, false);   // 색인 밖 리 + 상위 없음
+  assert.equal(directLookupTarget(idx, '12-3 외 2필지').ok, false); // 비정형
+  const noIndex = directLookupTarget(null, '충청북도 청주시 흥덕구 오송읍 궁평리 320-1');
+  assert.equal(noIndex.scope, 'NATIONWIDE');
+  assert.equal(noIndex.eupmyeon, '오송읍');
+});
+
+test('직접 조회: 입력 주소로 PNU 해석 후 VWorld, 법정동명 반환', async () => {
+  const seen = [];
+  const fetchImpl = fakeBridge({
+    resolve_pnu: (b) => { seen.push([b.parcel_address, b.address_context]); return { ok: true, candidate: { pnu: '9800000000100120003', legal_dong_name: '가상도 연습시 숲내읍 바위리' } }; },
+    vworld_land: () => ({ ok: false, error_code: 'VWORLD_API_ERROR', error_message: 'x (resultCode=INCORRECT_KEY)' }),
+  });
+  const target = directLookupTarget(null, '서울특별시 강남구 역삼동 12-3');
+  const r = await queryPublicData({ fetchImpl, location: loop, index: null, target });
+  assert.deepEqual(seen, [['서울특별시 강남구 역삼동 12-3', '서울특별시 강남구']]);
+  assert.equal(r.legal_dong_name, '가상도 연습시 숲내읍 바위리');
+  assert.equal(r.result_code, 'INCORRECT_KEY');
+  const none = await queryPublicData({ fetchImpl, location: loop, index: null });
+  assert.equal(none.status, PD_STATUS.NOT_QUERIED);
+});
+
+test('색인 밖 카드: 편입 여부 미확인 명시 · 고시 값·공적자료 값 없음', () => {
+  const target = directLookupTarget(null, '서울특별시 강남구 역삼동 12-3');
+  const card = buildDirectCard({ profile: profileForIndex(null), target, selectedIssueIds: ['stage'], memo: '' });
+  assert.match(card.text, /고시 색인 밖 필지/);
+  assert.match(card.text, /미편입 판정 아님/);
+  assert.doesNotMatch(card.text, /PNU|편입면적\(고시 기재\)/);
+  assert.equal(buildDirectCard({ target: { ok: false } }), null);
+});
