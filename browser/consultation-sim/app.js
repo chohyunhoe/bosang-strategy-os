@@ -7,6 +7,7 @@ import { renderMap } from './map-view.js';
 import { validateManualPack, searchManualPack, suggestManualReferences, EVIDENCE_STATE, EVIDENCE_STATE_LABEL, EVIDENCE_INPUT_OPTIONS } from './core/manual-pack.js';
 import { emptyIntake, evaluateIntake, GOAL_OPTIONS, STAGE_OPTIONS, AUTHORITY_OPTIONS, INTAKE_STATUS_LABEL } from './core/consult-intake.js';
 import { buildConsultReport } from './core/consult-report.js';
+import { outputSignature, isOutputCurrent } from './core/output-binding.js';
 import { createConsultRecord, syncRecord, recordForOutput, recordHasInput, canContinueFrom, continueFrom, startNewConsultation } from './core/consult-record.js';
 import { REVIEW_REQUIREMENT_STATUS } from './core/standard-land-engine.js';
 
@@ -30,7 +31,9 @@ const IN_ARTIFACT = RUNTIME.host === 'claude-artifact';
 const ui = {
   mode: RUNTIME.synthetic_only ? 'SYNTHETIC' : ({ live: 'LIVE_BRIDGE', vworld: 'VWORLD_DIRECT' }[params.get('mode')] || 'SYNTHETIC'),
   scenario: ['NO_MAP_KEY', 'API_DOWN'].includes(params.get('scenario')) ? params.get('scenario') : 'DEFAULT',
-  tab: 'map', editing: null, saveOpen: false, footer: '', adapterStatus: null, probe: null, probing: false,
+  tab: 'map', editing: null, saveOpen: false, saveSig: null, adapterStatus: null, probe: null, probing: false,
+  // 생성 출력물(검토서·과업·저장 결과)은 만들 때의 상태 서명과 함께 보관하고, 서명이 달라지면 표시하지 않는다.
+  output: null, outputNotice: '', packToken: 0,
   // 상담 4요소·증빙 확보 표시는 '상담 기록'에 묶어 이 화면 메모리에만 둔다(명시 저장 시에만 JSON에 포함).
   // 기록은 조회(draft_id)·데이터 모드·PNU·기준연도에 결속되며 다른 조회로 자동 이월되지 않는다.
   record: createConsultRecord(null), previousRecord: null, recordNotice: '',
@@ -46,7 +49,7 @@ function buildAdapter() {
       : createSyntheticAdapter({ scenario: ui.scenario, standardDelayMs: Math.min(5000, Number(params.get('std_delay')) || 0) });
   ui.probe = null;
   session = createConsultationSession({ adapter, onChange: render });
-  ui.editing = null; ui.saveOpen = false; ui.footer = ''; ui.adapterStatus = null;
+  ui.editing = null; ui.saveOpen = false; ui.saveSig = null; ui.output = null; ui.outputNotice = ''; ui.adapterStatus = null;
   lastMapHtml = ''; lastLandHtml = ''; lastAnalysisHtml = ''; lastEvidenceHtml = '';
   $('[data-region-hints]').innerHTML = adapter.regionHints().map((name) => `<option value="${esc(name)}"></option>`).join('');
   adapter.status().then((status) => { ui.adapterStatus = status; render(); });
@@ -211,10 +214,11 @@ function renderLand(state) {
   if (restored) { $('[data-edit-value]', restored).value = pending.value; $('[data-edit-by]', restored).value = pending.by; $('[data-edit-reason]', restored).value = pending.reason; }
   box.querySelectorAll('[data-edit]').forEach((b) => b.addEventListener('click', () => { ui.editing = b.dataset.edit; render(); }));
   box.querySelectorAll('[data-edit-cancel]').forEach((b) => b.addEventListener('click', () => { ui.editing = null; render(); }));
-  box.querySelectorAll('[data-review]').forEach((b) => b.addEventListener('click', () => session.markReviewed(b.dataset.review, !d.fields[b.dataset.review].reviewed)));
-  box.querySelectorAll('[data-clear-override]').forEach((b) => b.addEventListener('click', () => session.clearOverride(b.dataset.clearOverride)));
+  box.querySelectorAll('[data-review]').forEach((b) => b.addEventListener('click', () => { invalidateOutputs(); session.markReviewed(b.dataset.review, !d.fields[b.dataset.review].reviewed); }));
+  box.querySelectorAll('[data-clear-override]').forEach((b) => b.addEventListener('click', () => { invalidateOutputs(); session.clearOverride(b.dataset.clearOverride); }));
   box.querySelectorAll('[data-edit-save]').forEach((b) => b.addEventListener('click', () => {
     const row = b.closest('[data-edit-row]');
+    invalidateOutputs();
     const ok = session.overrideField(b.dataset.editSave, { value: $('[data-edit-value]', row).value, by: $('[data-edit-by]', row).value, reason: $('[data-edit-reason]', row).value });
     if (!ok) { $('[data-edit-by]', row).classList.add('invalid'); $('[data-edit-by]', row).focus(); return; }
     ui.editing = null; render();
@@ -315,12 +319,32 @@ function currentReport(d = session?.state?.draft) {
   if (!d) return null;
   return buildConsultReport({ draft: d, record: ui.record, pack: privateManualPack, now: new Date() });
 }
+// ── 출력물 결속: 상담 ID·조회 ID·입력 revision·지식팩 식별·검토서 내용이 모두 같을 때만 표시 ──────────
+function currentOutputSig() {
+  const d = session?.state?.draft;
+  return outputSignature({ draft: d, record: ui.record, pack: { token: ui.packToken, connected: Boolean(privateManualPack) },
+    reportText: d ? currentReport(d)?.text || '' : '' });
+}
+function setOutput(kind, html, sig = currentOutputSig()) { ui.output = { kind, html, sig }; ui.outputNotice = ''; }
+// 상태가 바뀌는 동작(새 상담·이어 쓰기·입력·증빙·수정값·지식팩·조회·모드)에서 즉시 호출. render의 서명 검사가 2차 방어.
+function invalidateOutputs(reason) {
+  if (!ui.output && !ui.saveOpen) return;
+  ui.output = null; ui.saveOpen = false; ui.saveSig = null;
+  ui.outputNotice = reason || '조회 결과·입력·상담·지식팩 상태가 바뀌어 이전 출력물(검토서·과업·저장 결과)을 지웠습니다. 필요하면 다시 생성하세요.';
+}
+function enforceOutputBinding() {
+  if (!ui.output && !ui.saveOpen) return;
+  const sig = currentOutputSig();
+  if (ui.output && !isOutputCurrent(ui.output, sig)) invalidateOutputs();
+  if (ui.saveOpen && ui.saveSig !== sig) invalidateOutputs();
+}
 // 출력(복사·저장·과업) 직전 결속 재확인. 맞지 않으면 아무것도 내보내지 않는다.
 function outputReport() {
   const d = session?.state?.draft;
+  if (!outputReady(session.state)) return null;
   const report = currentReport(d);
   if (!report || !report.binding_ok || !recordForOutput(ui.record, d)) {
-    ui.footer = '<p class="error small" data-record-mismatch>상담 기록이 현재 조회(필지·기준연도·데이터 모드)와 맞지 않아 출력하지 않았습니다. 다시 조회하세요.</p>';
+    setOutput('error', '<p class="error small" data-record-mismatch>상담 기록이 현재 조회(필지·기준연도·데이터 모드)와 맞지 않아 출력하지 않았습니다. 다시 조회하세요.</p>');
     render();
     return null;
   }
@@ -356,19 +380,22 @@ function renderIntake() {
       el.addEventListener(el.tagName === 'SELECT' ? 'change' : 'input', () => {
         // 입력은 지금 화면에 보이는 상담 기록에만 기록한다(기록이 바뀌면 입력란도 다시 채워진다).
         if (box.dataset.renderedRecord !== ui.record.record_id) return;
-        ui.record.intake[el.dataset.intakeField] = el.value; render();
+        ui.record.intake[el.dataset.intakeField] = el.value;
+        invalidateOutputs('상담 4요소가 바뀌어 이전 검토서·과업·저장 결과를 지웠습니다. 다시 생성하세요.');
+        render();
       });
     });
-    $('[data-intake-reset]', box).addEventListener('click', () => { ui.record.intake = emptyIntake(); box.dataset.renderedRecord = ''; render(); });
+    $('[data-intake-reset]', box).addEventListener('click', () => { ui.record.intake = emptyIntake(); box.dataset.renderedRecord = ''; invalidateOutputs(); render(); });
     box.addEventListener('click', (event) => {
       const d = session?.state?.draft;
       if (event.target.closest('[data-record-new]') && d) {
         // 같은 필지의 다른 의뢰인·새 상담: 새 상담 ID. 현재 기록은 직전 기록으로만 보관(자동 이월 없음).
         if (recordHasInput(ui.record)) ui.previousRecord = ui.record;
-        ui.record = startNewConsultation(d); ui.recordNotice = '새 상담을 시작했습니다. 이전 상담 입력은 넘어오지 않습니다.'; render();
+        ui.record = startNewConsultation(d); ui.recordNotice = '새 상담을 시작했습니다. 이전 상담 입력은 넘어오지 않습니다.';
+        invalidateOutputs('새 상담을 시작해 이전 상담의 검토서·과업·저장 결과를 지웠습니다.'); render();
       } else if (event.target.closest('[data-record-continue]') && d && canContinueFrom(ui.previousRecord, d, ui.record)) {
         const next = continueFrom(ui.previousRecord, d);
-        if (next) { ui.record = next; ui.previousRecord = null; ui.recordNotice = '같은 필지·기준연도·데이터 모드의 직전 상담 기록을 상담자 선택으로 이어 씁니다.'; render(); }
+        if (next) { ui.record = next; ui.previousRecord = null; ui.recordNotice = '같은 필지·기준연도·데이터 모드의 직전 상담 기록을 상담자 선택으로 이어 씁니다.'; invalidateOutputs(); render(); }
       }
     });
   }
@@ -422,6 +449,7 @@ function renderEvidence(state) {
     // 증빙 확보 표시는 현재 조회에 결속된 상담 기록에만 기록한다(PNU만으로 관리하지 않음).
     if (!recordForOutput(ui.record, session.state.draft)) { render(); return; }
     ui.record.evidence[sel.dataset.evidenceInput] = sel.value;
+    invalidateOutputs('증빙 확보 표시가 바뀌어 이전 검토서·과업·저장 결과를 지웠습니다. 다시 생성하세요.');
     render();
     box.querySelector(`[data-evidence-input="${sel.dataset.evidenceInput}"]`)?.focus();
   }));
@@ -431,14 +459,21 @@ function renderEvidence(state) {
 const LIVE_EXPORT_ALLOWED = RUNTIME.live_export_policy === 'TERMS_CONFIRMED';
 function liveExportBlocked(draft) { return Boolean(draft && !draft.synthetic && !LIVE_EXPORT_ALLOWED); }
 
+// 출력은 조회와 표준지 분석이 모두 끝난 뒤에만 허용한다. 분석 도중 만든 검토서는 곧 내용이 바뀌어(결속 불일치) 지워지기 때문.
+function outputReady(state) {
+  return Boolean(state.phase === 'READY' && state.draft && !['LOADING', 'NOT_QUERIED'].includes(state.draft.analysis?.standard?.status || 'NOT_QUERIED'));
+}
 function renderFooter(state) {
-  const ready = state.phase === 'READY' && state.draft;
+  const ready = outputReady(state);
   const blocked = liveExportBlocked(state.draft);
   ['[data-copy]', '[data-print]'].forEach((sel) => { $(sel).disabled = !ready || blocked; });
   $('[data-proposal]').disabled = !ready;
+  ['[data-copy]', '[data-print]', '[data-proposal]', '[data-save-open]'].forEach((sel) => { $(sel).title = state.phase === 'READY' && !ready ? '표준지 분석이 끝난 뒤 사용할 수 있습니다' : ''; });
   $('[data-save-open]').disabled = !ready || blocked;
   const note = blocked ? '<p class="warn-note small" data-live-export-note>실데이터 복사·저장·인쇄는 VWorld 등 API 이용조건 확인 전까지 막혀 있습니다(화면 열람만).</p>' : '';
-  $('[data-footer-out]').innerHTML = note + ui.footer;
+  const out = ui.output && isOutputCurrent(ui.output, currentOutputSig()) ? ui.output.html : '';
+  const notice = ui.outputNotice ? `<p class="warn-note small" data-output-invalidated>${esc(ui.outputNotice)}</p>` : '';
+  $('[data-footer-out]').innerHTML = note + notice + out;
 }
 
 function renderSavePanel(state) {
@@ -451,6 +486,8 @@ function renderSavePanel(state) {
   $('[data-save-cancel]', panel).addEventListener('click', () => { ui.saveOpen = false; render(); });
   $('[data-save-commit]', panel).addEventListener('click', () => {
     if (!$('[data-save-confirm]', panel).checked) { panel.querySelector('label').classList.add('invalid'); return; }
+    // 저장 확인창을 연 뒤 상태가 바뀌었으면 저장하지 않는다(확인한 내용과 저장 내용 불일치 방지).
+    if (ui.saveSig !== currentOutputSig()) { invalidateOutputs(); render(); return; }
     const report = outputReport();
     if (!report) { ui.saveOpen = false; render(); return; }
     const rec = ui.record;
@@ -461,11 +498,11 @@ function renderSavePanel(state) {
     result.payload.consult_record = scrubSecrets({ schema: rec.schema, record_id: rec.record_id, binding: { ...rec.binding },
       intake: { ...rec.intake }, evidence_inputs: { ...rec.evidence },
       gate_states: report.gates.map((g) => ({ code: g.code, state: g.state })), legal_deadline_computed: false, manual_excerpt_persisted: false });
-    deliverSaved(result.payload);
+    deliverSaved(result.payload, currentOutputSig());
   });
 }
 
-async function deliverSaved(payload) {
+async function deliverSaved(payload, sig) {
   const filename = `bso-consultation-draft-${payload.draft_id}.json`;
   const data = JSON.stringify(payload, null, 2);
   const jsonBox = `<textarea readonly data-saved-json rows="8">${esc(data)}</textarea>`;
@@ -474,12 +511,12 @@ async function deliverSaved(payload) {
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob); a.download = filename;
     document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-    ui.footer = `<p class="muted small" data-save-result="download">세션에 저장하고 JSON을 내려받았습니다.</p>`;
+    setOutput('save', `<p class="muted small" data-save-result="download">세션에 저장하고 JSON을 내려받았습니다.</p>`, sig);
     render();
     return;
   }
   // claude.ai 아티팩트 뷰어: 직접 다운로드가 막혀 있어 downloads 기능(사용자 확인)으로만 저장. 실패 시 JSON 텍스트 제공.
-  ui.footer = '<p class="muted small" data-save-result="pending">세션에 저장했습니다. 파일 저장 확인창을 여는 중…</p>' + jsonBox;
+  setOutput('save', '<p class="muted small" data-save-result="pending">세션에 저장했습니다. 파일 저장 확인창을 여는 중…</p>' + jsonBox, sig);
   render();
   let note = '이 화면에서는 파일 내려받기를 쓸 수 없습니다. 아래 JSON을 길게 눌러 복사해 보관하세요.';
   let state = 'text-only';
@@ -492,7 +529,8 @@ async function deliverSaved(payload) {
   } catch (error) {
     if (error && error.code === 'declined') { note = '파일 저장을 취소했습니다. 세션 저장은 유지되며 아래 JSON으로도 보관할 수 있습니다.'; state = 'declined'; }
   }
-  ui.footer = `<p class="muted small" data-save-result="${state}">${esc(note)}</p>${jsonBox}`;
+  // 기다리는 동안 상태가 바뀌었으면(서명 불일치) 저장 JSON 텍스트를 다시 띄우지 않는다.
+  if (ui.output?.kind === 'save' && ui.output.sig === sig) setOutput('save', `<p class="muted small" data-save-result="${state}">${esc(note)}</p>${jsonBox}`, sig);
   render();
 }
 
@@ -505,6 +543,7 @@ function render() {
   if (!session) return;
   const state = session.state;
   syncActiveRecord(state);
+  enforceOutputBinding();
   renderModeBar();
   renderKeyPanel();
   renderNotice(state);
@@ -534,12 +573,12 @@ function render() {
 
 $('[data-query-form]').addEventListener('submit', (event) => {
   event.preventDefault();
-  ui.editing = null; ui.footer = ''; ui.saveOpen = false;
+  ui.editing = null; ui.output = null; ui.outputNotice = ''; ui.saveOpen = false; ui.saveSig = null;
   session.lookup({ context: $('[data-context]').value, lotText: $('[data-lot]').value, baseYear: Number($('[data-year]').value) });
 });
 $('[data-mode-select]').addEventListener('change', (e) => { ui.mode = e.target.value; buildAdapter(); });
 $('[data-scenario-select]').addEventListener('change', (e) => { ui.scenario = e.target.value; buildAdapter(); });
-$('[data-save-open]').addEventListener('click', () => { ui.saveOpen = true; render(); });
+$('[data-save-open]').addEventListener('click', () => { ui.saveOpen = true; ui.saveSig = currentOutputSig(); render(); });
 document.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => { ui.tab = b.dataset.tab; renderTabs(); }));
 $('[data-print]').addEventListener('click', () => window.print());
 $('[data-copy]').addEventListener('click', async () => {
@@ -548,16 +587,16 @@ $('[data-copy]').addEventListener('click', async () => {
   const text = report.text;
   let copied = false;
   try { await navigator.clipboard.writeText(text); copied = true; } catch (_error) { copied = false; }
-  ui.footer = `<p class="muted small">${copied ? '클립보드에 복사했습니다.' : '자동 복사가 막혀 있습니다. 아래 내용을 직접 복사하세요.'}</p><textarea readonly data-summary rows="10">${esc(text)}</textarea>`;
+  setOutput('summary', `<p class="muted small">${copied ? '클립보드에 복사했습니다.' : '자동 복사가 막혀 있습니다. 아래 내용을 직접 복사하세요.'}</p><textarea readonly data-summary rows="10">${esc(text)}</textarea>`);
   render();
 });
 $('[data-proposal]').addEventListener('click', () => {
   const report = outputReport();
   if (!report) return;
-  ui.footer = `<div class="callout" data-proposal-panel><b>정밀검토 과업 제안(초안)</b> — 영업지원용 안내이며 자동 계약·청구·결제는 발생하지 않습니다.
+  setOutput('proposal', `<div class="callout" data-proposal-panel><b>정밀검토 과업 제안(초안)</b> — 영업지원용 안내이며 자동 계약·청구·결제는 발생하지 않습니다.
     <ul data-proposal-tasks>${report.tasks.map((t) => `<li data-task-status="${esc(t.status)}">${chip(t.status === 'READY' ? 'OFFICIAL_OK' : 'FIELD_CHECK', t.status === 'READY' ? '자료 대조 착수 가능' : '선행자료 필요')} ${esc(t.title)}${t.code ? ` (${esc(t.code)})` : ''}${t.prerequisites.length ? `<div class="note">선행: ${esc(t.prerequisites.join(', '))}</div>` : ''}</li>`).join('') || '<li>현재 자료로 제안할 과업 없음</li>'}</ul>
     <b class="small">확보자료</b><ul class="materials" data-proposal-materials>${report.materials.map((m) => `<li>${esc(m)}</li>`).join('')}</ul>
-    <p class="muted small">범위·비용은 담당자가 별도 협의합니다. 쟁점 성립·보상액은 전문가 검토 전 판단하지 않습니다.</p></div>`;
+    <p class="muted small">범위·비용은 담당자가 별도 협의합니다. 쟁점 성립·보상액은 전문가 검토 전 판단하지 않습니다.</p></div>`);
   render();
 });
 
@@ -654,6 +693,9 @@ $('[data-manual-file]').addEventListener('change', async (event) => {
   if (!file) return;
   const status = $('[data-manual-status]');
   privateManualPack = null;
+  // 지식팩 식별값을 바꿔 이전 팩 기준으로 만든 검토서·과업·저장 결과를 즉시 무효화한다(성공·실패 공통).
+  ui.packToken += 1;
+  invalidateOutputs('실무기본서 지식팩이 바뀌어(교체·해제) 이전 발췌가 담긴 출력물을 지웠습니다.');
   $('[data-manual-hints]').replaceChildren();
   $('[data-manual-results]').replaceChildren();
   $('[data-manual-query]').disabled = true;

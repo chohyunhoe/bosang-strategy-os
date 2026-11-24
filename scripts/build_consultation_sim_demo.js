@@ -30,6 +30,7 @@ const ORDER = [
   'core/manual-pack.js',
   'core/consult-intake.js',
   'core/consult-record.js',
+  'core/output-binding.js',
   'core/consult-report.js',
   'adapters/synthetic-adapter.js',
   'map-view.js',
