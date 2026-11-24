@@ -52,8 +52,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-          cache: pip
-          cache-dependency-path: brief_output/requirements.txt
+          # pip 캐시는 lsb_release를 요구하는데 Playwright 이미지에는 없다(apt 설치를 피하려고 캐시만 끔).
       - run: npm ci
       - name: Install Output Center dependencies
         run: python -m pip install -r brief_output/requirements.txt
