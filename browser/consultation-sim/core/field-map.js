@@ -21,8 +21,8 @@ export function allPoints(geometry) {
   return polys.flatMap((poly) => poly.flatMap((ring) => ring));
 }
 
-// 대상 필지(+추가 지점)가 영상 폭·높이의 절반 안에 들어오는 가장 큰 줌
-export function fitView(geometry, extraPoints = []) {
+// 대상 필지(+추가 지점)가 영상 폭·높이의 fill 비율(기본 절반) 안에 들어오는 가장 큰 줌
+export function fitView(geometry, extraPoints = [], fill = 0.5) {
   const pts = [...allPoints(geometry), ...(extraPoints || [])].map(mercator);
   if (!pts.length) return null;
   const xs = pts.map((p) => p[0]); const ys = pts.map((p) => p[1]);
@@ -31,7 +31,7 @@ export function fitView(geometry, extraPoints = []) {
   let zoom = MAP.fitMaxZoom;
   for (; zoom > MAP.minZoom; zoom -= 1) {
     const scale = 256 * 2 ** zoom;
-    if ((maxX - minX) * scale <= MAP.width / 2 && (maxY - minY) * scale <= MAP.height / 2) break;
+    if ((maxX - minX) * scale <= MAP.width * fill && (maxY - minY) * scale <= MAP.height * fill) break;
   }
   return { center, centerLonLat: inverseMercator(center), zoom };
 }
@@ -64,28 +64,68 @@ export function aerialUrl(view) {
 
 const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-// 주변 표준지 표식(공식 위치 확인된 것만). 화면 크기와 무관하게 누를 수 있도록 SVG가 아니라 % 위치의 버튼으로 그린다.
+// 일반 표준지가 화면에서 이 거리(영상 픽셀, 1024 기준) 안에 겹치면 하나의 묶음 표식(개수)으로 그린다. 목록에는 모두 남는다.
+export const STD_CLUSTER_PX = 22;
+
+const pinButton = (m, cls, label, inner, x, y, extra = '') => `<button type="button" class="f-std-pin ${cls}" style="left:${x.toFixed(2)}%;top:${y.toFixed(2)}%" ${extra}aria-label="${label}"><i class="f-pin-dot">${inner}</i></button>`;
+
+// 주변 표준지 표식(공식 위치 확인된 것만). % 위치 버튼(44px 투명 터치 영역) 안에 보이는 원을 그린다.
+// - 후보는 번호 원(항상 위). 일반 표준지는 작은 회색 점 — 기본 숨김(showStandards), 선택된 것은 숨김이어도 표시.
+// - 겹치는 일반 표준지는 묶음 표식(개수)으로 — 누르면 그 위치로 확대.
 export function renderStandardPins(v, std) {
   if (!std || !Array.isArray(std.markers)) return { pins: '', outlines: '' };
   const pct = ([x, y]) => [(x / MAP.width) * 100, (y / MAP.height) * 100];
   const inside = ([x, y]) => x >= 0 && x <= MAP.width && y >= 0 && y <= MAP.height;
-  const shown = std.markers.filter((m) => (m.kind === 'CANDIDATE' ? std.showCandidates : std.showStandards));
-  const outlines = std.showCandidates ? std.markers.filter((m) => m.kind === 'CANDIDATE' && m.geometry)
-    .map((m) => `<path class="f-std-shape${m.pnu === std.selected ? ' sel' : ''}" d="${svgPath(v, m.geometry)}" fill-rule="evenodd"/>`).join('') : '';
-  // 후보는 일반 표준지 위에 그린다
-  const pins = shown.slice().sort((a, b) => (a.kind === 'CANDIDATE') - (b.kind === 'CANDIDATE')).map((m) => {
+  const showCand = std.showCandidates !== false;
+  const cands = showCand ? std.markers.filter((m) => m.kind === 'CANDIDATE') : [];
+  const stds = std.markers.filter((m) => m.kind !== 'CANDIDATE' && (std.showStandards || m.pnu === std.selected));
+  const outlines = cands.filter((m) => m.geometry)
+    .map((m) => `<path class="f-std-shape${m.pnu === std.selected ? ' sel' : ''}" d="${svgPath(v, m.geometry)}" fill-rule="evenodd"/>`).join('');
+  // 일반 표준지: 화면 안의 것만 묶음 처리(선택된 것은 묶지 않음)
+  const groups = [];
+  for (const m of stds) {
+    const p = project(v, m.centroid);
+    if (!inside(p)) continue;
+    const g = m.pnu === std.selected ? null : groups.find((x) => !x.sel && Math.hypot(x.p[0] - p[0], x.p[1] - p[1]) < STD_CLUSTER_PX);
+    if (g) { g.items.push(m); } else groups.push({ p, items: [m], sel: m.pnu === std.selected });
+  }
+  const stdPins = groups.map((g) => {
+    const [x, y] = pct(g.p);
+    if (g.items.length === 1) {
+      const m = g.items[0];
+      return pinButton(m, `std${g.sel ? ' sel' : ''}`, `주변 표준지 ${esc(m.label)}`, '', x, y, `data-f-std-pin="${esc(m.pnu)}" data-f-std-kind="${m.kind}" `);
+    }
+    const ll = [0, 1].map((i) => g.items.reduce((s, m) => s + Number(m.centroid[i]), 0) / g.items.length);
+    return pinButton(null, 'cluster', `주변 표준지 ${g.items.length}곳 겹침 — 눌러서 확대(목록에서 모두 확인 가능)`, String(g.items.length), x, y,
+      `data-f-std-cluster="${g.items.length}" data-f-std-cluster-at="${ll[0].toFixed(7)},${ll[1].toFixed(7)}" `);
+  }).join('');
+  const candPins = cands.map((m) => {
     const p = project(v, m.centroid);
     if (!inside(p)) return '';
     const [x, y] = pct(p);
-    const cand = m.kind === 'CANDIDATE';
-    return `<button type="button" class="f-std-pin ${cand ? 'cand' : 'std'}${m.pnu === std.selected ? ' sel' : ''}" style="left:${x.toFixed(2)}%;top:${y.toFixed(2)}%" data-f-std-pin="${esc(m.pnu)}" data-f-std-kind="${m.kind}"${cand ? ` data-f-std-rank="${m.rank}"` : ''} aria-label="${cand ? `비교표준지 후보 ${m.rank}` : '주변 표준지'} ${esc(m.label)}">${cand ? m.rank : ''}</button>`;
+    return pinButton(m, `cand${m.pnu === std.selected ? ' sel' : ''}`, `비교표준지 후보 ${m.rank} ${esc(m.label)}`, String(m.rank), x, y,
+      `data-f-std-pin="${esc(m.pnu)}" data-f-std-kind="CANDIDATE" data-f-std-rank="${m.rank}" `);
   }).join('');
-  const offscreen = shown.filter((m) => !inside(project(v, m.centroid)));
-  return { pins, outlines, offscreen_candidates: offscreen.filter((m) => m.kind === 'CANDIDATE').length, offscreen: offscreen.length };
+  const offscreen = [...cands, ...stds].filter((m) => !inside(project(v, m.centroid)));
+  return { pins: stdPins + candPins, outlines, offscreen_candidates: offscreen.filter((m) => m.kind === 'CANDIDATE').length, offscreen: offscreen.length,
+    clusters: groups.filter((g) => g.items.length > 1).length, standards_total: std.markers.filter((m) => m.kind !== 'CANDIDATE').length,
+    candidates_total: std.markers.filter((m) => m.kind === 'CANDIDATE').length };
 }
 
-// model: { status, pnu, target:{geometry,jibun}, neighbors:[{pnu,geometry}], view, showTarget, showNeighbors, aerial:'LOADING'|'OK'|'FAILED', reason, fetched_at,
-//          std?: { markers, selected, showStandards, showCandidates } }
+// 대상 필지 식별 캡션: 공식 경계의 화면상 위쪽 가운데(도형은 바꾸지 않음)
+function targetLabel(v, model) {
+  if (!model.showTarget) return '';
+  const pts = allPoints(model.target.geometry).map((p) => project(v, p));
+  if (!pts.length) return '';
+  const xs = pts.map((p) => p[0]); const ys = pts.map((p) => p[1]);
+  const x = Math.max(6, Math.min(94, (((Math.min(...xs) + Math.max(...xs)) / 2) / MAP.width) * 100));
+  const y = Math.max(2, Math.min(88, (Math.max(...ys) / MAP.height) * 100)); // 경계 아래쪽(위쪽 후보 번호와 겹침 줄임)
+  const lot = String(model.target.jibun || '').trim().split(/\s+/)[0] || '';
+  return `<span class="f-target-label" data-f-target-label style="left:${x.toFixed(2)}%;top:${y.toFixed(2)}%">대상${lot ? ` ${esc(lot)}` : ' 필지'}</span>`;
+}
+
+// model: { status, pnu, target:{geometry,jibun}, neighbors:[{pnu,geometry}], view, mode:'PARCEL'|'COMPARE'|null, showTarget, showNeighbors,
+//          aerial:'LOADING'|'OK'|'FAILED', reason, fetched_at, std?: { markers, selected, showStandards, showCandidates } }
 export function renderFieldMap(model) {
   if (!model) return '';
   if (model.status === 'LOADING') return '<p class="small muted" data-f-map-state="LOADING">지도 불러오는 중…</p>';
@@ -96,24 +136,27 @@ export function renderFieldMap(model) {
   const neighbors = model.showNeighbors ? (model.neighbors || []).map((n) => `<path class="f-cad" d="${svgPath(v, n.geometry)}"><title>${esc(n.jibun || n.pnu)}</title></path>`).join('') : '';
   const target = model.showTarget ? `<path class="f-target" data-f-map-target d="${svgPath(v, model.target.geometry)}" fill-rule="evenodd"/>` : '';
   const std = renderStandardPins(v, model.std);
-  return `<div class="f-map" data-f-map-state="EXACT_ONE" data-f-map-pnu="${esc(model.pnu)}" data-f-map-zoom="${v.zoom}">
+  const hasCands = Boolean(model.std && std.candidates_total);
+  const pressed = (b) => `aria-pressed="${b ? 'true' : 'false'}"`;
+  const layer = (k, on, text) => `<button type="button" class="f-layer" data-f-map-toggle="${k}" ${pressed(on)}>${text}</button>`;
+  return `<div class="f-map" data-f-map-state="EXACT_ONE" data-f-map-pnu="${esc(model.pnu)}" data-f-map-zoom="${v.zoom}" data-f-map-mode="${esc(model.mode || 'CUSTOM')}">
     <div class="f-map-frame">
       <img class="f-map-img" data-f-map-img src="${esc(aerialUrl(v))}" width="${MAP.width}" height="${MAP.height}" alt="항공영상(VWorld PHOTO)" referrerpolicy="no-referrer">
       <svg class="f-map-svg" viewBox="0 0 ${MAP.width} ${MAP.height}" preserveAspectRatio="none" aria-label="지적경계">${neighbors}${std.outlines}${target}</svg>
       ${std.pins ? `<div class="f-std-layer" data-f-std-layer>${std.pins}</div>` : ''}
+      <div class="f-label-layer">${targetLabel(v, model)}</div>
     </div>
     <div class="f-map-tools">
-      <button type="button" class="ghost" data-f-map-step="-1" ${v.zoom <= MAP.minZoom ? 'disabled' : ''} aria-label="축소">−</button>
-      <button type="button" class="ghost" data-f-map-step="1" ${v.zoom >= MAP.maxZoom ? 'disabled' : ''} aria-label="확대">＋</button>
-      <label class="small"><input type="checkbox" data-f-map-toggle="target" ${model.showTarget ? 'checked' : ''}> 대상 경계</label>
-      <label class="small"><input type="checkbox" data-f-map-toggle="neighbors" ${model.showNeighbors ? 'checked' : ''}> 주변 지적</label>
-      ${model.std ? `<label class="small"><input type="checkbox" data-f-map-toggle="standards" ${model.std.showStandards ? 'checked' : ''}> 주변 표준지</label>
-      <label class="small"><input type="checkbox" data-f-map-toggle="candidates" ${model.std.showCandidates ? 'checked' : ''}> 비교표준지 후보</label>
-      <button type="button" class="ghost f-fit" data-f-map-fit="std" aria-label="후보가 보이게 맞춤">후보 맞춤</button>` : ''}
+      ${hasCands ? `<span class="f-seg" role="group" aria-label="지도 보기"><button type="button" data-f-map-mode-btn="parcel" ${pressed(model.mode === 'PARCEL')}>필지 중심</button><button type="button" data-f-map-mode-btn="compare" data-f-map-fit="std" ${pressed(model.mode === 'COMPARE')}>후보 비교</button></span>`
+    : `<button type="button" data-f-map-mode-btn="parcel" ${pressed(model.mode === 'PARCEL')}>필지 중심</button>`}
+      <button type="button" data-f-map-step="-1" ${v.zoom <= MAP.minZoom ? 'disabled' : ''} aria-label="축소">−</button>
+      <button type="button" data-f-map-step="1" ${v.zoom >= MAP.maxZoom ? 'disabled' : ''} aria-label="확대">＋</button>
+      ${layer('target', model.showTarget, '대상')}${layer('neighbors', model.showNeighbors, '지적')}
+      ${model.std ? `${hasCands ? layer('candidates', model.std.showCandidates !== false, '후보') : ''}${layer('standards', model.std.showStandards, `표준지 ${std.standards_total}`)}` : ''}
       <span class="chip ${model.aerial === 'FAILED' ? 'bad' : model.aerial === 'OK' ? 'ok' : ''}" data-f-map-aerial="${esc(model.aerial)}">${model.aerial === 'FAILED' ? '항공영상 미수신' : model.aerial === 'OK' ? '항공영상 수신' : '영상 수신 중'}</span>
     </div>
+    ${model.std ? `<p class="small f-legend" data-f-std-legend><span><i class="f-key red"></i>대상 필지</span>${hasCands ? '<span><i class="f-key blue">1</i>비교표준지 후보(감정평가사 선정 아님)</span>' : ''}<span><i class="f-key gray"></i>주변 표준지${model.std.showStandards ? '' : '(숨김)'}</span>${std.offscreen ? `<span data-f-std-offscreen>화면 밖 ${std.offscreen}곳${std.offscreen_candidates ? `(후보 ${std.offscreen_candidates})` : ''}</span>` : ''}</p>` : ''}
+    <details class="f-map-note" data-f-map-note><summary>빨간 선 = 지적경계(사업 편입선 아님) · 화면 열람 전용</summary><p>빨간 선은 지적경계(연속지적도)이며 사업 편입선이 아닙니다. 편입선·사업경계는 이 지도에 연결되지 않았습니다. 지도·영상은 화면 열람용이며 저장·인쇄에서 제외됩니다.</p></details>
     <p class="small muted" data-f-map-meta>지적: VWorld 연속지적도 exact-one(PNU ${esc(model.pnu)}${model.target.jibun ? ` · ${esc(model.target.jibun)}` : ''}) · 영상: VWorld 영상지도(PHOTO) · <b>촬영일 미확인</b> · 줌 ${v.zoom} · 조회 ${esc(model.fetched_at || '')}</p>
-    ${model.std ? `<p class="small" data-f-std-legend><span class="f-key red"></span> 대상 필지 <span class="f-key gray"></span> 주변 표준지 <span class="f-key blue">1</span> 비교표준지 후보(감정평가사 선정 아님)${std.offscreen ? ` · <span data-f-std-offscreen>화면 밖 ${std.offscreen}곳${std.offscreen_candidates ? `(후보 ${std.offscreen_candidates})` : ''} — 축소 또는 '후보 맞춤'</span>` : ''}</p>` : ''}
-    <p class="small warn-note">빨간 선은 지적경계(연속지적도)이며 사업 편입선이 아닙니다. 편입선·사업경계는 이 지도에 연결되지 않았습니다. 지도·영상은 화면 열람용이며 저장·인쇄에서 제외됩니다.</p>
   </div>`;
 }

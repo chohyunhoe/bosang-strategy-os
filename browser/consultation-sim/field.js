@@ -5,7 +5,7 @@ import { issuesFor } from './core/field-issues.js';
 import { buildFieldCard, buildDirectCard } from './core/field-card.js';
 import { directLookupTarget } from './core/field-direct.js';
 import { bridgeStatus, queryPublicData, queryParcelMap, queryZoningHistory, queryStandardLands, TRACE_YEARS, PD_STATUS, PD_STAGE } from './core/field-public-data.js';
-import { fitView, withZoom, renderFieldMap, mercator, MAP, project } from './core/field-map.js';
+import { fitView, withZoom, renderFieldMap, mercator, MAP, project, aerialUrl } from './core/field-map.js';
 import { buildStandardReview, STD_LABEL } from './core/field-standard.js';
 import { evaluateZoningBasis, RELATION_OPTIONS, ZONING_STATUS, ZONING_STATUS_LABEL } from './core/zoning-basis.js';
 import { EVIDENCE_STATUS_LABEL } from './core/zoning-trace.js';
@@ -124,7 +124,7 @@ async function loadMap(pnu, epoch, subject) {
   if (epoch !== st.epoch || subject !== active()) return;
   if (res.status !== 'EXACT_ONE') { st.map = res; renderMap(); return; }
   const view = fitView(res.target.geometry);
-  st.map = { ...res, view, showTarget: true, showNeighbors: true, aerial: 'LOADING', fetched_at: new Date(res.fetched_at).toLocaleString('ko-KR', { hour12: false }) };
+  st.map = { ...res, view, mode: 'PARCEL', showTarget: true, showNeighbors: true, aerial: 'LOADING', fetched_at: new Date(res.fetched_at).toLocaleString('ko-KR', { hour12: false }) };
   renderMap();
 }
 
@@ -138,24 +138,38 @@ function renderMap() {
   // 같은 화면 상태면 다시 그리지 않는다(영상 재요청 방지). 영상 수신 상태는 칩만 바꾼다.
   const sr = m.status === 'EXACT_ONE' ? stdReview() : null;
   m.std = sr && sr.markers ? { markers: sr.markers, selected: st.std.selected, showStandards: st.std.showStandards, showCandidates: st.std.showCandidates } : null;
-  const key = JSON.stringify([st.epoch, m.status, m.pnu, m.view?.zoom, m.view?.center, m.showTarget, m.showNeighbors, st.std?.status, st.std?.selected, st.std?.showStandards, st.std?.showCandidates, stdReviewKey, st.std ? st.zoningConfirm.valuation_date : '']);
+  const key = JSON.stringify([st.epoch, m.status, m.pnu, m.view?.zoom, m.view?.center, m.mode, m.showTarget, m.showNeighbors, st.std?.status, st.std?.selected, st.std?.showStandards, st.std?.showCandidates, stdReviewKey, st.std ? st.zoningConfirm.valuation_date : '']);
   if (key === lastMapKey) return;
   lastMapKey = key;
-  box.innerHTML = renderFieldMap(m) + (m.status === 'EXACT_ONE' ? renderStdPanel(sr) : '');
-  const img = $('[data-f-map-img]', box);
+  // 같은 영상 주소(중심·줌 동일)면 이미 받은 영상 요소를 그대로 옮겨 붙인다 — 후보 선택·표시 전환 때 항공영상 재요청 없음.
+  const prevImg = $('[data-f-map-img]', box);
+  const keepImg = prevImg && prevImg.dataset.fMapFor === m.pnu && m.view && prevImg.getAttribute('src') === aerialUrl(m.view) ? prevImg : null;
+  if (keepImg) { keepImg.remove(); if (m.aerial === 'LOADING' && keepImg.complete) m.aerial = keepImg.naturalWidth ? 'OK' : 'FAILED'; }
+  let html = renderFieldMap(m);
+  // 새 <img>를 만들지 않도록(만드는 순간 요청이 시작될 수 있음) 자리표시로 바꾼 뒤 기존 요소를 넣는다.
+  if (keepImg) html = html.replace(/<img class="f-map-img"[^>]*>/, '<i data-f-map-img-slot hidden></i>');
+  box.innerHTML = html + (m.status === 'EXACT_ONE' ? renderStdPanel(sr) : '');
+  let img = $('[data-f-map-img]', box);
+  const slot = $('[data-f-map-img-slot]', box);
+  if (keepImg && slot) { slot.replaceWith(keepImg); img = null; }
+  else if (img) img.dataset.fMapFor = m.pnu;
   if (img) {
     const mark = (state) => { if (st.map !== m) return; m.aerial = state; const chip = $('[data-f-map-aerial]', box); if (chip) { chip.dataset.fMapAerial = state; chip.className = `chip ${state === 'OK' ? 'ok' : 'bad'}`; chip.textContent = state === 'OK' ? '항공영상 수신' : '항공영상 미수신'; } };
     img.addEventListener('load', () => mark('OK'));
     img.addEventListener('error', () => mark('FAILED'));
   }
-  box.querySelectorAll('[data-f-map-step]').forEach((b) => b.addEventListener('click', () => { m.view = withZoom(m.view, m.view.zoom + Number(b.dataset.fMapStep)); m.aerial = 'LOADING'; renderMap(); }));
-  box.querySelectorAll('[data-f-map-toggle]').forEach((c) => c.addEventListener('change', () => {
-    const k = c.dataset.fMapToggle;
-    if (k === 'target') m.showTarget = c.checked; else if (k === 'neighbors') m.showNeighbors = c.checked;
-    else if (k === 'standards' && st.std) st.std.showStandards = c.checked; else if (k === 'candidates' && st.std) st.std.showCandidates = c.checked;
+  box.querySelectorAll('[data-f-map-step]').forEach((b) => b.addEventListener('click', () => { m.view = withZoom(m.view, m.view.zoom + Number(b.dataset.fMapStep)); m.mode = null; m.aerial = 'LOADING'; renderMap(); }));
+  box.querySelectorAll('[data-f-map-toggle]').forEach((c) => c.addEventListener('click', () => {
+    const k = c.dataset.fMapToggle; const on = c.getAttribute('aria-pressed') !== 'true';
+    if (k === 'target') m.showTarget = on; else if (k === 'neighbors') m.showNeighbors = on;
+    else if (k === 'standards' && st.std) st.std.showStandards = on; else if (k === 'candidates' && st.std) st.std.showCandidates = on;
     renderMap();
   }));
-  box.querySelectorAll('[data-f-map-fit]').forEach((b) => b.addEventListener('click', () => fitStandard(m, sr)));
+  box.querySelectorAll('[data-f-map-mode-btn]').forEach((b) => b.addEventListener('click', () => (b.dataset.fMapModeBtn === 'compare' ? fitStandard(m, sr) : fitParcel(m))));
+  box.querySelectorAll('[data-f-std-cluster-at]').forEach((b) => b.addEventListener('click', () => {
+    const ll = b.dataset.fStdClusterAt.split(',').map(Number);
+    m.view = withZoom({ ...m.view, center: mercator(ll), centerLonLat: ll }, m.view.zoom + 2); m.mode = null; m.aerial = 'LOADING'; renderMap();
+  }));
   box.querySelectorAll('[data-f-std-pin]').forEach((b) => b.addEventListener('click', () => selectStandard(b.dataset.fStdPin, false)));
   box.querySelectorAll('[data-f-std-item]').forEach((b) => b.addEventListener('click', () => selectStandard(b.dataset.fStdItem, true)));
   box.querySelectorAll('[data-f-std-go]').forEach((b) => b.addEventListener('click', runStandard));
@@ -182,14 +196,22 @@ async function runStandard() {
   const year = pdValue('zoning')?.base_year; const epoch = st.epoch;
   const z = currentZoning();
   const reviewZoning = z && ['NOTICE_PROJECT_REASON', 'PROJECT_RELATED'].includes(z.status) && z.basis_zoning ? z.basis_zoning : pdValue('zoning')?.value;
-  st.std = { pnu, status: 'LOADING', selected: null, showStandards: true, showCandidates: true }; renderMap();
+  st.std = { pnu, status: 'LOADING', selected: null, showStandards: false, showCandidates: true }; renderMap();
   const res = await queryStandardLands({ fetchImpl: (...a) => fetch(...a), location, pnu, year, reviewZoning, now: () => new Date() });
   if (epoch !== st.epoch || subject !== active() || st.pd?.pnu !== pnu) return; // 다른 필지·새 상담이면 폐기
   st.std = { pnu, status: res.ok ? 'OK' : 'FAILED', response: res.ok ? res : null, error: res.ok ? null : res, fetched_at: res.fetched_at,
-    selected: null, showStandards: true, showCandidates: true };
+    selected: null, showStandards: false, showCandidates: true };
   const sr = stdReview();
   st.std.selected = sr?.list?.find((x) => x.kind === 'CANDIDATE')?.pnu || null;
-  renderMap();
+  // 후보가 있으면 기본 보기는 '후보 비교'(대상 + 후보), 일반 표준지는 숨김(표시 버튼으로 켬)
+  if (sr?.markers?.some((x) => x.kind === 'CANDIDATE') && st.map?.status === 'EXACT_ONE') fitStandard(st.map, sr);
+  else renderMap();
+}
+function fitParcel(m) {
+  const view = m?.target ? fitView(m.target.geometry) : null;
+  if (!view) return;
+  const same = m.view && m.view.zoom === view.zoom && aerialUrl(m.view) === aerialUrl(view);
+  m.view = view; m.mode = 'PARCEL'; if (!same) m.aerial = 'LOADING'; renderMap();
 }
 function selectStandard(pnu, fromList) {
   if (!st.std) return;
@@ -207,8 +229,10 @@ function fitStandard(m, sr) {
   if (!sr || !m?.target) return;
   const cands = sr.markers.filter((x) => x.kind === 'CANDIDATE');
   const pts = (cands.length ? cands : sr.markers.filter((x) => x.in_radius)).map((x) => x.centroid);
-  const view = fitView(m.target.geometry, pts);
-  if (view) { m.view = view; m.aerial = 'LOADING'; renderMap(); }
+  const view = fitView(m.target.geometry, pts, cands.length ? 0.8 : 0.5); // 후보 비교: 화면 80%까지 채움(가장자리 여백 유지)
+  if (!view) return;
+  const same = m.view && aerialUrl(m.view) === aerialUrl(view);
+  m.view = view; m.mode = cands.length ? 'COMPARE' : null; if (!same) m.aerial = 'LOADING'; renderMap();
 }
 const won = (n) => (n == null ? '미기재' : `${Number(n).toLocaleString('ko-KR')}원/㎡`);
 const dist = (d) => (d == null ? '거리 미산출' : d >= 1000 ? `${(d / 1000).toFixed(2)}km` : `${Math.round(d)}m`);

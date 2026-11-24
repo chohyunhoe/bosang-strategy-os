@@ -770,13 +770,17 @@ test('표준지 지도 표식: 후보는 번호 버튼 · 일반 표준지는 �
   assert.ok(fit.zoom <= tight.zoom);
   const far = fmap.fitView(geom, [[127.02, 36.0]]); assert.ok(far.zoom < tight.zoom); // 멀리 있는 지점을 넣으면 축소
   const pins = fmap.renderStandardPins(fit, { markers: r.markers, selected: SA, showStandards: true, showCandidates: true }).pins;
-  assert.match(pins, new RegExp(`data-f-std-pin="${SA}" data-f-std-kind="CANDIDATE" data-f-std-rank="1"[^>]*>1</button>`));
+  assert.match(pins, new RegExp(`data-f-std-pin="${SA}" data-f-std-kind="CANDIDATE" data-f-std-rank="1"[^>]*><i class="f-pin-dot">1</i></button>`));
   assert.match(pins, /class="f-std-pin cand sel"/);
   const hidden = fmap.renderStandardPins(fit, { markers: r.markers, selected: null, showStandards: false, showCandidates: true }).pins;
   assert.doesNotMatch(hidden, /data-f-std-kind="STANDARD"/);
   const html = fmap.renderFieldMap({ status: 'EXACT_ONE', pnu: '9999910101100010000', target: { geometry: geom }, neighbors: [], view: fit, showTarget: true, showNeighbors: true, aerial: 'OK',
     std: { markers: r.markers, selected: SA, showStandards: true, showCandidates: true } });
-  assert.match(html, /data-f-map-toggle="standards" checked/); assert.match(html, /data-f-map-toggle="candidates" checked/); assert.match(html, /data-f-map-fit="std"/);
+  assert.match(html, /data-f-map-toggle="standards" aria-pressed="true"/); assert.match(html, /data-f-map-toggle="candidates" aria-pressed="true"/); assert.match(html, /data-f-map-fit="std"/);
+  assert.match(html, /data-f-map-mode-btn="parcel"/); assert.match(html, /data-f-map-mode-btn="compare"/); assert.match(html, /사업 편입선이 아닙니다/);
+  // 일반 표준지 숨김이어도 선택된 표준지는 표시
+  const selHidden = fmap.renderStandardPins(fit, { markers: r.markers, selected: SB, showStandards: false, showCandidates: true }).pins;
+  assert.match(selHidden, new RegExp(`data-f-std-pin="${SB}" data-f-std-kind="STANDARD"`)); assert.match(selHidden, /class="f-std-pin std sel"/);
   assert.match(html, /비교표준지 후보\(감정평가사 선정 아님\)/);
 });
 
@@ -790,4 +794,22 @@ test('표준지 조회 요청: 확인된 PNU·기준연도만 · 오프라인·P
   assert.deepEqual(sent, { pnu: GUNGPYEONG, year: 2026, radius_m: 1000, review_zoning: '농림지역' }); assert.equal(r.ok, true);
   const f = await queryStandardLands({ location: loop, pnu: GUNGPYEONG, year: 2026, fetchImpl: fakeBridge({ standard_lands: () => ({ ok: false, error_code: 'FIELD_ROUTE_NOT_ALLOWED' }) }) });
   assert.equal(f.ok, false); assert.ok(f.reason);
+});
+
+test('표준지 표식 묶음: 화면에서 겹치는 일반 표준지는 개수 표식 하나 · 후보는 묶지 않음 · 개수 보존', () => {
+  const v = fmap.fitView({ type: 'Polygon', coordinates: [[[127.0, 36.0], [127.001, 36.0], [127.001, 36.001], [127.0, 36.0]]] });
+  const near = (i) => ({ pnu: `S${i}`, kind: 'STANDARD', label: `s${i}`, centroid: [127.0005 + i * 0.000001, 36.0005] });
+  const markers = [...Array.from({ length: 5 }, (_, i) => near(i)), { pnu: 'C1', kind: 'CANDIDATE', rank: 1, label: 'c1', centroid: [127.0005, 36.0005] },
+    { pnu: 'FAR', kind: 'STANDARD', label: 'far', centroid: [127.0009, 36.0009] }];
+  const out = fmap.renderStandardPins(v, { markers, selected: null, showStandards: true, showCandidates: true });
+  assert.equal(out.clusters, 1); assert.match(out.pins, /data-f-std-cluster="5"/); assert.match(out.pins, /data-f-std-pin="FAR"/); assert.match(out.pins, /data-f-std-pin="C1"/);
+  assert.equal(out.standards_total, 6); assert.equal(out.candidates_total, 1);
+  assert.ok(out.pins.indexOf('data-f-std-pin="C1"') > out.pins.indexOf('data-f-std-cluster')); // 후보는 나중에(위에) 그림
+  // 선택된 표준지는 묶음에서 빠져 단독 표시
+  const sel = fmap.renderStandardPins(v, { markers, selected: 'S2', showStandards: true, showCandidates: true });
+  assert.match(sel.pins, /data-f-std-pin="S2"/); assert.match(sel.pins, /data-f-std-cluster="4"/);
+  // 대상 캡션
+  const html = fmap.renderFieldMap({ status: 'EXACT_ONE', pnu: 'P', target: { geometry: { type: 'Polygon', coordinates: [[[127.0, 36.0], [127.001, 36.0], [127.001, 36.001], [127.0, 36.0]]] }, jibun: '320-1 답' },
+    neighbors: [], view: v, mode: 'PARCEL', showTarget: true, showNeighbors: true, aerial: 'OK' });
+  assert.match(html, /data-f-target-label[^>]*>대상 320-1</); assert.match(html, /data-f-map-mode="PARCEL"/); assert.doesNotMatch(html, /data-f-map-mode-btn="compare"/);
 });

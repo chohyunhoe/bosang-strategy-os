@@ -252,10 +252,22 @@ test('지도: 같은 PNU exact-one 경계+항공영상 · 확대/축소 · 경�
   await page.locator('[data-f-map-step="-1"]').click();
   await expect(page.locator('.f-map')).toHaveAttribute('data-f-map-zoom', String(z0 - 1));
   expect(aerial.slice(-1)[0]).toBe(String(z0 - 1));
-  await page.locator('[data-f-map-toggle="target"]').uncheck();
+  await expect(page.locator('[data-f-target-label]')).toHaveText('대상 12-3'); // 공식 경계 위 식별 캡션
+  await expect(page.locator('[data-f-map-mode-btn="compare"]')).toHaveCount(0); // 표준지 조회 전에는 '필지 중심'만
+  await page.locator('[data-f-map-toggle="target"]').click();
+  await expect(page.locator('[data-f-map-toggle="target"]')).toHaveAttribute('aria-pressed', 'false');
   await expect(page.locator('[data-f-map-target]')).toHaveCount(0);
-  await page.locator('[data-f-map-toggle="neighbors"]').uncheck();
+  await expect(page.locator('[data-f-target-label]')).toHaveCount(0);
+  await page.locator('[data-f-map-toggle="neighbors"]').click();
   await expect(page.locator('.f-cad')).toHaveCount(0);
+  // '필지 중심'은 대상 경계 맞춤 줌으로 되돌린다
+  await page.locator('[data-f-map-mode-btn="parcel"]').click();
+  await expect(page.locator('.f-map')).toHaveAttribute('data-f-map-zoom', String(z0));
+  await expect(page.locator('.f-map')).toHaveAttribute('data-f-map-mode', 'PARCEL');
+  // 법적 안내는 짧은 요약 + 펼침(내용 유지)
+  await expect(page.locator('[data-f-map-note] summary')).toContainText('사업 편입선 아님');
+  await page.locator('[data-f-map-note] summary').click();
+  await expect(page.locator('[data-f-map-note]')).toContainText('편입선·사업경계는 이 지도에 연결되지 않았습니다');
   await page.emulateMedia({ media: 'print' });
   await expect(page.locator('[data-f-map-panel]')).toBeHidden();
   await page.emulateMedia({ media: 'screen' });
@@ -492,13 +504,28 @@ test('표준지 지도: 대상 빨간 경계 · 주변 표준지 회색 · 후�
   await page.locator('[data-f-zoning-vdate]').fill('2026-12-15');
   await expect(page.locator('[data-f-std-basis-date]')).toContainText('감정평가 기준시점 2026-12-15');
   await expect(page.locator('[data-f-map-target]')).toHaveCount(1);
+  // 기본 보기: '후보 비교'(대상 + 후보) · 일반 표준지는 숨김
+  await expect(page.locator('.f-map')).toHaveAttribute('data-f-map-mode', 'COMPARE');
+  await expect(page.locator('[data-f-map-mode-btn="compare"]')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('[data-f-map-toggle="standards"]')).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.locator('[data-f-std-legend]')).toContainText('주변 표준지(숨김)');
   const cand = page.locator(`[data-f-std-pin="${SA}"]`);
   await expect(cand).toHaveAttribute('data-f-std-kind', 'CANDIDATE'); await expect(cand).toHaveText('1');
+  await expect(page.locator(`[data-f-std-pin="${SB}"]`)).toHaveCount(0);
+  await page.locator('[data-f-map-toggle="standards"]').click();
   await expect(page.locator(`[data-f-std-pin="${SB}"]`)).toHaveAttribute('data-f-std-kind', 'STANDARD');
   await expect(page.locator(`[data-f-std-pin="${SC}"]`)).toHaveCount(0); // 위치 미확인은 지도 미표시
-  const box = await cand.boundingBox(); expect(box.width).toBeGreaterThanOrEqual(28);
-  const color = await cand.evaluate((el) => getComputedStyle(el).backgroundColor); expect(color).toBe('rgb(31, 111, 255)');
-  const gray = await page.locator(`[data-f-std-pin="${SB}"]`).evaluate((el) => getComputedStyle(el).backgroundColor); expect(gray).toBe('rgb(154, 160, 166)');
+  // 표식은 정확한 원(가로=세로) · 터치 영역 44px 이상(전역 button min-height에 늘어나지 않음)
+  for (const pnu of [SA, SB]) {
+    const pin = page.locator(`[data-f-std-pin="${pnu}"]`);
+    const hit = await pin.boundingBox(); expect(hit.width).toBeGreaterThanOrEqual(44); expect(Math.abs(hit.height - hit.width)).toBeLessThan(0.5);
+    const dot = await pin.locator('.f-pin-dot').evaluate((el) => { const r = el.getBoundingClientRect(); return { w: r.width, h: r.height }; });
+    expect(Math.abs(dot.w - dot.h)).toBeLessThan(0.5);
+  }
+  const cdot = await cand.locator('.f-pin-dot').boundingBox(); expect(cdot.width).toBeGreaterThanOrEqual(24); expect(cdot.width).toBeLessThanOrEqual(30);
+  const sdot = await page.locator(`[data-f-std-pin="${SB}"] .f-pin-dot`).boundingBox(); expect(sdot.width).toBeGreaterThanOrEqual(5); expect(sdot.width).toBeLessThanOrEqual(8.5);
+  const color = await cand.locator('.f-pin-dot').evaluate((el) => getComputedStyle(el).backgroundColor); expect(color).toBe('rgb(31, 111, 255)');
+  const gray = await page.locator(`[data-f-std-pin="${SB}"] .f-pin-dot`).evaluate((el) => getComputedStyle(el).backgroundColor); expect(gray).toBe('rgb(154, 160, 166)');
   // 첫 후보 상세가 기본 선택
   const d = page.locator('[data-f-std-detail]');
   await expect(d).toHaveAttribute('data-f-std-detail', SA);
@@ -524,12 +551,21 @@ test('표준지 지도: 대상 빨간 경계 · 주변 표준지 회색 · 후�
   await expect(page.locator(`[data-f-std-item="${SC}"]`)).toContainText('지도 미표시');
   await expect(page.locator(`[data-f-std-item="${SD}"]`)).toContainText('검색 반경 1,000m 밖');
   // 표시 전환
-  await page.locator('[data-f-map-toggle="standards"]').uncheck();
+  await page.locator(`[data-f-std-item="${SA}"]`).click();
+  await page.locator('[data-f-map-toggle="standards"]').click();
   await expect(page.locator('[data-f-std-pin][data-f-std-kind="STANDARD"]')).toHaveCount(0);
   await expect(page.locator('[data-f-std-pin][data-f-std-kind="CANDIDATE"]')).toHaveCount(1);
-  await page.locator('[data-f-map-toggle="candidates"]').uncheck();
+  await page.locator('[data-f-map-toggle="candidates"]').click();
   await expect(page.locator('[data-f-std-pin]')).toHaveCount(0);
-  await page.locator('[data-f-map-toggle="candidates"]').check();
+  await page.locator('[data-f-map-toggle="candidates"]').click();
+  // '필지 중심' ↔ '후보 비교'
+  const zc = Number(await page.locator('.f-map').getAttribute('data-f-map-zoom'));
+  await page.locator('[data-f-map-mode-btn="parcel"]').click();
+  await expect(page.locator('.f-map')).toHaveAttribute('data-f-map-mode', 'PARCEL');
+  expect(Number(await page.locator('.f-map').getAttribute('data-f-map-zoom'))).toBeGreaterThanOrEqual(zc);
+  await page.locator('[data-f-map-mode-btn="compare"]').click();
+  await expect(page.locator('.f-map')).toHaveAttribute('data-f-map-mode', 'COMPARE');
+  await expect(page.locator('.f-map')).toHaveAttribute('data-f-map-zoom', String(zc));
   // 확대·축소 후에도 같은 후보 표식(재투영)
   const z0 = Number(await page.locator('.f-map').getAttribute('data-f-map-zoom'));
   await page.locator('[data-f-map-step="-1"]').click();
@@ -559,4 +595,71 @@ test('표준지 지도: 조회 실패(서버 경로 미허용 등)면 표식·�
   await expect(page.locator('[data-f-std-pin]')).toHaveCount(0);
   await expect(page.locator('[data-f-map-target]')).toHaveCount(1);
   await expect(page.locator('[data-f-save]')).toBeEnabled();
+});
+
+test('표준지 지도: 후보 선택·표시 전환 때 항공영상 추가 요청 0회(같은 중심·줌이면 기존 영상 유지)', async ({ page }) => {
+  const { aerial } = await mockStandard(page);
+  await openOsong(page);
+  await page.locator('[data-f-std-go]').click();
+  await expect(page.locator('[data-f-std-state="FOUND"]')).toBeVisible();
+  await expect(page.locator('[data-f-map-aerial="OK"]')).toBeVisible();
+  const before = aerial.length;
+  const src = await page.locator('[data-f-map-img]').getAttribute('src');
+  for (let i = 0; i < 3; i += 1) {
+    await page.locator(`[data-f-std-pin="${SA}"]`).click();
+    await page.locator(`[data-f-std-item="${SA}"]`).click();
+  }
+  await page.locator('[data-f-map-toggle="standards"]').click();
+  await page.locator(`[data-f-std-pin="${SB}"]`).click();
+  await page.locator('[data-f-map-toggle="neighbors"]').click();
+  await page.locator('[data-f-map-mode-btn="compare"]').click(); // 이미 후보 비교 — 같은 화면
+  await expect(page.locator('[data-f-std-detail]')).toHaveAttribute('data-f-std-detail', SB);
+  expect(aerial.length - before).toBe(0);
+  await expect(page.locator('[data-f-map-img]')).toHaveAttribute('src', src);
+  await expect(page.locator('[data-f-map-aerial="OK"]')).toBeVisible();
+  // 줌을 바꾸면 그때만 새 영상 1회
+  await page.locator('[data-f-map-step="-1"]').click();
+  await expect(page.locator('[data-f-map-aerial="OK"]')).toBeVisible();
+  expect(aerial.length - before).toBe(1);
+});
+
+test('표준지 지도: 표준지 129행 밀집 — 겹침은 묶음 표식 · 원형 유지 · 후보 3곳 우선 · 목록에 전부 · 가로 넘침 없음', async ({ page }) => {
+  const rows = []; const locations = {};
+  for (let i = 0; i < 129; i += 1) {
+    const pnu = `99999101011${String(100 + i).padStart(4, '0')}0000`;
+    const cand = i < 3;
+    rows.push(stdRow(pnu, cand ? '농림지역' : '제1종일반주거지역', '전', 100000 + i, String(100 + i)));
+    const a = (i * 137.5 * Math.PI) / 180; const r = cand ? 0.0015 + i * 0.0008 : 0.0004 + 0.000012 * i; // 일반 표준지는 대상 주변에 촘촘히(겹침 유발)
+    const lon = 127.0005 + r * Math.cos(a); const lat = 36.0005 + r * Math.sin(a) * 0.8;
+    locations[pnu] = { status: 'EXACT_ONE', centroid: [lon, lat], geometry: sqAt(lon - 0.00005, lat - 0.00005, 0.0001), distance_m: Math.round(r * 90000) };
+  }
+  const dense = { ...STD_OK, rows, locations, search: { ...STD_OK.search, legal_dongs: [{ ld_code: '9999910101', name: '가상도 가상시 숲내읍 바위리', status: 'OK', count: 129 }] } };
+  await mockStandard(page, dense);
+  await openOsong(page);
+  await page.locator('[data-f-std-go]').click();
+  await expect(page.locator('[data-f-std-state="FOUND"]')).toBeVisible();
+  await expect(page.locator('[data-f-std-pin][data-f-std-kind="CANDIDATE"]')).toHaveCount(3);
+  await expect(page.locator('[data-f-std-pin][data-f-std-kind="STANDARD"]')).toHaveCount(0); // 기본 숨김
+  await page.locator('[data-f-map-toggle="standards"]').click();
+  await expect(page.locator('[data-f-map-toggle="standards"]')).toHaveText('표준지 126');
+  const clusters = page.locator('[data-f-std-cluster]');
+  expect(await clusters.count()).toBeGreaterThan(0);
+  const drawn = await page.evaluate(() => [...document.querySelectorAll('[data-f-std-pin][data-f-std-kind="STANDARD"]')].length
+    + [...document.querySelectorAll('[data-f-std-cluster]')].reduce((s, el) => s + Number(el.dataset.fStdCluster), 0));
+  const offs = Number((await page.locator('[data-f-std-offscreen]').count()) ? (await page.locator('[data-f-std-offscreen]').innerText()).match(/화면 밖 (\d+)/)[1] : 0);
+  expect(drawn + offs).toBe(126); // 일반 표준지는 지워지지 않고 점·묶음·화면 밖 개수 중 하나로 셈
+  const shapes = await page.evaluate(() => [...document.querySelectorAll('.f-pin-dot')].map((el) => { const r = el.getBoundingClientRect(); return Math.abs(r.width - r.height); }));
+  expect(Math.max(...shapes)).toBeLessThan(0.5);
+  // 후보 번호는 묶음 위에 그린다(맨 위 요소가 후보 버튼)
+  await page.locator('[data-f-std-rank="1"]').scrollIntoViewIfNeeded();
+  const topIsCand = await page.locator(`[data-f-std-pin][data-f-std-rank="1"]`).evaluate((el) => { const r = el.getBoundingClientRect(); const t = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2); return Boolean(t && t.closest('[data-f-std-rank="1"]')); });
+  expect(topIsCand).toBe(true);
+  // 묶음을 누르면 그 위치로 확대
+  const z0 = Number(await page.locator('.f-map').getAttribute('data-f-map-zoom'));
+  await clusters.first().dispatchEvent('click');
+  await expect(page.locator('.f-map')).toHaveAttribute('data-f-map-zoom', String(Math.min(18, z0 + 2)));
+  await page.locator('[data-f-std-rest] summary').click();
+  await expect(page.locator('[data-f-std-rest] [data-f-std-item]')).toHaveCount(126);
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(0);
 });
