@@ -81,3 +81,25 @@ test('유형 미확인: 불복 경로 안내 보류 문구, 단계 안내는 일
   const r = await copy(page);
   for (const s of ROUTE) expect(r).not.toContain(s);
 });
+
+test('PR #32 P0: 종전자산평가 이의 + 중앙토지수용위원회 → 경고·미검증·완료 미산입, 입력값 유지', async ({ page }) => {
+  await field(page, 'case_type').selectOption('PRIOR_ASSET');
+  await field(page, 'authority').selectOption('LAND_COMMITTEE_CENTRAL');
+  const auth = page.locator('[data-intake-element="authority"]');
+  await expect(auth).toHaveAttribute('data-intake-state', 'UNVERIFIED_MISMATCH');
+  await expect(auth).toContainText('미검증 입력 · 유형 불일치');
+  await expect(auth).toContainText('중앙토지수용위원회');
+  await expect(page.locator('[data-intake-count]')).toContainText('기록 0/4 · 미검증 1');
+  await expect(page.locator('[data-track-warning]')).toContainText(['입력 권한자 "중앙토지수용위원회"는 토지수용 재결 계열 기관']);
+  await expect(field(page, 'authority')).toHaveValue('LAND_COMMITTEE_CENTRAL');
+  const r = await copy(page);
+  expect(r).toContain('- 현재 판단·결정 권한자: 중앙토지수용위원회 [미검증 입력 · 유형 불일치]');
+  expect(r).toContain('- 판단·결정 권한자: 중앙토지수용위원회 [미검증 입력 · 유형 불일치 — 통지서·법령 원문 확인 필요]');
+  for (const s of ROUTE) expect(r).not.toContain(s);
+  // 유형을 토지 보상으로 바꾸면 같은 입력이 정상 기록으로 돌아옴(입력 자동 변경·삭제 없음)
+  await field(page, 'case_type').selectOption('LAND');
+  await expect(auth).toHaveAttribute('data-intake-state', 'RECORDED_BY_COUNSELOR');
+  await expect(field(page, 'authority')).toHaveValue('LAND_COMMITTEE_CENTRAL');
+  await expect(page.locator('[data-track-warning]')).toHaveCount(0);
+  await expect(page.locator('[data-summary]')).toHaveCount(0); // 유형 변경으로 이전 검토서 무효화
+});

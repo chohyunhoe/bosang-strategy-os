@@ -122,3 +122,33 @@ test('상담 기록 격리·출력 결속에 사업·보상 유형 포함', asyn
   record.intake.case_type = 'REMAINDER';
   assert.notEqual(inputRevision(record, d), before, '유형 변경 시 이전 출력물 무효');
 });
+
+test('PR #32 P0: 종전자산평가 이의 + 토지수용위원회 권한자 → 경고·미검증 표시·완료 미산입, 입력값 보존', async () => {
+  const d = await draft();
+  for (const authority of ['LAND_COMMITTEE_LOCAL', 'LAND_COMMITTEE_CENTRAL']) {
+    const name = authority === 'LAND_COMMITTEE_LOCAL' ? '지방토지수용위원회' : '중앙토지수용위원회';
+    const intake = { ...emptyIntake(), case_type: 'PRIOR_ASSET', authority };
+    const ev = evaluateIntake(intake, { now: NOW });
+    const a = ev.items.find((i) => i.element === 'authority');
+    assert.equal(a.status, 'UNVERIFIED_MISMATCH');
+    assert.equal(a.value_text, name, '입력값은 그대로');
+    assert.equal(ev.recorded_count, 0, '미검증 입력은 완료로 세지 않음');
+    assert.ok(ev.undetermined.includes('현재 판단·결정 권한자'));
+    const t = buildCaseTrack(intake);
+    assert.ok(t.warnings.some((w) => w.includes(`입력 권한자 "${name}"는 토지수용 재결 계열 기관`) && w.includes('원문 확인 필요')));
+    const r = report(d, intake);
+    assert.match(r.text, new RegExp(`- 현재 판단·결정 권한자: ${name} \\[미검증 입력 · 유형 불일치\\]`));
+    assert.match(r.text, new RegExp(`- 판단·결정 권한자: ${name} \\[미검증 입력 · 유형 불일치 — 통지서·법령 원문 확인 필요\\]`));
+    assert.ok(r.actions.some((x) => x.includes('결정 주체인지 통지서·법령 원문으로 확인 — 현재 미검증 입력')));
+    assert.ok(!r.text.includes(`- 현재 판단·결정 권한자: ${name} [상담자 기록]`));
+    assert.deepEqual(r.forbidden_hits, []);
+  }
+  // 다른 조합은 영향 없음(추정·변경 없음)
+  const ok1 = evaluateIntake({ ...emptyIntake(), case_type: 'PRIOR_ASSET', authority: 'PROJECT_OPERATOR' }, { now: NOW }).items[3];
+  assert.equal(ok1.status, 'RECORDED_BY_COUNSELOR');
+  const ok2 = evaluateIntake({ ...emptyIntake(), case_type: 'LAND', authority: 'LAND_COMMITTEE_CENTRAL' }, { now: NOW }).items[3];
+  assert.equal(ok2.status, 'RECORDED_BY_COUNSELOR');
+  assert.equal(buildCaseTrack({ ...emptyIntake(), case_type: 'LAND', authority: 'LAND_COMMITTEE_CENTRAL' }).warnings.length, 0);
+  const ok3 = evaluateIntake({ ...emptyIntake(), authority: 'LAND_COMMITTEE_LOCAL' }, { now: NOW }).items[3];
+  assert.equal(ok3.status, 'RECORDED_BY_COUNSELOR', '유형 미확인에서는 불일치로 추정하지 않음');
+});

@@ -89,9 +89,20 @@ const UNDETERMINED = 'UNDETERMINED';
 const RECORDED = 'RECORDED_BY_COUNSELOR';
 const PARTIAL = 'PARTIAL';
 const INVALID = 'INPUT_INVALID';
+const UNVERIFIED = 'UNVERIFIED_MISMATCH';
+
+// 사업·보상 유형과 맞지 않을 수 있는 권한자 조합(PR #32 GPT 검수 P0).
+// 종전자산평가 이의(도시정비법 관리처분계획 체계)에 토지수용위원회(토지보상법 재결 기관)를 고른 경우.
+// 입력값은 바꾸지 않고 '미검증 입력'으로만 구별한다 — 법률효과·실제 권한 여부는 판단하지 않는다.
+const MISMATCHED_AUTHORITIES = Object.freeze({ PRIOR_ASSET: ['LAND_COMMITTEE_LOCAL', 'LAND_COMMITTEE_CENTRAL'] });
+export function authorityMismatch(intake) {
+  const v = intake || {};
+  return Boolean(v.case_type && v.authority && (MISMATCHED_AUTHORITIES[v.case_type] || []).includes(v.authority));
+}
 
 export const INTAKE_STATUS_LABEL = Object.freeze({
   [UNDETERMINED]: '미확정', [RECORDED]: '상담자 기록', [PARTIAL]: '일부 기록 · 근거 미확인', [INVALID]: '입력 확인 필요',
+  [UNVERIFIED]: '미검증 입력 · 유형 불일치',
 });
 
 export function evaluateIntake(raw, { now = new Date() } = {}) {
@@ -155,11 +166,15 @@ export function evaluateIntake(raw, { now = new Date() } = {}) {
     const other = v.authority === 'OTHER';
     const note = txt(v.authority_note);
     const ok = v.authority && (!other || note);
+    const mismatch = ok && authorityMismatch(v);
     items.push({
       element: 'authority', label: '현재 판단·결정 권한자',
-      status: ok ? RECORDED : (v.authority || note ? PARTIAL : UNDETERMINED),
+      // 유형과 맞지 않는 권한자는 '상담자 기록'(완료)으로 세지 않는다. 입력값(value_text)은 그대로 보존.
+      status: mismatch ? UNVERIFIED : ok ? RECORDED : (v.authority || note ? PARTIAL : UNDETERMINED),
+      mismatch,
       value_text: ok ? `${other ? note : label(AUTHORITY_OPTIONS, v.authority)}${!other && note ? ` (${note})` : ''}` : (note ? `메모: ${note}` : '미확정'),
-      note: ok ? '상담자 기록 · 기관·담당자 확인 전' : '지금 결정을 내리는 주체(사업시행자·토지수용위원회·법원·고객 본인) 확인 필요',
+      note: mismatch ? '입력 권한자는 토지수용 재결 계열 기관 — 종전자산평가 이의 유형과 직접 맞지 않을 수 있음 · 통지서·법령 원문 확인 필요(입력값은 그대로 보존)'
+        : ok ? '상담자 기록 · 기관·담당자 확인 전' : '지금 결정을 내리는 주체(사업시행자·토지수용위원회·법원·고객 본인) 확인 필요',
     });
   }
 
@@ -210,7 +225,8 @@ export function nextActionsFor(intakeEval) {
   const docs = caseType === 'PRIOR_ASSET' ? '통지서·공람 공고문 등' : '통지서·재결서 등';
   if (items.deadline?.status !== RECORDED) actions.push(`기산일·기한이 적힌 원 문서(${docs}) 확보 — 기한은 문서 기재값으로만 기록`);
   if (items.deadline?.status === INVALID) actions.push('기한·기산일 입력값 재확인');
-  if (items.authority?.status !== RECORDED) actions.push(caseType === 'PRIOR_ASSET'
+  if (items.authority?.status === UNVERIFIED) actions.push('입력한 판단·결정 권한자가 이 사건(종전자산평가 이의)의 결정 주체인지 통지서·법령 원문으로 확인 — 현재 미검증 입력');
+  else if (items.authority?.status !== RECORDED) actions.push(caseType === 'PRIOR_ASSET'
     ? '현재 결정 권한자(사업시행자·조합, 인가권자인 시장·군수등)와 담당 부서 확인'
     : '현재 결정 권한자(사업시행자·토지수용위원회·법원 등)와 담당 부서 확인');
   if (Number.isFinite(items.deadline?.remaining_days) && items.deadline.remaining_days <= 14) {

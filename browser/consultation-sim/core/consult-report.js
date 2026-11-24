@@ -184,7 +184,8 @@ export function buildConsultReport({ draft, record, intake = null, evidence = {}
   const deadline = intakeEval.items.find((i) => i.element === 'deadline');
   const s5 = [
     `- 절차 단계: ${intakeEval.items.find((i) => i.element === 'stage').value_text}`,
-    `- 판단·결정 권한자: ${intakeEval.items.find((i) => i.element === 'authority').value_text}`,
+    (() => { const a = intakeEval.items.find((i) => i.element === 'authority');
+      return `- 판단·결정 권한자: ${a.value_text}${a.mismatch ? ' [미검증 입력 · 유형 불일치 — 통지서·법령 원문 확인 필요]' : ''}`; })(),
     `- 사업·보상 유형: ${track.label} (${track.status_label})`,
     ...track.warnings.map((w) => `- [주의] ${w}`),
     ...track.notes.map((n) => `- ${n}`),

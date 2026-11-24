@@ -7,7 +7,7 @@
 // - 기간 숫자·보상액·증액 가능성·위법 여부를 만들지 않는다.
 // 조문 확인: 국가법령정보센터 현행 원문(2026-11-24) — 토지보상법 제73조·제74조·제75조, 도시정비법 제74조.
 
-import { CASE_TYPE_OPTIONS, EXPROPRIATION_FAMILY, STAGE_OPTIONS } from './consult-intake.js';
+import { CASE_TYPE_OPTIONS, EXPROPRIATION_FAMILY, STAGE_OPTIONS, AUTHORITY_OPTIONS, authorityMismatch } from './consult-intake.js';
 
 const isFamily = (t) => EXPROPRIATION_FAMILY.includes(t);
 const DISPUTE_GOALS = Object.freeze(['ADJUDICATION', 'OBJECTION', 'LITIGATION']);
@@ -92,6 +92,7 @@ export function buildCaseTrack(intake) {
     notes.push('정비사업 종전자산평가 이의는 토지수용 재결 불복과 다른 절차 맥락 — 재결·이의재결·행정소송 안내와 과업을 자동 생성하지 않음');
     if (v.stage) warnings.push(`선택한 절차 단계 "${stageLabel(v.stage)}"는 토지보상법 수용 절차 분류 — 종전자산평가 이의 건에는 적용하지 않음(정비사업 단계는 원문·통지로 확인)`);
     if (DISPUTE_GOALS.includes(v.goal)) warnings.push('선택한 고객 목표(재결·이의·소송 대응)는 토지수용 재결 절차 기준 분류 — 종전자산평가 이의와 동일시하지 않음');
+    if (authorityMismatch(v)) warnings.push(`입력 권한자 "${(AUTHORITY_OPTIONS.find(([k]) => k === v.authority) || ['', v.authority])[1]}"는 토지수용 재결 계열 기관 — 종전자산평가 이의 유형과 직접 맞지 않을 수 있음 · 통지서·법령 원문 확인 필요(미검증 입력)`);
   } else if (type === 'OBJECTS') {
     status = 'EXPERT_PENDING';
     checklists = [CHECKLISTS.OBJECTS];

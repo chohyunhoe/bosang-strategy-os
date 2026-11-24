@@ -429,8 +429,10 @@ function renderIntake() {
     <div class="record-actions">${d ? '<button type="button" class="link" data-record-new>새 상담(같은 필지 · 다른 의뢰인)</button>' : ''}
     ${d && canContinueFrom(ui.previousRecord, d, ui.record) ? '<button type="button" class="link" data-record-continue>직전 상담 기록 이어 쓰기(같은 의뢰인일 때만)</button>' : ''}</div>`;
   const items = evaluateIntake(ui.record.intake, { now: new Date() }).items;
-  $('[data-intake-count]', box).textContent = `기록 ${items.filter((i) => i.status === 'RECORDED_BY_COUNSELOR').length}/4 · 나머지 미확정`;
-  $('[data-intake-status]', box).innerHTML = items.map((i) => `<li data-intake-element="${esc(i.element)}" data-intake-state="${esc(i.status)}">${chip(i.status === 'RECORDED_BY_COUNSELOR' ? 'OFFICIAL_OK' : i.status === 'INPUT_INVALID' ? 'MISMATCH' : 'NOT_QUERIED', INTAKE_STATUS_LABEL[i.status])} <b>${esc(i.label)}</b> ${esc(i.value_text)}<div class="note">${esc(i.note)}</div></li>`).join('');
+  const unverified = items.filter((i) => i.status === 'UNVERIFIED_MISMATCH').length;
+  // 미검증 입력은 '기록 완료'로 세지 않는다.
+  $('[data-intake-count]', box).textContent = `기록 ${items.filter((i) => i.status === 'RECORDED_BY_COUNSELOR').length}/4${unverified ? ` · 미검증 ${unverified}` : ''} · 나머지 미확정`;
+  $('[data-intake-status]', box).innerHTML = items.map((i) => `<li data-intake-element="${esc(i.element)}" data-intake-state="${esc(i.status)}">${chip(i.status === 'RECORDED_BY_COUNSELOR' ? 'OFFICIAL_OK' : ['INPUT_INVALID', 'UNVERIFIED_MISMATCH'].includes(i.status) ? 'MISMATCH' : 'NOT_QUERIED', INTAKE_STATUS_LABEL[i.status])} <b>${esc(i.label)}</b> ${esc(i.value_text)}<div class="note">${esc(i.note)}</div></li>`).join('');
 }
 // ── 증빙요건 판단(T-01·T-05·T-09·T-12) ─────────────────────────────────────────
 const GATE_CHIP = { READY_FOR_EXPERT: 'OFFICIAL_OK', NOT_SATISFIED: 'MISMATCH', HOLD: 'FIELD_CHECK', NOT_TRIGGERED: 'NOT_QUERIED' };
