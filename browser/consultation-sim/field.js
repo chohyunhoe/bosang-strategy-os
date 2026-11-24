@@ -4,9 +4,10 @@ import { validateNoticeIndex, searchNoticeIndex, SEARCH_STATUS, noticeFacts } fr
 import { issuesFor } from './core/field-issues.js';
 import { buildFieldCard, buildDirectCard } from './core/field-card.js';
 import { directLookupTarget } from './core/field-direct.js';
-import { bridgeStatus, queryPublicData, queryParcelMap, PD_STATUS, PD_STAGE } from './core/field-public-data.js';
+import { bridgeStatus, queryPublicData, queryParcelMap, queryZoningHistory, TRACE_YEARS, PD_STATUS, PD_STAGE } from './core/field-public-data.js';
 import { fitView, withZoom, renderFieldMap } from './core/field-map.js';
 import { evaluateZoningBasis, RELATION_OPTIONS, ZONING_STATUS, ZONING_STATUS_LABEL } from './core/zoning-basis.js';
+import { EVIDENCE_STATUS_LABEL } from './core/zoning-trace.js';
 import { profileForIndex } from './profiles/index.js';
 
 const $ = (s, r = document) => r.querySelector(s);
@@ -15,7 +16,7 @@ const fmt = (n) => (typeof n === 'number' ? n.toLocaleString('ko-KR', { maximumF
 const fmtTime = (iso) => (iso ? new Date(iso).toLocaleString('ko-KR', { hour12: false }) : '—');
 
 // row: 고시 색인 행 / direct: 색인 밖 전국 직접 조회 대상. 둘 중 하나만 활성.
-const st = { index: null, profile: profileForIndex(null), check: null, search: null, row: null, direct: null, directOffer: null, issues: new Set(), memo: '', other: '', map: null, zoningConfirm: { relation: '', basis_doc: '', by: '', valuation_date: '' }, pdBridge: null, pd: null, pdBusy: false, epoch: 0 };
+const st = { index: null, profile: profileForIndex(null), check: null, search: null, row: null, direct: null, directOffer: null, issues: new Set(), memo: '', other: '', map: null, zoningConfirm: { relation: '', basis_doc: '', by: '', valuation_date: '' }, zoningExtra: null, pdBridge: null, pd: null, pdBusy: false, epoch: 0 };
 const active = () => st.row || st.direct;
 
 function setIndex(index, origin) {
@@ -38,14 +39,14 @@ function setIndex(index, origin) {
 function showIndexError(msg) { const e = $('[data-f-index-error]'); e.hidden = false; e.textContent = msg; $('[data-f-loader]').hidden = false; }
 
 function newConsultation() {
-  st.epoch += 1; st.search = null; st.row = null; st.direct = null; st.directOffer = null; st.issues = new Set(); st.memo = ''; st.map = null; st.other = ''; st.zoningConfirm = { relation: '', basis_doc: '', by: '', valuation_date: '' }; st.pd = null; st.pdBusy = false;
+  st.epoch += 1; st.search = null; st.row = null; st.direct = null; st.directOffer = null; st.issues = new Set(); st.memo = ''; st.map = null; st.other = ''; st.zoningConfirm = { relation: '', basis_doc: '', by: '', valuation_date: '' }; st.zoningExtra = null; st.pd = null; st.pdBusy = false;
   $('[data-f-q]').value = ''; $('[data-f-memo]').value = ''; $('[data-f-out]').textContent = '';
   render();
   if (!$('[data-f-q]').disabled) $('[data-f-q]').focus();
 }
 
-function openDirect(target) { st.epoch += 1; st.row = null; st.direct = target; st.issues = new Set(); st.memo = ''; st.map = null; st.other = ''; st.zoningConfirm = { relation: '', basis_doc: '', by: '', valuation_date: '' }; st.pd = null; $('[data-f-memo]').value = ''; $('[data-f-out]').textContent = ''; render(); }
-function selectRow(row) { st.epoch += 1; st.direct = null; st.row = row; st.issues = new Set(); st.memo = ''; st.map = null; st.other = ''; st.zoningConfirm = { relation: '', basis_doc: '', by: '', valuation_date: '' }; st.pd = null; $('[data-f-memo]').value = ''; $('[data-f-out]').textContent = ''; render(); }
+function openDirect(target) { st.epoch += 1; st.row = null; st.direct = target; st.issues = new Set(); st.memo = ''; st.map = null; st.other = ''; st.zoningConfirm = { relation: '', basis_doc: '', by: '', valuation_date: '' }; st.zoningExtra = null; st.pd = null; $('[data-f-memo]').value = ''; $('[data-f-out]').textContent = ''; render(); }
+function selectRow(row) { st.epoch += 1; st.direct = null; st.row = row; st.issues = new Set(); st.memo = ''; st.map = null; st.other = ''; st.zoningConfirm = { relation: '', basis_doc: '', by: '', valuation_date: '' }; st.zoningExtra = null; st.pd = null; $('[data-f-memo]').value = ''; $('[data-f-out]').textContent = ''; render(); }
 
 function renderResult() {
   const box = $('[data-f-result]');
@@ -202,26 +203,58 @@ function renderIssuesBox(card) {
 function zoningProject() {
   const n = st.index?.notice;
   if (!n || st.profile?.id === 'generic' && !n.notice_no) return null;
-  if (st.row || st.direct?.scope === 'INDEX_AREA') return { ...n, zoning_check: st.profile?.notice?.zoning_check || n.zoning_check || null, zoning_decisions: st.profile?.zoning_decisions || [] };
+  if (st.row || st.direct?.scope === 'INDEX_AREA') {
+    const p = st.profile || {};
+    return { ...n, zoning_check: p.notice?.zoning_check || n.zoning_check || null, zoning_decisions: p.zoning_decisions || [], zoning_events: p.zoning_events || [],
+      prior_designations: p.prior_designations || [], supporting_documents: p.supporting_documents || [] };
+  }
   return null;
+}
+// 필지 대조 기록은 사업 색인 필지이면서 PNU가 정확히 같은 경우에만 붙인다.
+function parcelEvidence() {
+  const pnu = st.pd?.pnu; const proj = zoningProject();
+  return proj && pnu ? (st.profile?.parcel_zoning_evidence?.[pnu] || []) : [];
+}
+function zoningHistoryAll() {
+  const extra = st.zoningExtra?.pnu === st.pd?.pnu ? (st.zoningExtra.rows || []) : [];
+  return [...(st.pd?.zoning_history || []), ...extra];
 }
 function currentZoning() {
   if (!st.pd) return null;
-  return evaluateZoningBasis({ history: st.pd.zoning_history || [], project: zoningProject(), confirmation: st.zoningConfirm, valuationDate: st.zoningConfirm.valuation_date });
+  return evaluateZoningBasis({ history: zoningHistoryAll(), project: zoningProject(), confirmation: st.zoningConfirm, valuationDate: st.zoningConfirm.valuation_date, parcelEvidence: parcelEvidence() });
+}
+async function runZoningTrace() {
+  const pnu = st.pd?.pnu; const subject = active(); if (!pnu || !subject) return;
+  const epoch = st.epoch;
+  st.zoningExtra = { pnu, status: 'LOADING', rows: [] }; renderZoning();
+  const res = await queryZoningHistory({ fetchImpl: (...a) => fetch(...a), location, pnu });
+  if (epoch !== st.epoch || subject !== active() || st.pd?.pnu !== pnu) return; // 다른 필지·새 상담이면 폐기
+  st.zoningExtra = { ...res, pnu }; $('[data-f-out]').textContent = ''; renderZoning(); renderCard();
 }
 const ZCHIP = { NO_DATA: 'bad', NO_CHANGE_OBSERVED: 'warn', CHANGE_UNCONFIRMED: 'bad', NOTICE_PROJECT_REASON: 'warn', PROJECT_RELATED: 'warn', UNRELATED: 'warn' };
 let lastZoningKey = '';
 function renderZoningResult() {
   const box = $('[data-f-zoning-result]'); if (!box) return;
   const z = currentZoning(); if (!z) { box.innerHTML = ''; return; }
+  const t = z.trace;
   box.innerHTML = `<div data-f-zoning-status="${esc(z.status)}">
     <p class="small"><span class="chip ${ZCHIP[z.status]}">${esc(ZONING_STATUS_LABEL[z.status])}</span></p>
     <dl class="f-kv">
-      <dt>보상평가 검토 기준 후보</dt><dd data-f-zoning-basis>${z.basis_label ? `${esc(z.basis_label)} <span class="chip warn">확정 아님 · 전문가 검증 전</span>` : '<span class="chip bad">확인 필요 — 임의 추정 안 함</span>'}</dd>
+      <dt>사업 영향 제외 평가 검토 후보</dt><dd data-f-zoning-basis>${z.basis_label ? `${esc(z.basis_label)} <span class="chip warn">확정 아님 · 전문가 검증 전</span>` : '<span class="chip bad">확인 필요 — 임의 추정 안 함</span>'}</dd>
       ${z.evidence ? `<dt>근거자료</dt><dd data-f-zoning-evidence><div class="small">${esc(z.evidence.source)}</div><div class="small">${esc(z.evidence.from)} → ${esc(z.evidence.to)}${z.evidence.area_m2 ? ` ${Number(z.evidence.area_m2).toLocaleString('ko-KR')}㎡` : ''} · ${esc(z.evidence.reason)}</div><div class="small muted">${esc(z.evidence.verified || '')} · <b>${esc(z.evidence.parcel_level || '필지별 변경도면 대조 필요')}</b></div></dd>` : ''}
+      <dt>과거 기준일</dt><dd data-f-zoning-past>${t.past_basis ? `${esc(t.past_basis.zoning)} <span class="small muted">${esc(t.past_basis.label)}</span>` : '<span class="chip">사업 유발 변경 미확인 — 과거 기준일 없음</span>'}</dd>
+      <dt>변경 유발 고시</dt><dd data-f-zoning-trigger>${t.trigger ? `${esc(t.trigger.event.notice_no)} · 고시일 ${esc(t.trigger.event.notice_date || '미상')} · ${t.trigger.event.effective_date ? `효력 ${esc(t.trigger.event.effective_date)}` : `<span class="chip warn">효력 기준일 미확인</span>`}
+        <div class="small">${esc(t.trigger.event.kind || '')}</div><div class="small">변경 구간 ${esc(t.trigger.change.window_start)} ~ ${esc(t.trigger.change.window_end)} 사이 · ${esc(t.trigger.change.from)} → ${esc(t.trigger.change.to)}</div>
+        <div class="small muted">${esc(t.trigger.event.effective_basis || '')}</div>`
+        : `<span class="chip bad">미확인</span>${t.candidate_events.map((c) => `<div class="small">${esc(c.notice_no)} — ${c.match === 'DECISION_UNVERIFIED' ? '용도지역 결정 포함 여부 원문 확인 전(명칭만으로 추정 안 함)' : '사업 관련 사유 원문 확인 전'}</div>`).join('')}`}</dd>
+      <dt>대조한 문서</dt><dd data-f-zoning-docs>${t.evidence.length ? t.evidence.map((e) => `<div class="f-zoning-ev" data-f-zoning-ev-grade="${e.grade}" data-f-zoning-ev-status="${esc(e.status)}"><b>${esc(['', '①', '②', '③', '④'][e.grade])}</b> ${esc(e.title)} <span class="chip ${e.status === 'CONFIRMED' ? 'ok' : e.status === 'OBSERVED' || e.status === 'AGGREGATE_ONLY' ? 'warn' : 'bad'}">${esc(EVIDENCE_STATUS_LABEL[e.status] || e.status)}</span>
+        ${e.finding ? `<div class="small">${esc(e.finding)}</div>` : ''}${e.dates ? `<div class="small muted">${esc(Object.entries(e.dates).filter(([, v]) => v).map(([k, v]) => `${{ notice_date: '고시일', effective_date: '효력일', document_date: '작성', survey_basis: '조사 기준', base_year: '기준연도' }[k] || k} ${v}`).join(' · '))}</div>` : ''}
+        ${e.checked ? `<div class="small muted">${esc(e.checked)}</div>` : ''}${e.caution ? `<div class="small warn-note">${esc(e.caution)}</div>` : ''}</div>`).join('') : '—'}</dd>
+      ${t.cross_check.length ? `<dt>교차 대조</dt><dd data-f-zoning-cross>${t.cross_check.map((c) => `<div class="small">${esc(c)}</div>`).join('')}</dd>` : ''}
+      <dt>미확인</dt><dd data-f-zoning-unverified><ul class="small">${t.unverified.map((u) => `<li>${esc(u)}</li>`).join('')}</ul></dd>
       <dt>조회 기준</dt><dd data-f-zoning-query>${esc(z.query_basis?.label || '—')}</dd>
       <dt>감정평가 기준시점</dt><dd data-f-zoning-valuation>${esc(z.valuation_date_label)}</dd>
-      <dt>검증 상태</dt><dd data-f-zoning-verification>${{ UNVERIFIED_BY_EXPERT: '미검증(자동 판정 없음)', NOTICE_REASON_CONFIRMED_PARCEL_MAP_PENDING_UNVERIFIED_BY_EXPERT: '고시 사유서 확인 · 필지별 변경도면 대조 전 · 전문가 검증 전', COUNSELOR_MARKED_UNVERIFIED_BY_EXPERT: '상담자 표시 · 전문가 검증 전' }[z.verification] || esc(z.verification)}</dd>
+      <dt>검증 상태</dt><dd data-f-zoning-verification>${z.verification_label ? esc(z.verification_label) : { UNVERIFIED_BY_EXPERT: '미검증(자동 판정 없음)', NOTICE_REASON_CONFIRMED_PARCEL_MAP_PENDING_UNVERIFIED_BY_EXPERT: '고시 사유서 확인 · 필지별 변경도면 대조 전 · 전문가 검증 전', COUNSELOR_MARKED_UNVERIFIED_BY_EXPERT: '상담자 표시 · 전문가 검증 전' }[z.verification] || esc(z.verification)}</dd>
     </dl>
     ${z.notes.map((n) => `<p class="small warn-note">${esc(n)}</p>`).join('')}</div>`;
 }
@@ -231,7 +264,7 @@ function renderZoning() {
   const show = Boolean(active() && st.pd && st.pd.status !== PD_STATUS.OFFLINE);
   wrap.hidden = !show; if (h2) h2.hidden = !show;
   if (!show) { wrap.innerHTML = ''; lastZoningKey = ''; return; }
-  const key = `${st.epoch}|${st.pd.pnu || ''}|${(st.pd.zoning_history || []).map((h) => `${h.year}:${h.zoning}`).join(',')}`;
+  const key = `${st.epoch}|${st.pd.pnu || ''}|${zoningHistoryAll().map((h) => `${h.year}:${h.zoning}`).join(',')}|${st.zoningExtra?.status || ''}`;
   if (key !== lastZoningKey) {
     lastZoningKey = key;
     const z = currentZoning();
@@ -239,7 +272,10 @@ function renderZoning() {
     wrap.innerHTML = `<div data-f-zoning-panel>
       <dl class="f-kv">
         <dt>현재 용도지역(공적자료)</dt><dd data-f-zoning-current>${z.current_zoning ? `${esc(z.current_zoning)} <span class="small muted">기준 ${z.current_year}</span>` : '<span class="chip">자료 없음</span>'}</dd>
-        <dt>연도별</dt><dd data-f-zoning-history>${z.history.length ? z.history.map((h) => `${h.year} ${esc(h.zoning)}`).join(' → ') : '—'}</dd>
+        <dt>연도별</dt><dd data-f-zoning-history>${z.history.length ? z.history.map((h) => `${h.year} ${esc(h.zoning)}`).join(' → ') : '—'}
+          <div class="small">${st.zoningExtra?.status === 'LOADING' ? '<span data-f-zoning-trace-state="LOADING">이전 연도 조회 중…</span>'
+            : st.zoningExtra ? `<span data-f-zoning-trace-state="${esc(st.zoningExtra.status)}">이전 연도 ${TRACE_YEARS[TRACE_YEARS.length - 1]}~${TRACE_YEARS[0]} 조회: ${st.zoningExtra.rows.length}개 연도 응답${st.zoningExtra.reason ? ` · ${esc(st.zoningExtra.reason)}` : ''}</span>`
+              : st.pd.pnu && st.pd.stage === PD_STAGE.LIVE_DATA ? `<button type="button" class="secondary" data-f-zoning-trace>용도지역 이력 역추적 — ${TRACE_YEARS[TRACE_YEARS.length - 1]}~${TRACE_YEARS[0]}년 추가 조회</button>` : ''}</div></dd>
         ${z.change ? `<dt>변경 관찰</dt><dd data-f-zoning-change>변경 전 <b>${esc(z.change.before)}</b> → 변경 후 <b>${esc(z.change.after)}</b> <span class="small muted">(${esc(z.change.window)}년 기준 사이)</span></dd>` : ''}
         <dt>확인 대상</dt><dd data-f-zoning-project>${proj?.notice_no ? `${esc(proj.notice_no)} · 고시일 ${esc(proj.notice_date || '미상')}${proj.zoning_check ? `<div class="small">${esc(proj.zoning_check)}</div>` : ''}${proj.source_url ? `<div class="small mono">${esc(proj.source_url)}</div>` : ''}` : '이 필지에 연결된 사업 고시 없음 — 사업 관련성 확인 불가'}</dd>
         <dt>적용 근거</dt><dd data-f-zoning-rules>${z.rules.map((r) => `<div class="small">${esc(r.label)} — ${esc(r.note)}</div>`).join('')}</dd>
@@ -252,6 +288,7 @@ function renderZoning() {
       <label class="small f-zoning-confirm">감정평가 기준시점(문서에 적힌 날짜만 · 선택) <input type="date" data-f-zoning-vdate></label>
       <div data-f-zoning-result></div>
       <p class="small muted">용도지역 판단은 검토 보조입니다. 실제 감정평가 기준은 감정평가사·법률 검토로 정합니다. 화면 열람 전용(인쇄 제외) — 카드에는 상태·근거만 기록합니다.</p></div>`;
+    $('[data-f-zoning-trace]', wrap)?.addEventListener('click', runZoningTrace);
     const sel = $('[data-f-zoning-relation]', wrap); const doc = $('[data-f-zoning-doc]', wrap); const by = $('[data-f-zoning-by]', wrap); const vdate = $('[data-f-zoning-vdate]', wrap);
     if (sel) { sel.value = st.zoningConfirm.relation; doc.value = st.zoningConfirm.basis_doc; by.value = st.zoningConfirm.by; }
     if (vdate) vdate.value = st.zoningConfirm.valuation_date;
@@ -289,7 +326,7 @@ function saveCard() {
 function init() {
   $('[data-f-form]').addEventListener('submit', (e) => {
     e.preventDefault();
-    st.epoch += 1; st.row = null; st.direct = null; st.directOffer = null; st.pd = null; st.issues = new Set(); st.memo = ''; st.map = null; st.other = ''; st.zoningConfirm = { relation: '', basis_doc: '', by: '', valuation_date: '' }; $('[data-f-memo]').value = ''; $('[data-f-out]').textContent = '';
+    st.epoch += 1; st.row = null; st.direct = null; st.directOffer = null; st.pd = null; st.issues = new Set(); st.memo = ''; st.map = null; st.other = ''; st.zoningConfirm = { relation: '', basis_doc: '', by: '', valuation_date: '' }; st.zoningExtra = null; $('[data-f-memo]').value = ''; $('[data-f-out]').textContent = '';
     const q = $('[data-f-q]').value;
     st.search = st.index ? searchNoticeIndex(st.index, q)
       : (q.trim() ? { status: SEARCH_STATUS.NOT_IN_INDEX, message: '고시 색인이 없습니다. 전체 주소로 전국 공적자료만 조회할 수 있습니다(편입 여부 미확인).', matches: [] } : { status: SEARCH_STATUS.EMPTY, matches: [] });

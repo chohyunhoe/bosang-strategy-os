@@ -536,3 +536,99 @@ test('카드: 고시 근거 후보는 고시 기재값으로 기록, API 용도�
   assert.match(text, /조회 기준연도 2026\(토지특성 기준일 2026-01-01\) \/ 감정평가 기준시점 미확인/);
   assert.doesNotMatch(text, /제1종일반주거지역/);
 });
+
+// ── 사업별 변경 고시 역추적 · 변경 전 용도지역 복원 ────────────────────────────
+const zt = await import('../../browser/consultation-sim/core/zoning-trace.js');
+const { queryZoningHistory } = await import('../../browser/consultation-sim/core/field-public-data.js');
+const OSONG = getProfile('osong3');
+const OSONG_PROJ = { ...PROJ, notice_no: OSONG.notice.notice_no, notice_date: OSONG.notice.notice_date, zoning_events: OSONG.zoning_events,
+  prior_designations: OSONG.prior_designations, supporting_documents: OSONG.supporting_documents };
+const LONG = [{ year: 2019, zoning: '관리지역' }, ...[2020, 2021, 2022, 2023, 2024, 2025].map((year) => ({ year, zoning: '농림지역' })), { year: 2026, zoning: '제1종일반주거지역' }];
+const GUNGPYEONG = '4311325027103200001';
+
+test('역추적: 전체 연도 이력에서 사업 고시가 일으킨 변경만 찾아 그 직전 용도지역을 복원(앞선 별건 변경과 섞지 않음)', () => {
+  const z = zb.evaluateZoningBasis({ history: LONG, project: OSONG_PROJ });
+  assert.equal(z.status, 'NOTICE_PROJECT_REASON');
+  assert.equal(z.trace.trigger.event.notice_no, '국토교통부 고시 제2025-456호');
+  assert.deepEqual([z.trace.trigger.change.window_start, z.trace.trigger.change.window_end], ['2025-01-01', '2026-01-01']);
+  assert.equal(z.basis_label, '농림지역(평가 기준 후보)'); // 2019 관리지역이 아님
+  assert.equal(z.change.before, '농림지역');
+  assert.deepEqual([z.trace.past_basis.observed_from_year, z.trace.past_basis.as_of], [2020, '2025-01-01']);
+  assert.ok(z.trace.unverified.some((u) => /2019~2020년 기준 사이 관리지역 → 농림지역 변경의 원인 고시/.test(u)));
+  assert.ok(z.trace.unverified.includes('필지·법률 전문가 검증'));
+  assert.equal(zt.EVIDENCE_GRADES.length, 4);
+});
+
+test('역추적: 명칭만 있는 고시(용도지역 결정 포함 미확인)·사업 사유 미확인·구간 밖 고시는 변경 유발 고시로 연결하지 않음', () => {
+  const base = { id: 'x', notice_no: '가상 고시 제0000-2호', notice_date: '2025-05-01', changes: [{ from: '농림지역', to: '제1종일반주거지역' }] };
+  const unverified = zb.evaluateZoningBasis({ history: HIST, project: { ...PROJ, zoning_events: [{ ...base, zoning_decision: 'UNVERIFIED', project_related: true }] } });
+  assert.equal(unverified.status, 'CHANGE_UNCONFIRMED'); assert.equal(unverified.basis_zoning, null);
+  assert.equal(unverified.trace.candidate_events[0].match, 'DECISION_UNVERIFIED');
+  const unproven = zb.evaluateZoningBasis({ history: HIST, project: { ...PROJ, zoning_events: [{ ...base, zoning_decision: 'INCLUDED', project_related: null }] } });
+  assert.equal(unproven.status, 'CHANGE_UNCONFIRMED'); assert.equal(unproven.trace.candidate_events[0].match, 'RELATION_UNPROVEN');
+  const outside = zb.evaluateZoningBasis({ history: HIST, project: { ...PROJ, zoning_events: [{ ...base, notice_date: '2026-03-01', zoning_decision: 'INCLUDED', project_related: true }] } });
+  assert.equal(outside.status, 'CHANGE_UNCONFIRMED'); assert.equal(outside.trace.trigger, null);
+  const none = zb.evaluateZoningBasis({ history: HIST, project: { ...PROJ, zoning_events: [{ ...base, zoning_decision: 'NOT_INCLUDED', project_related: true }] } });
+  assert.equal(none.trace.changes[0].matches[0].match, 'NO_DECISION');
+});
+
+test('역추적: 같은 사업 고시가 여러 번 바꾸면 가장 앞선 사업 유발 변경 직전 용도지역으로 복원', () => {
+  const ev = (id, date, from, to) => ({ id, notice_no: id, notice_date: date, zoning_decision: 'INCLUDED', project_related: true, changes: [{ from, to, reason: '가상 사업' }] });
+  const z = zb.evaluateZoningBasis({ history: [{ year: 2020, zoning: 'A' }, { year: 2021, zoning: 'B' }, { year: 2022, zoning: 'C' }],
+    project: { ...PROJ, zoning_events: [ev('가상-1', '2020-07-01', 'A', 'B'), ev('가상-2', '2021-07-01', 'B', 'C')] } });
+  assert.equal(z.status, 'NOTICE_PROJECT_REASON'); assert.equal(z.basis_label, 'A(평가 기준 후보)'); assert.equal(z.trace.trigger.event.id, '가상-1');
+});
+
+test('오송3 궁평리 320-1: 첨부 변경도 제4도엽 대조 반영 · 검증 문구 · 증거등급 ①~④ 분리 · 총괄 면적은 필지 근거 아님', () => {
+  const ev = OSONG.parcel_zoning_evidence[GUNGPYEONG];
+  const z = zb.evaluateZoningBasis({ history: HIST, project: OSONG_PROJ, parcelEvidence: ev });
+  assert.equal(z.verification_label, '제2025-456호 첨부 변경도 제4도엽의 변경 후 용도지역 확인 · 2020-236 기정도면 대조 전 · 전문가 검증 전');
+  assert.equal(z.verification, 'NOTICE_REASON_AND_PARCEL_MAP_CONFIRMED_UNVERIFIED_BY_EXPERT');
+  assert.deepEqual(z.trace.evidence.map((e) => [e.grade, e.status]), [[1, 'AGGREGATE_ONLY'], [1, 'CONFIRMED'], [2, 'PENDING'], [2, 'NOT_OBTAINED'], [3, 'AGGREGATE_ONLY'], [4, 'OBSERVED']]);
+  assert.match(z.trace.evidence[0].finding, /217,424㎡\(변경 유형 총량 — 이 필지 면적 아님\)/);
+  assert.match(z.trace.evidence[1].caution, /붉은 선을 토지보상 편입선으로 해석하지 않음/);
+  assert.match(z.trace.evidence[4].caution, /개별 필지의 기존 용도지역 확정 근거로 쓰지 않음/);
+  assert.ok(z.trace.cross_check.some((c) => /① 필지별 도면.*= ④ 조회 변경 후 값/.test(c)));
+  assert.ok(z.trace.cross_check.some((c) => /③ 총괄 기존 현황에 농림지역 포함\(사업 범위·작성 시점 다름 — 필지 확정 아님\)/.test(c)));
+  assert.ok(z.trace.unverified.some((u) => /청주시 고시 제2020-236호.*대조 전/.test(u)));
+  assert.ok(z.trace.unverified.some((u) => /효력 기준일/.test(u)));
+  assert.ok(!z.trace.unverified.some((u) => /필지별 변경도면 대조/.test(u)));
+  const doc = OSONG.supporting_documents[0];
+  assert.equal(doc.zoning_composition.reduce((a, b) => a + b.area_m2, 0), doc.project_area_m2); // 6,264,847 + 504,244 = 6,769,091
+});
+
+test('오송3 다른 필지(대조 기록 없음)는 필지별 변경도면 대조 전으로 유지 · 카드엔 변경 유발 고시·대조 문서·검증 상태만', () => {
+  const z = zb.evaluateZoningBasis({ history: HIST, project: OSONG_PROJ, parcelEvidence: [] });
+  assert.equal(z.verification_label, '고시 사유서 확인 · 필지별 변경도면 대조 전 · 2020-236 기정도면 대조 전 · 전문가 검증 전');
+  const idx = load();
+  const withMap = zb.evaluateZoningBasis({ history: HIST, project: OSONG_PROJ, parcelEvidence: OSONG.parcel_zoning_evidence[GUNGPYEONG] });
+  const text = buildFieldCard({ profile: profileForIndex(idx), index: idx, row: idx.rows[0], zoning: withMap }).text;
+  assert.match(text, /변경 유발 고시: 국토교통부 고시 제2025-456호\(2025-08-28\) — 용도지역 결정\(변경\) 포함 · 사업 관련 사유 명시 · 효력 기준일 원문 확인/);
+  assert.match(text, /대조 문서: ① .*\(필지 대조함\) \/ ② 청주시 고시 제2020-236호/);
+  assert.match(text, /검증 상태: 제2025-456호 첨부 변경도 제4도엽의 변경 후 용도지역 확인 · 2020-236 기정도면 대조 전 · 전문가 검증 전/);
+  assert.doesNotMatch(text, /제1종일반주거지역|6,264,847/);
+});
+
+test('이력 역추적 조회: 확인된 PNU만, 연도별 용도지역만 모음 · 자료 없는 연도는 실패와 구분 · 속도 제한이면 중단', async () => {
+  const noCall = async () => { throw new Error('no call'); };
+  assert.equal((await queryZoningHistory({ fetchImpl: noCall, location: loop, pnu: '123' })).status, 'FAILED');
+  assert.equal((await queryZoningHistory({ fetchImpl: noCall, location: { protocol: 'file:', hostname: '' }, pnu: GUNGPYEONG })).status, 'OFFLINE');
+  const seen = [];
+  const r = await queryZoningHistory({ location: loop, pnu: GUNGPYEONG, years: [2024, 2023, 2022], fetchImpl: fakeBridge({
+    vworld_land: (b) => { seen.push(b.standard_year); return b.standard_year === 2022 ? { ok: true, record: null } : { ok: true, record: { zoning: '농림지역', individual_official_price: 999 } }; } }) });
+  assert.deepEqual(seen, [2024, 2023, 2022]); assert.equal(r.status, 'OK');
+  assert.deepEqual(r.rows.map((x) => [x.year, x.zoning]), [[2024, '농림지역'], [2023, '농림지역']]); assert.equal(r.rows[0].individual_official_price, undefined);
+  assert.equal(r.reason, null);
+  const seen2 = [];
+  const lim = await queryZoningHistory({ location: loop, pnu: GUNGPYEONG, years: [2024, 2023, 2022], fetchImpl: fakeBridge({
+    vworld_land: (b) => { seen2.push(b.standard_year); return { ok: false, error_code: 'RATE_LIMITED' }; } }) });
+  assert.deepEqual(seen2, [2024]); assert.equal(lim.status, 'FAILED'); assert.match(lim.reason, /2024년 조회 실패/);
+});
+
+test('역추적: 중간 연도 응답이 없으면(예: 수정본 충돌) 연속 관찰로 표시하지 않고 미확인으로 남김', () => {
+  const hist = [2018, 2019, 2020, 2021, 2022, 2023, 2025].map((year) => ({ year, zoning: '농림지역' })).concat([{ year: 2026, zoning: '제1종일반주거지역' }]);
+  const z = zb.evaluateZoningBasis({ history: hist, project: OSONG_PROJ, parcelEvidence: OSONG.parcel_zoning_evidence[GUNGPYEONG] });
+  assert.equal(z.basis_label, '농림지역(평가 기준 후보)');
+  assert.equal(z.trace.past_basis.label, '2025-01-01 기준(조회 2018~2025년 관찰 · 2024년 미확인 · 조회 시작연도 이전은 미확인)');
+  assert.ok(z.trace.unverified.includes('2024년 용도지역(조회 응답 없음·실패)'));
+});

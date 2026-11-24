@@ -52,3 +52,4 @@ button:disabled{opacity:.45;cursor:not-allowed}
 .f-map-tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:6px}.f-map-tools button{min-width:44px;font-size:20px;padding:4px 10px}
 .f-other{display:block;width:100%;margin:-2px 0 8px;padding:8px;border:1px solid #c7ccd2;border-radius:8px}
 .f-zoning-confirm{display:grid;gap:6px;margin:8px 0}.f-zoning-confirm select,.f-zoning-confirm input{display:block;width:100%;padding:8px;border:1px solid #c7ccd2;border-radius:8px;margin-top:2px}
+.f-zoning-ev{padding:6px 0;border-top:1px dashed #d5d9de}.f-zoning-ev:first-child{border-top:0}[data-f-zoning-unverified] ul{margin:0;padding-left:18px}

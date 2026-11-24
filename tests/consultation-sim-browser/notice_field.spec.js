@@ -367,3 +367,48 @@ test('용도지역: 사업 고시 사유서와 같은 변경이면 "농림지역
   expect(text).toContain('감정평가 기준시점 2026-12-15');
   expect(text).not.toContain('제1종일반주거지역');
 });
+
+test('용도지역 역추적: 이전 연도 추가 조회 → 변경 유발 고시·과거 기준일·대조 문서·미확인 분리 · 필지 대조 기록은 같은 PNU에만', async ({ page }) => {
+  const PNU = '4311325027103200001'; // 공개 고시 표본 필지(합성 색인 행에 연결 — 소유 정보 없음)
+  const years = [];
+  await page.route('**/__public_data_bridge/**', async (route) => {
+    const op = new URL(route.request().url()).pathname.split('/').pop();
+    const req = route.request().postData() ? JSON.parse(route.request().postData()) : {};
+    if (op === 'vworld_land') years.push(req.standard_year);
+    const zoning = req.standard_year === 2026 ? '제1종일반주거지역' : req.standard_year === 2019 ? '관리지역' : req.standard_year === 2018 ? null : '농림지역';
+    const body = op === 'status' ? { ok: true, vworld_configured: true, public_data_configured: true }
+      : op === 'resolve_pnu' ? { ok: true, candidate: { pnu: PNU, legal_dong_name: '가상도 연습시 숲내읍 바위리' } }
+        : op === 'pnu_parcel' ? { ok: true, parcel: { pnu: PNU, address: '가상도 연습시 숲내읍 바위리 12-3', jibun: '12-3 답' } }
+          : op === 'parcel_map' ? { ok: true, target: { status: 'NOT_FOUND', pnu: PNU } }
+            : { ok: true, record: zoning ? { land_category: '답', zoning, individual_official_price: 1000, price_year: req.standard_year } : null };
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+  });
+  const idx = JSON.parse(fs.readFileSync(FIXTURE, 'utf8'));
+  idx.notice = { ...idx.notice, id: 'molit-2025-456', notice_no: '국토교통부 고시 제2025-456호', notice_date: '2025-08-28' };
+  await page.goto('/field.html');
+  await page.locator('[data-f-index-file]').setInputFiles({ name: 'osong-profile-synthetic.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(idx)) });
+  await search(page, '바위리 12-3');
+  await page.locator('[data-f-pd-go]').click();
+  await expect(page.locator('[data-f-zoning-status]')).toHaveAttribute('data-f-zoning-status', 'NOTICE_PROJECT_REASON');
+  await expect(page.locator('[data-f-zoning-trigger]')).toContainText('국토교통부 고시 제2025-456호');
+  await expect(page.locator('[data-f-zoning-trigger]')).toContainText('효력 기준일 미확인');
+  await expect(page.locator('[data-f-zoning-verification]')).toHaveText('제2025-456호 첨부 변경도 제4도엽의 변경 후 용도지역 확인 · 2020-236 기정도면 대조 전 · 전문가 검증 전');
+  await expect(page.locator('[data-f-zoning-docs] [data-f-zoning-ev-status="CONFIRMED"]')).toContainText('제4도엽');
+  await expect(page.locator('[data-f-zoning-docs] [data-f-zoning-ev-grade="3"]')).toContainText('필지 확정 근거 아님');
+  await expect(page.locator('[data-f-zoning-unverified]')).toContainText('청주시 고시 제2020-236호');
+  years.length = 0;
+  await page.locator('[data-f-zoning-trace]').click();
+  await expect(page.locator('[data-f-zoning-trace-state]')).toHaveAttribute('data-f-zoning-trace-state', 'OK');
+  expect(years).toEqual([2024, 2023, 2022, 2021, 2020, 2019, 2018]);
+  await expect(page.locator('[data-f-zoning-history]')).toContainText('2019 관리지역 → 2020 농림지역');
+  await expect(page.locator('[data-f-zoning-basis]')).toContainText('농림지역(평가 기준 후보)'); // 2019 관리지역으로 거슬러 가지 않음
+  await expect(page.locator('[data-f-zoning-past]')).toContainText('2025-01-01 기준(조회 2020~2025년 연속 관찰)');
+  await expect(page.locator('[data-f-zoning-unverified]')).toContainText('2019~2020년 기준 사이 관리지역 → 농림지역 변경의 원인 고시');
+  const [download] = await Promise.all([page.waitForEvent('download'), page.locator('[data-f-save]').click()]);
+  const text = fs.readFileSync(await download.path(), 'utf8');
+  expect(text).toContain('변경 유발 고시: 국토교통부 고시 제2025-456호(2025-08-28)');
+  expect(text).toContain('검증 상태: 제2025-456호 첨부 변경도 제4도엽의 변경 후 용도지역 확인 · 2020-236 기정도면 대조 전 · 전문가 검증 전');
+  expect(text).not.toMatch(/제1종일반주거지역|관리지역/);
+  await page.locator('[data-f-new]').click();
+  await expect(page.locator('[data-f-zoning]')).toBeHidden();
+});

@@ -32,6 +32,7 @@ export async function bridgeStatus({ fetchImpl, location: loc }) {
 
 const ERROR_TEXT = {
   VWORLD_API_ERROR: 'VWorld가 실패 코드를 돌려줌 — 인증키·등록 도메인·서비스 범위 확인 필요',
+  VWORLD_REVISION_CONFLICT: '같은 연도 자료가 서로 다름(수정본 충돌) — 값 미사용, 원문 확인 필요',
   VWORLD_API_KEY_MISSING: 'VWorld 키 미설정', PUBLIC_DATA_KEY_MISSING: '공공데이터포털 키 미설정',
   BRIDGE_UNREACHABLE: '로컬 브리지 응답 없음', LEGAL_DONG_MULTIPLE_CANDIDATES: '법정동 후보 복수', LEGAL_DONG_NOT_FOUND: '법정동 코드 없음',
 };
@@ -121,6 +122,25 @@ export async function queryPublicData({ fetchImpl, location: loc, index, row = n
   const last = attempts[attempts.length - 1];
   return { status: attempts.every((a) => a.ok) ? PD_STATUS.NO_DATA : PD_STATUS.FAILED, stage: PD_STAGE.RESOLUTION_ONLY, step: 'vworld_land', ...base, attempts, zoning_history: [],
     code: last?.code, result_code: last?.result_code || null, reason: attempts.every((a) => a.ok) ? '조회 연도에 토지특성 자료 없음' : errorText(last?.code, last?.message), values: [] };
+}
+
+// 용도지역 이력 역추적용 추가 연도 조회(상담자가 누를 때만). 이미 확인된 PNU만 받는다. 용도지역 값만 쓰고 나머지는 버린다.
+export const TRACE_YEARS = Object.freeze([2024, 2023, 2022, 2021, 2020, 2019, 2018]);
+export async function queryZoningHistory({ fetchImpl, location: loc, pnu, years = TRACE_YEARS, now = () => new Date() }) {
+  const at = () => now().toISOString();
+  if (!bridgeAllowed(loc)) return { status: PD_STATUS.OFFLINE, pnu, rows: [], attempts: [] };
+  if (!/^\d{19}$/.test(String(pnu || ''))) return { status: PD_STATUS.FAILED, pnu, rows: [], attempts: [], reason: 'PNU 미확인 — 이력 조회 안 함' };
+  const rows = []; const attempts = [];
+  for (const year of years) {
+    const res = await call(fetchImpl, '/vworld_land', { pnu, standard_year: year, dedupe_revisions: true });
+    const zoning = res.ok && res.record ? (res.record.zoning ?? null) : null;
+    attempts.push({ year, ok: Boolean(res.ok), found: Boolean(zoning), code: res.error_code || null, result_code: resultCodeOf(res.error_message) });
+    if (zoning) rows.push({ year, zoning, fetched_at: at(), source: 'VWorld 국가중점데이터 토지특성' });
+    if (!res.ok && ['RATE_LIMITED', 'BRIDGE_UNREACHABLE', 'UNAUTHORIZED'].includes(res.error_code)) break;
+  }
+  const failed = attempts.filter((x) => !x.ok);
+  return { status: rows.length ? PD_STATUS.OK : failed.length ? PD_STATUS.FAILED : PD_STATUS.NO_DATA, pnu, rows, attempts, fetched_at: at(),
+    reason: failed.length ? `${failed.map((x) => x.year).join('·')}년 조회 실패 — ${errorText(failed[0].code, null)}` : null };
 }
 
 // 지도: 같은 PNU의 연속지적 exact-one 경계 + 주변 지적. 항공영상은 화면에서 /__field/aerial로 따로 받는다.

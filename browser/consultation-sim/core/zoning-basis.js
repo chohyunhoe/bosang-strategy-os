@@ -8,6 +8,8 @@
 //  - 사업과 무관한 변경이 '확인'되면 평가 기준시점의 용도지역(원칙)을 후보로 표시.
 //  - 변경 이력 또는 사업 관련성이 확인되지 않으면 '확인 필요' — 임의 추정·자동 판정 없음.
 //  - 사업 관련성 확인은 상담자가 근거 문서와 함께 직접 표시해야 하며, 그래도 '전문가 검증 전'이다.
+import { traceZoningOrigin } from './zoning-trace.js';
+
 export const ZONING_RULES = Object.freeze([
   { id: 'ENFORCEMENT_RULE_23_2', label: '「공익사업을 위한 토지 등의 취득 및 보상에 관한 법률 시행규칙」 제23조 제2항', note: '해당 공익사업을 직접 목적으로 변경된 용도지역 등은 변경 전 기준' },
   { id: 'APPRAISAL_PRACTICE_6_1_2', label: '「감정평가 실무기준」 6.1.2', note: '문언은 GPT가 국가법령정보센터에서 확인(2026-11-24) — 이 시스템에는 원문 미수록' },
@@ -41,7 +43,19 @@ const clean = (v) => (v == null ? '' : String(v).trim());
 // project: { notice_no, notice_date, source_url, zoning_check, zoning_decisions:[{from,to,area_m2,reason,source,verified,parcel_level}] } (사업 프로필 — 없으면 사업 미지정)
 // valuationDate: 감정평가 기준시점(가격시점). 조회 기준연도(토지특성 기준일)와 다르며, 모르면 null.
 // confirmation: { relation:'PROJECT_RELATED'|'UNRELATED'|'', basis_doc, by } (상담자 입력)
-export function evaluateZoningBasis({ history = [], project = null, confirmation = null, valuationDate = null } = {}) {
+// project.zoning_events / prior_designations / supporting_documents: 사업별 고시 역추적 자료(zoning-trace.js)
+// parcelEvidence: 이 필지(PNU)에 대해 실제 대조한 기록(도면·이력) — 없으면 빈 배열
+// zoning_decisions만 있는 예전 프로필은 '용도지역 결정 포함·사업 관련 사유 확인' 고시 1건으로 본다.
+export function projectZoningEvents(project) {
+  if (!project) return [];
+  if (Array.isArray(project.zoning_events) && project.zoning_events.length) return project.zoning_events;
+  if (Array.isArray(project.zoning_decisions) && project.zoning_decisions.length) {
+    return [{ id: 'profile-decisions', notice_no: project.notice_no || null, notice_date: project.notice_date || null, zoning_decision: 'INCLUDED', project_related: true,
+      changes: project.zoning_decisions }];
+  }
+  return [];
+}
+export function evaluateZoningBasis({ history = [], project = null, confirmation = null, valuationDate = null, parcelEvidence = [] } = {}) {
   const rows = history.filter((h) => Number.isInteger(Number(h.year)) && clean(h.zoning)).map((h) => ({ year: Number(h.year), zoning: clean(h.zoning) }))
     .sort((a, b) => a.year - b.year);
   const current = rows.length ? rows[rows.length - 1] : null;
@@ -53,7 +67,9 @@ export function evaluateZoningBasis({ history = [], project = null, confirmation
     query_basis: current ? { year: current.year, as_of: `${current.year}-01-01`, label: `조회 기준연도 ${current.year}(토지특성 기준일 ${current.year}-01-01)` } : null,
     valuation_date: clean(valuationDate) || null,
     valuation_date_label: clean(valuationDate) ? `감정평가 기준시점 ${clean(valuationDate)}(상담자 입력 · 문서 확인 필요)` : '감정평가 기준시점 미확인 — 조회 기준연도와 별개(협의·재결 등 가격시점 문서로 확인)',
-    rules: ZONING_RULES.map((r) => ({ ...r })), verification: 'UNVERIFIED_BY_EXPERT', change: null, basis_zoning: null, basis_label: null, basis_reason: null, evidence: null, notes: [],
+    rules: ZONING_RULES.map((r) => ({ ...r })), verification: 'UNVERIFIED_BY_EXPERT', verification_label: null, change: null, basis_zoning: null, basis_label: null, basis_reason: null, evidence: null, notes: [],
+    trace: traceZoningOrigin({ history: rows, events: projectZoningEvents(project), priorDesignations: project?.prior_designations || [],
+      supportingDocs: project?.supporting_documents || [], parcelEvidence }),
   };
   if (!current) return { ...base, status: ZONING_STATUS.NO_DATA, notes: ['공적자료에서 용도지역을 받지 못했습니다. 토지이용계획확인서로 확인하세요.'] };
   // 연속된 연도 사이 첫 변경과 마지막 변경(여러 번이면 모두 기록)
@@ -64,9 +80,12 @@ export function evaluateZoningBasis({ history = [], project = null, confirmation
       notes: [`${rows[0].year}~${current.year}년 공적자료에서 용도지역 변경이 보이지 않습니다(${current.zoning}). 그 이전 변경 여부와 사업 관련성은 토지이용계획·도시관리계획 이력으로 확인 필요.`] };
   }
   const first = changes[0]; const last = changes[changes.length - 1];
-  const change = { before: first.from, after: last.to, steps: changes, window: `${first.from_year}~${last.to_year}` };
+  const trig = base.trace.trigger;
+  // 변경 전(before)은 사업 유발 변경이 확인되면 그 직전 용도지역, 아니면 마지막 변경 직전 용도지역(여러 변경을 하나로 뭉치지 않음)
+  const change = { before: trig ? trig.change.from : last.from, after: last.to, steps: changes, window: `${first.from_year}~${last.to_year}`,
+    trigger_window: trig ? `${trig.change.from_year}~${trig.change.to_year}` : null };
   const notes = [];
-  if (changes.length > 1) notes.push(`조회 범위에서 용도지역이 ${changes.length}번 바뀌었습니다 — 각 변경의 사유를 따로 확인하세요.`);
+  if (changes.length > 1) notes.push(`조회 범위에서 용도지역이 ${changes.length}번 바뀌었습니다 — 각 변경의 사유를 따로 확인하세요.${trig ? '' : ' 상담자 표시는 마지막 변경 기준으로만 반영됩니다.'}`);
   const nd = clean(project?.notice_date);
   if (nd) {
     const y = Number(nd.slice(0, 4));
@@ -77,9 +96,10 @@ export function evaluateZoningBasis({ history = [], project = null, confirmation
   } else {
     notes.push('사업 고시가 지정되지 않아 사업 관련성을 확인할 수 없습니다.');
   }
-  // 사업 고시 사유서에 관찰된 변경(전→후)과 같은 결정이 있으면 근거자료로 연결(필지 단위 확인은 아님)
-  const decision = (project?.zoning_decisions || []).find((d) => clean(d.from) === change.before && clean(d.to) === change.after) || null;
-  const evidence = decision ? { ...decision } : null;
+  // 사업 고시(용도지역 결정 포함·사업 관련 사유 확인)가 관찰된 변경 구간·변경 전후와 맞으면 변경 유발 고시로 연결
+  const decision = trig ? trig.decision : null;
+  const evidence = decision ? { ...decision, notice_no: trig.event.notice_no, notice_date: trig.event.notice_date,
+    parcel_level: base.trace.parcel_map_confirmed ? '필지별 변경도면 대조함(아래 대조 문서)' : (decision.parcel_level || '필지별 변경도면 대조 전') } : null;
   const rel = clean(confirmation?.relation); const doc = clean(confirmation?.basis_doc);
   const counselor = rel && doc ? { relation: rel, basis_doc: doc, by: clean(confirmation.by) || null } : null;
   const candidate = (z) => `${z}(평가 기준 후보)`;
@@ -97,7 +117,8 @@ export function evaluateZoningBasis({ history = [], project = null, confirmation
   if (decision) {
     notes.push(`고시 사유서: ${decision.from} → ${decision.to}${decision.area_m2 ? ` ${Number(decision.area_m2).toLocaleString('ko-KR')}㎡` : ''} · ${decision.reason}. 이 필지가 변경 구역에 포함되는지는 ${decision.parcel_level || '필지별 변경도면 대조 필요'}.`);
     return { ...base, change, evidence, status: ZONING_STATUS.NOTICE_PROJECT_REASON, basis_zoning: change.before, basis_label: candidate(change.before), basis_reason: 'ENFORCEMENT_RULE_23_2',
-      verification: 'NOTICE_REASON_CONFIRMED_PARCEL_MAP_PENDING_UNVERIFIED_BY_EXPERT', notes };
+      verification: base.trace.parcel_map_confirmed ? 'NOTICE_REASON_AND_PARCEL_MAP_CONFIRMED_UNVERIFIED_BY_EXPERT' : 'NOTICE_REASON_CONFIRMED_PARCEL_MAP_PENDING_UNVERIFIED_BY_EXPERT',
+      verification_label: base.trace.verification_label, notes };
   }
   return { ...base, change, evidence, status: ZONING_STATUS.CHANGE_UNCONFIRMED, notes };
 }
@@ -109,6 +130,13 @@ export function zoningCardLines(result) {
   // 고시 사유서에 근거한 후보는 고시 기재값이라 카드에 적는다(공적자료 API 값은 적지 않음).
   if (result.status === ZONING_STATUS.NOTICE_PROJECT_REASON && result.evidence) {
     lines.push(`평가 기준 후보: ${result.evidence.from}(평가 기준 후보) — 근거: ${result.evidence.source} · ${result.evidence.reason} · ${result.evidence.parcel_level} · 전문가 검증 전`);
+  }
+  if (result.status === ZONING_STATUS.NOTICE_PROJECT_REASON && result.trace?.trigger) {
+    const t = result.trace.trigger;
+    lines.push(`변경 유발 고시: ${t.event.notice_no}(${t.event.notice_date || '고시일 미상'}) — 용도지역 결정(변경) 포함 · 사업 관련 사유 명시${t.event.effective_date ? ` · 효력 ${t.event.effective_date}` : ' · 효력 기준일 원문 확인'}`);
+    if (result.trace.past_basis) lines.push(`변경 전 기준 관찰: ${result.trace.past_basis.as_of} 기준 공적자료(조회 연도별 값은 화면 열람)`);
+    lines.push(`대조 문서: ${result.trace.evidence.filter((e) => e.grade !== 4).map((e) => `${['', '①', '②', '③'][e.grade]} ${e.title}(${{ CONFIRMED: '필지 대조함', AGGREGATE_ONLY: '총괄', PENDING: '대조 전', NOT_OBTAINED: '미확보' }[e.status] || e.status})`).join(' / ')}`);
+    lines.push(`검증 상태: ${result.verification_label}`);
   }
   if (result.query_basis) lines.push(`${result.query_basis.label} / ${result.valuation_date_label}`);
   if (result.change) lines.push(`용도지역 변경 관찰: ${result.change.window}년 기준 사이(변경 전·후 값은 공적자료 화면 열람)`);
