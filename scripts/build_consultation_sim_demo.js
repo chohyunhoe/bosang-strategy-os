@@ -29,6 +29,7 @@ const ORDER = [
   'core/consultation-session.js',
   'core/manual-pack.js',
   'core/consult-intake.js',
+  'core/case-tracks.js',
   'core/consult-record.js',
   'core/output-binding.js',
   'core/consult-report.js',

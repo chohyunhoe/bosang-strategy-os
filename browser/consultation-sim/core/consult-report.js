@@ -5,6 +5,7 @@
 // - 기본서 발췌는 지식팩 원문을 그대로 줄여 옮기며(요약 생성 없음), 부족하면 '원본 확인 필요'로 표시한다.
 import { STATUS, STATUS_LABEL, scrubSecrets } from './consultation-session.js';
 import { recordMatches } from './consult-record.js';
+import { buildCaseTrack } from './case-tracks.js';
 import { evaluateIntake, nextActionsFor, INTAKE_STATUS_LABEL } from './consult-intake.js';
 import { buildEvidenceGates, EVIDENCE_STATE, EVIDENCE_STATE_LABEL } from './manual-pack.js';
 import { FORBIDDEN_PHRASES } from './consult-opinion.js';
@@ -100,13 +101,27 @@ function evidenceLines(gates) {
   return lines;
 }
 
+function trackLines(track) {
+  const lines = ['■ 사업·보상 유형별 체크리스트(전문가 판단 대기 · 요건 충족 판단 아님)'];
+  if (!track.checklists.length) { lines.push(`- ${track.label}: ${track.status_label}`); return lines; }
+  track.checklists.forEach((c) => {
+    lines.push(`- [${c.title}${c.claim ? ` · ${c.claim}` : ''}] 관련 조문: ${c.legal_ref}`);
+    lines.push(`  · 확인 필요 사실: ${c.facts.join(' / ')}`);
+    lines.push(`  · 증빙: ${c.evidence.join(' / ')}`);
+    if (c.optional.length) lines.push(`  · 선택형 증거(해당 시만): ${c.optional.join(' / ')}`);
+    lines.push(`  · 절차·기한 원문 확인: ${c.procedure.join(' / ')}`);
+    lines.push(`  · 다음 조치: ${c.next.join(' / ')}`);
+  });
+  return lines;
+}
+
 const TASK_TITLE = Object.freeze({
   'T-01': '비교표준지 선정 적정성 검토', 'T-05': '요인비교 기준시점·산정 근거 검토',
   'T-09': '지목과 현실 이용상황 검토', 'T-12': '현실적 이용상황 증거 정리',
 });
 const LITIGATION_GOALS = new Set(['ADJUDICATION', 'OBJECTION', 'LITIGATION']);
 
-export function buildTasks({ gates, opinion, intakeEval }) {
+export function buildTasks({ gates, opinion, intakeEval, track = null }) {
   const tasks = [];
   gates.forEach((g) => {
     if (g.state === EVIDENCE_STATE.NOT_TRIGGERED) return;
@@ -119,12 +134,12 @@ export function buildTasks({ gates, opinion, intakeEval }) {
     tasks.push({ title: `개별요인(${factorIssues.map((x) => x.title.replace(' 확인', '')).join('·')}) 비교 검토`, code: null, status: 'BLOCKED',
       prerequisites: [...new Set(factorIssues.flatMap((x) => x.needs || []))] });
   }
-  if (LITIGATION_GOALS.has(intakeEval?.goal)) {
+  // 재결·이의재결 비교 과업은 사업·보상 유형이 토지보상법 계열로 기록된 경우에만(유형 미확인·종전자산평가 이의 제외).
+  if (LITIGATION_GOALS.has(intakeEval?.goal) && track?.family) {
     tasks.push({ title: '재결·이의재결 단계 감정평가서 간 비교 검토', code: null, status: 'BLOCKED', prerequisites: ['재결서·이의재결서', '각 단계 감정평가서'] });
   }
-  if (intakeEval?.goal === 'REMAINDER') {
-    tasks.push({ title: '잔여지 등 추가 손실 검토', code: null, status: 'BLOCKED', prerequisites: ['잔여지 현황·이용 가능성 자료', '편입·잔여 면적 기재 문서'] });
-  }
+  // 잔여지·지장물·종전자산 과업은 유형별 트랙에서만 만든다(일반 '잔여지 등 추가 손실' 과업 폐지 — 제73조·제74조 분리).
+  if (track) tasks.push(...track.tasks);
   return tasks;
 }
 
@@ -140,9 +155,11 @@ export function buildConsultReport({ draft, record, intake = null, evidence = {}
   const opinion = d.analysis?.opinion || null;
   const intakeEval = evaluateIntake(intake, { now });
   const gates = buildEvidenceGates({ pack, draft: d, evidence });
-  const tasks = buildTasks({ gates, opinion, intakeEval });
+  const track = buildCaseTrack(intake);
+  const tasks = buildTasks({ gates, opinion, intakeEval, track });
   const materials = [...new Set([
     ...gates.filter((g) => g.state !== EVIDENCE_STATE.NOT_TRIGGERED).flatMap((g) => g.requirements.filter((r) => !r.auto && r.state !== EVIDENCE_STATE.SATISFIED).map((r) => r.label)),
+    ...track.materials,
     ...(opinion?.materials || []),
   ])];
   const actions = nextActionsFor(intakeEval);
@@ -157,16 +174,20 @@ export function buildConsultReport({ draft, record, intake = null, evidence = {}
     ...factLines(d),
     '■ 상담 4요소(상담자 기록 · 원 문서 대조 전)',
     ...intakeEval.items.map((i) => `- ${i.label}: ${i.value_text} [${INTAKE_STATUS_LABEL[i.status]}]`),
+    `- 사업·보상 유형: ${track.label} [${track.case_type ? '상담자 기록' : '미확인'}]${track.case_type === 'REMAINDER' ? ` · 청구 선택: ${[intake?.claim_73 === 'Y' && '제73조', intake?.claim_74 === 'Y' && '제74조'].filter(Boolean).join('·') || '미선택'}` : ''}`,
     '■ 확인 필요 신호(결론 아님)',
     ...(d.analysis.signals.length ? d.analysis.signals : [{ title: '자동 신호 없음', detail: '' }]).map((s) => `- ${s.title}${s.detail ? `: ${s.detail}` : ''}`),
   ];
   const s2 = standardLines(d, opinion);
   const s3 = manualLines(gates, opinion, pack);
-  const s4 = evidenceLines(gates);
+  const s4 = [...evidenceLines(gates), ...trackLines(track)];
   const deadline = intakeEval.items.find((i) => i.element === 'deadline');
   const s5 = [
     `- 절차 단계: ${intakeEval.items.find((i) => i.element === 'stage').value_text}`,
     `- 판단·결정 권한자: ${intakeEval.items.find((i) => i.element === 'authority').value_text}`,
+    `- 사업·보상 유형: ${track.label} (${track.status_label})`,
+    ...track.warnings.map((w) => `- [주의] ${w}`),
+    ...track.notes.map((n) => `- ${n}`),
     `- 기한·기산일: ${deadline.value_text} (${deadline.note})`,
     '■ 다음 조치', ...actions.map((a) => `- ${a}`),
     '■ 상담 멘트(초안)', opinion?.script || '- 표준지 검토 후 생성',
@@ -186,7 +207,7 @@ export function buildConsultReport({ draft, record, intake = null, evidence = {}
   return {
     text, sections: REPORT_SECTIONS.map((title, i) => ({ no: i + 1, title, lines: bodies[i] })),
     intake: intakeEval, gates, tasks, materials, actions,
-    record_binding: recordBinding, binding_ok: recordBinding.status !== 'MISMATCH',
+    track, record_binding: recordBinding, binding_ok: recordBinding.status !== 'MISMATCH',
     internal_excerpt_included: Boolean(pack),
     forbidden_hits: generated.filter((t) => FORBIDDEN_PHRASES.some((re) => re.test(t))),
   };

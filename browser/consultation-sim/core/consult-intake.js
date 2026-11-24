@@ -6,6 +6,18 @@
 
 export const INTAKE_SCHEMA = 'bso-consult-intake/0.1';
 
+// 사업·보상 유형(Issue #31). 상담자가 명시적으로 고른다 — 목표·단계에서 추정하지 않는다.
+export const CASE_TYPE_OPTIONS = Object.freeze([
+  ['', '미확인'],
+  ['LAND', '토지 수용·사용 보상(토지보상법)'],
+  ['OBJECTS', '건축물·공작물 등 지장물 보상(토지보상법)'],
+  ['REMAINDER', '잔여지 손실·매수·수용 청구(토지보상법)'],
+  ['PRIOR_ASSET', '정비사업 종전자산평가 이의(도시정비법)'],
+  ['OTHER', '기타·불명확'],
+]);
+// 아래 절차 단계(STAGE_OPTIONS)는 토지보상법 수용·사용 절차 기준이다. 이 계열 유형에서만 단계별 불복 경로 안내를 한다.
+export const EXPROPRIATION_FAMILY = Object.freeze(['LAND', 'OBJECTS', 'REMAINDER']);
+
 export const GOAL_OPTIONS = Object.freeze([
   ['', '미확정'],
   ['ADEQUACY_REVIEW', '보상금(평가액) 적정성 검토'],
@@ -13,7 +25,7 @@ export const GOAL_OPTIONS = Object.freeze([
   ['ADJUDICATION', '수용재결 대응'],
   ['OBJECTION', '이의신청 대응'],
   ['LITIGATION', '행정소송 검토'],
-  ['REMAINDER', '잔여지 등 추가 손실 검토'],
+  ['REMAINDER', '잔여지 청구 검토(유형에서 제73조·제74조 선택)'],
   ['OTHER', '기타(직접 기재)'],
 ]);
 
@@ -47,6 +59,7 @@ const txt = (v) => (v == null ? '' : String(v).trim());
 export function emptyIntake() {
   return {
     schema: INTAKE_SCHEMA,
+    case_type: '', claim_73: '', claim_74: '',
     goal: '', goal_note: '',
     stage: '', stage_basis: '',
     trigger_event: '', trigger_date: '', trigger_source: '',
@@ -131,7 +144,7 @@ export function evaluateIntake(raw, { now = new Date() } = {}) {
       value_text: parts.length ? parts.join(' / ') : '미확정',
       note: [
         ...problems,
-        'BSO는 법정기한을 계산하지 않음 — 기간은 법령 원문과 통지서·재결서 등 문서 기재로 확인',
+        `BSO는 법정기한을 계산하지 않음 — 기간은 법령 원문과 ${v.case_type === 'PRIOR_ASSET' ? '통지서·공람 공고문' : '통지서·재결서'} 등 문서 기재로 확인`,
       ].join(' · '),
       remaining_days: remaining,
       legal_deadline_computed: false,
@@ -155,32 +168,51 @@ export function evaluateIntake(raw, { now = new Date() } = {}) {
     schema: INTAKE_SCHEMA, items,
     recorded_count: items.length - undetermined.length,
     undetermined: undetermined.map((i) => i.label),
-    stage: v.stage || null, goal: v.goal || null, authority: v.authority || null,
+    stage: v.stage || null, goal: v.goal || null, authority: v.authority || null, case_type: v.case_type || null,
     legal_deadline_computed: false,
   };
 }
 
 // 절차 단계별 다음 조치(자료확보·확인 행위). 기간 수치는 넣지 않는다.
+// 단계별 다음 조치. R = 특정 불복 경로(재결·이의재결·소송) 또는 기한 확인 안내 → 사업·보상 유형이 토지보상법 계열일 때만 표시.
+const G = (text) => ({ text, route: false });
+const R = (text) => ({ text, route: true });
 const STAGE_ACTIONS = Object.freeze({
-  '': ['현재 절차 단계 확인: 고객이 받은 공문(보상계획 공고·협의요청서·재결서 등)의 종류와 수령일 확인'],
-  PRE_RECOGNITION: ['사업 공람·공고문 확보', '사업인정(의제) 여부·예정 시기 확인', '편입 범위(토지조서 작성 여부) 확인'],
-  RECOGNITION: ['사업인정(의제) 고시문 확보 — 고시일 기록(T-05 요인비교 시점 검토 자료)', '보상계획 공고 예정 여부 확인'],
-  COMPENSATION_PLAN: ['보상계획 공고문·토지조서·물건조서 열람 및 기재사항 대조', '조서 기재에 대한 의견 제출 방법·기간은 공고문 기재로 확인(BSO 미계산)'],
-  APPRAISAL: ['감정평가 진행 여부·평가기관 확인', '실제 이용상황 증빙(촬영일 있는 사진·대장) 정리'],
-  NEGOTIATION: ['협의요청서·보상금 산정 내역 확보', '보상평가서(비교표준지·개별요인 비교표) 열람·사본 요청', '협의기간은 협의요청서 기재로 확인(BSO 미계산)'],
-  ADJUDICATION_REQUEST: ['재결신청(청구) 여부·일자 확인 — 관련 기간은 법령 원문·통지서로 확인(BSO 미계산)', '협의 경위 자료(협의요청서·회신) 정리'],
-  ADJUDICATION: ['재결서 정본 송달일 확인 및 기산일 기록', '이의신청·행정소송 기간은 법령 원문·재결서 안내문으로 확인(BSO 미계산)', '재결 감정평가서 확보'],
-  OBJECTION: ['이의신청서·이의재결서 확보', '이의재결 감정평가서 확보', '행정소송 제기 기간은 법령 원문·이의재결서 안내로 확인(BSO 미계산)'],
-  LITIGATION: ['소송 진행 단계·담당 변호사 확인', '법원 감정 신청 여부 확인'],
+  '': [G('현재 절차 단계 확인: 고객이 받은 공문(보상계획 공고·협의요청서·재결서 등)의 종류와 수령일 확인')],
+  PRE_RECOGNITION: [G('사업 공람·공고문 확보'), G('사업인정(의제) 여부·예정 시기 확인'), G('편입 범위(토지조서 작성 여부) 확인')],
+  RECOGNITION: [G('사업인정(의제) 고시문 확보 — 고시일 기록(T-05 요인비교 시점 검토 자료)'), G('보상계획 공고 예정 여부 확인')],
+  COMPENSATION_PLAN: [G('보상계획 공고문·토지조서·물건조서 열람 및 기재사항 대조'), R('조서 기재에 대한 의견 제출 방법·기간은 공고문 기재로 확인(BSO 미계산)')],
+  APPRAISAL: [G('감정평가 진행 여부·평가기관 확인'), G('실제 이용상황 증빙(촬영일 있는 사진·대장) 정리')],
+  NEGOTIATION: [G('협의요청서·보상금 산정 내역 확보'), G('보상평가서(비교표준지·개별요인 비교표) 열람·사본 요청'), R('협의기간은 협의요청서 기재로 확인(BSO 미계산)')],
+  ADJUDICATION_REQUEST: [R('재결신청(청구) 여부·일자 확인 — 관련 기간은 법령 원문·통지서로 확인(BSO 미계산)'), G('협의 경위 자료(협의요청서·회신) 정리')],
+  ADJUDICATION: [R('재결서 정본 송달일 확인 및 기산일 기록'), R('이의신청·행정소송 기간은 법령 원문·재결서 안내문으로 확인(BSO 미계산)'), R('재결 감정평가서 확보')],
+  OBJECTION: [R('이의신청서·이의재결서 확보'), R('이의재결 감정평가서 확보'), R('행정소송 제기 기간은 법령 원문·이의재결서 안내로 확인(BSO 미계산)')],
+  LITIGATION: [R('소송 진행 단계·담당 변호사 확인'), R('법원 감정 신청 여부 확인')],
 });
 
 export function nextActionsFor(intakeEval) {
-  const actions = [...(STAGE_ACTIONS[intakeEval?.stage || ''] || STAGE_ACTIONS[''])];
+  const caseType = intakeEval?.case_type || '';
+  const stageItems = STAGE_ACTIONS[intakeEval?.stage || ''] || STAGE_ACTIONS[''];
+  let actions;
+  if (caseType === 'PRIOR_ASSET') {
+    // 정비사업 종전자산평가 이의: 토지보상법 수용 절차 단계 안내를 쓰지 않는다(재결·이의재결·소송 자동 안내 0건).
+    actions = ['정비사업 진행 단계(분양신청·관리처분계획 공람·인가)와 받은 통지서 종류·수령일 확인'];
+  } else if (EXPROPRIATION_FAMILY.includes(caseType)) {
+    actions = stageItems.map((a) => a.text);
+  } else {
+    // 유형 미확인: 일반 서류 확보만. 특정 불복 경로·기한 안내는 보류.
+    actions = stageItems.filter((a) => !a.route).map((a) => a.text);
+    if (!actions.length) actions = [STAGE_ACTIONS[''][0].text];
+    actions.push('사업·보상 유형 확인 — 확인 전에는 특정 불복 경로(재결·이의재결·소송)·기한 안내를 보류');
+  }
   const items = Object.fromEntries((intakeEval?.items || []).map((i) => [i.element, i]));
   if (items.goal?.status !== RECORDED) actions.push('고객 목표 확인(무엇을 결정·대응하려는지)');
-  if (items.deadline?.status !== RECORDED) actions.push('기산일·기한이 적힌 원 문서(통지서·재결서 등) 확보 — 기한은 문서 기재값으로만 기록');
+  const docs = caseType === 'PRIOR_ASSET' ? '통지서·공람 공고문 등' : '통지서·재결서 등';
+  if (items.deadline?.status !== RECORDED) actions.push(`기산일·기한이 적힌 원 문서(${docs}) 확보 — 기한은 문서 기재값으로만 기록`);
   if (items.deadline?.status === INVALID) actions.push('기한·기산일 입력값 재확인');
-  if (items.authority?.status !== RECORDED) actions.push('현재 결정 권한자(사업시행자·토지수용위원회·법원 등)와 담당 부서 확인');
+  if (items.authority?.status !== RECORDED) actions.push(caseType === 'PRIOR_ASSET'
+    ? '현재 결정 권한자(사업시행자·조합, 인가권자인 시장·군수등)와 담당 부서 확인'
+    : '현재 결정 권한자(사업시행자·토지수용위원회·법원 등)와 담당 부서 확인');
   if (Number.isFinite(items.deadline?.remaining_days) && items.deadline.remaining_days <= 14) {
     actions.unshift(`입력한 문서 기재 기한이 ${items.deadline.remaining_days < 0 ? '지났습니다' : `${items.deadline.remaining_days}일 남았습니다`} — 담당 전문가에게 즉시 공유(기한 효력은 원문으로 확인)`);
   }

@@ -43,7 +43,7 @@
     "release:v1:e2e": "playwright test -c playwright.release-v1.config.js",
     "release:v1:gate": "npm run parser:test && node tests/privacy_purge_guard.test.js && npm run release:v1:test && npm run release:v1:e2e",
     "consult:build": "node scripts/build_consultation_sim.js",
-    "consult:test": "npm run consult:build && node --test tests/consultation-sim/core.test.mjs tests/consultation-sim/standard.test.mjs tests/consultation-sim/manual-pack.test.mjs tests/consultation-sim/consult-report.test.mjs tests/consultation-sim/consult-record.test.mjs tests/consultation-sim/output-binding.test.mjs",
+    "consult:test": "npm run consult:build && node --test tests/consultation-sim/core.test.mjs tests/consultation-sim/standard.test.mjs tests/consultation-sim/manual-pack.test.mjs tests/consultation-sim/consult-report.test.mjs tests/consultation-sim/consult-record.test.mjs tests/consultation-sim/output-binding.test.mjs tests/consultation-sim/case-tracks.test.mjs",
     "consult:e2e": "playwright test -c playwright.consultation-sim.config.js",
     "consult:gate": "npm run consult:test && npm run consult:e2e",
     "consult:demo:build": "node scripts/build_consultation_sim_demo.js"
