@@ -38,7 +38,7 @@ function loadEnv(file) {
   return names;
 }
 
-const ALLOWED_OPS = new Map([['resolve_pnu', 'resolve_pnu'], ['pnu_parcel', 'pnu_parcel'], ['vworld_land', 'vworld_land'], ['parcel_map', 'parcel_map']]);
+const ALLOWED_OPS = new Map([['resolve_pnu', 'resolve_pnu'], ['pnu_parcel', 'pnu_parcel'], ['vworld_land', 'vworld_land'], ['parcel_map', 'parcel_map'], ['standard_lands', 'standard_lands']]);
 const MAX_BODY = 8 * 1024;
 const AERIAL = Object.freeze({ width: 1024, height: 768, minZoom: 12, maxZoom: 18, maxBytes: 6 * 1024 * 1024 });
 const LIMITS = { bridge: 120, aerial: 60 }; // 분당 요청 수(IP별)

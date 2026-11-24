@@ -4,8 +4,9 @@ import { validateNoticeIndex, searchNoticeIndex, SEARCH_STATUS, noticeFacts } fr
 import { issuesFor } from './core/field-issues.js';
 import { buildFieldCard, buildDirectCard } from './core/field-card.js';
 import { directLookupTarget } from './core/field-direct.js';
-import { bridgeStatus, queryPublicData, queryParcelMap, queryZoningHistory, TRACE_YEARS, PD_STATUS, PD_STAGE } from './core/field-public-data.js';
-import { fitView, withZoom, renderFieldMap } from './core/field-map.js';
+import { bridgeStatus, queryPublicData, queryParcelMap, queryZoningHistory, queryStandardLands, TRACE_YEARS, PD_STATUS, PD_STAGE } from './core/field-public-data.js';
+import { fitView, withZoom, renderFieldMap, mercator, MAP, project } from './core/field-map.js';
+import { buildStandardReview, STD_LABEL } from './core/field-standard.js';
 import { evaluateZoningBasis, RELATION_OPTIONS, ZONING_STATUS, ZONING_STATUS_LABEL } from './core/zoning-basis.js';
 import { EVIDENCE_STATUS_LABEL } from './core/zoning-trace.js';
 import { profileForIndex } from './profiles/index.js';
@@ -16,7 +17,7 @@ const fmt = (n) => (typeof n === 'number' ? n.toLocaleString('ko-KR', { maximumF
 const fmtTime = (iso) => (iso ? new Date(iso).toLocaleString('ko-KR', { hour12: false }) : '—');
 
 // row: 고시 색인 행 / direct: 색인 밖 전국 직접 조회 대상. 둘 중 하나만 활성.
-const st = { index: null, profile: profileForIndex(null), check: null, search: null, row: null, direct: null, directOffer: null, issues: new Set(), memo: '', other: '', map: null, zoningConfirm: { relation: '', basis_doc: '', by: '', valuation_date: '' }, zoningExtra: null, pdBridge: null, pd: null, pdBusy: false, epoch: 0 };
+const st = { index: null, profile: profileForIndex(null), check: null, search: null, row: null, direct: null, directOffer: null, issues: new Set(), memo: '', other: '', map: null, std: null, zoningConfirm: { relation: '', basis_doc: '', by: '', valuation_date: '' }, zoningExtra: null, pdBridge: null, pd: null, pdBusy: false, epoch: 0 };
 const active = () => st.row || st.direct;
 
 function setIndex(index, origin) {
@@ -39,14 +40,14 @@ function setIndex(index, origin) {
 function showIndexError(msg) { const e = $('[data-f-index-error]'); e.hidden = false; e.textContent = msg; $('[data-f-loader]').hidden = false; }
 
 function newConsultation() {
-  st.epoch += 1; st.search = null; st.row = null; st.direct = null; st.directOffer = null; st.issues = new Set(); st.memo = ''; st.map = null; st.other = ''; st.zoningConfirm = { relation: '', basis_doc: '', by: '', valuation_date: '' }; st.zoningExtra = null; st.pd = null; st.pdBusy = false;
+  st.epoch += 1; st.search = null; st.row = null; st.direct = null; st.directOffer = null; st.issues = new Set(); st.memo = ''; st.map = null; st.std = null; st.other = ''; st.zoningConfirm = { relation: '', basis_doc: '', by: '', valuation_date: '' }; st.zoningExtra = null; st.pd = null; st.pdBusy = false;
   $('[data-f-q]').value = ''; $('[data-f-memo]').value = ''; $('[data-f-out]').textContent = '';
   render();
   if (!$('[data-f-q]').disabled) $('[data-f-q]').focus();
 }
 
-function openDirect(target) { st.epoch += 1; st.row = null; st.direct = target; st.issues = new Set(); st.memo = ''; st.map = null; st.other = ''; st.zoningConfirm = { relation: '', basis_doc: '', by: '', valuation_date: '' }; st.zoningExtra = null; st.pd = null; $('[data-f-memo]').value = ''; $('[data-f-out]').textContent = ''; render(); }
-function selectRow(row) { st.epoch += 1; st.direct = null; st.row = row; st.issues = new Set(); st.memo = ''; st.map = null; st.other = ''; st.zoningConfirm = { relation: '', basis_doc: '', by: '', valuation_date: '' }; st.zoningExtra = null; st.pd = null; $('[data-f-memo]').value = ''; $('[data-f-out]').textContent = ''; render(); }
+function openDirect(target) { st.epoch += 1; st.row = null; st.direct = target; st.issues = new Set(); st.memo = ''; st.map = null; st.std = null; st.other = ''; st.zoningConfirm = { relation: '', basis_doc: '', by: '', valuation_date: '' }; st.zoningExtra = null; st.pd = null; $('[data-f-memo]').value = ''; $('[data-f-out]').textContent = ''; render(); }
+function selectRow(row) { st.epoch += 1; st.direct = null; st.row = row; st.issues = new Set(); st.memo = ''; st.map = null; st.std = null; st.other = ''; st.zoningConfirm = { relation: '', basis_doc: '', by: '', valuation_date: '' }; st.zoningExtra = null; st.pd = null; $('[data-f-memo]').value = ''; $('[data-f-out]').textContent = ''; render(); }
 
 function renderResult() {
   const box = $('[data-f-result]');
@@ -135,10 +136,12 @@ function renderMap() {
   if (panel.hidden) { box.innerHTML = ''; lastMapKey = ''; return; }
   const m = st.map;
   // 같은 화면 상태면 다시 그리지 않는다(영상 재요청 방지). 영상 수신 상태는 칩만 바꾼다.
-  const key = JSON.stringify([st.epoch, m.status, m.pnu, m.view?.zoom, m.showTarget, m.showNeighbors]);
+  const sr = m.status === 'EXACT_ONE' ? stdReview() : null;
+  m.std = sr && sr.markers ? { markers: sr.markers, selected: st.std.selected, showStandards: st.std.showStandards, showCandidates: st.std.showCandidates } : null;
+  const key = JSON.stringify([st.epoch, m.status, m.pnu, m.view?.zoom, m.view?.center, m.showTarget, m.showNeighbors, st.std?.status, st.std?.selected, st.std?.showStandards, st.std?.showCandidates, stdReviewKey]);
   if (key === lastMapKey) return;
   lastMapKey = key;
-  box.innerHTML = renderFieldMap(m);
+  box.innerHTML = renderFieldMap(m) + (m.status === 'EXACT_ONE' ? renderStdPanel(sr) : '');
   const img = $('[data-f-map-img]', box);
   if (img) {
     const mark = (state) => { if (st.map !== m) return; m.aerial = state; const chip = $('[data-f-map-aerial]', box); if (chip) { chip.dataset.fMapAerial = state; chip.className = `chip ${state === 'OK' ? 'ok' : 'bad'}`; chip.textContent = state === 'OK' ? '항공영상 수신' : '항공영상 미수신'; } };
@@ -146,7 +149,106 @@ function renderMap() {
     img.addEventListener('error', () => mark('FAILED'));
   }
   box.querySelectorAll('[data-f-map-step]').forEach((b) => b.addEventListener('click', () => { m.view = withZoom(m.view, m.view.zoom + Number(b.dataset.fMapStep)); m.aerial = 'LOADING'; renderMap(); }));
-  box.querySelectorAll('[data-f-map-toggle]').forEach((c) => c.addEventListener('change', () => { if (c.dataset.fMapToggle === 'target') m.showTarget = c.checked; else m.showNeighbors = c.checked; renderMap(); }));
+  box.querySelectorAll('[data-f-map-toggle]').forEach((c) => c.addEventListener('change', () => {
+    const k = c.dataset.fMapToggle;
+    if (k === 'target') m.showTarget = c.checked; else if (k === 'neighbors') m.showNeighbors = c.checked;
+    else if (k === 'standards' && st.std) st.std.showStandards = c.checked; else if (k === 'candidates' && st.std) st.std.showCandidates = c.checked;
+    renderMap();
+  }));
+  box.querySelectorAll('[data-f-map-fit]').forEach((b) => b.addEventListener('click', () => fitStandard(m, sr)));
+  box.querySelectorAll('[data-f-std-pin]').forEach((b) => b.addEventListener('click', () => selectStandard(b.dataset.fStdPin, false)));
+  box.querySelectorAll('[data-f-std-item]').forEach((b) => b.addEventListener('click', () => selectStandard(b.dataset.fStdItem, true)));
+  box.querySelectorAll('[data-f-std-go]').forEach((b) => b.addEventListener('click', runStandard));
+}
+
+// ── 주변 표준지 · 비교표준지 후보(검토 보조, 화면 열람 전용 — 카드·인쇄 제외) ─────────────────────
+function pdValue(key) { return (st.pd?.values || []).find((v) => v.key === key) || null; }
+let stdReviewKey = ''; let stdReviewCache = null;
+// 용도지역 판단(역추적·상담자 표시)이 바뀌면 같은 응답으로 후보를 다시 판정한다(재조회 없음).
+function stdReview() {
+  if (!st.std || !st.std.response) return null;
+  const z = currentZoning();
+  const k = JSON.stringify([st.std.fetched_at, z?.status, z?.basis_zoning, z?.verification_label, pdValue('zoning')?.value]);
+  if (k !== stdReviewKey) {
+    stdReviewKey = k;
+    stdReviewCache = buildStandardReview({ response: st.std.response, zoning: z,
+      target: { zoning: pdValue('zoning')?.value, land_use: pdValue('land_use')?.value, land_category: pdValue('land_category')?.value,
+        road_access: pdValue('road_access')?.value, shape: pdValue('shape')?.value, elevation: pdValue('elevation')?.value } });
+  }
+  return stdReviewCache;
+}
+async function runStandard() {
+  const pnu = st.pd?.pnu; const subject = active(); if (!pnu || !subject || st.map?.status !== 'EXACT_ONE') return;
+  const year = pdValue('zoning')?.base_year; const epoch = st.epoch;
+  const z = currentZoning();
+  const reviewZoning = z && ['NOTICE_PROJECT_REASON', 'PROJECT_RELATED'].includes(z.status) && z.basis_zoning ? z.basis_zoning : pdValue('zoning')?.value;
+  st.std = { pnu, status: 'LOADING', selected: null, showStandards: true, showCandidates: true }; renderMap();
+  const res = await queryStandardLands({ fetchImpl: (...a) => fetch(...a), location, pnu, year, reviewZoning, now: () => new Date() });
+  if (epoch !== st.epoch || subject !== active() || st.pd?.pnu !== pnu) return; // 다른 필지·새 상담이면 폐기
+  st.std = { pnu, status: res.ok ? 'OK' : 'FAILED', response: res.ok ? res : null, error: res.ok ? null : res, fetched_at: res.fetched_at,
+    selected: null, showStandards: true, showCandidates: true };
+  const sr = stdReview();
+  st.std.selected = sr?.list?.find((x) => x.kind === 'CANDIDATE')?.pnu || null;
+  renderMap();
+}
+function selectStandard(pnu, fromList) {
+  if (!st.std) return;
+  st.std.selected = pnu;
+  const m = st.map; const mk = stdReview()?.markers?.find((x) => x.pnu === pnu);
+  if (fromList && m?.view && mk) {
+    const [x, y] = project(m.view, mk.centroid);
+    if (x < 0 || x > MAP.width || y < 0 || y > MAP.height) { m.view = { ...m.view, center: mercator(mk.centroid), centerLonLat: mk.centroid }; m.aerial = 'LOADING'; }
+  }
+  renderMap();
+  const el = $(fromList ? '[data-f-std-pin].sel' : '[data-f-std-detail]');
+  if (el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest' });
+}
+function fitStandard(m, sr) {
+  if (!sr || !m?.target) return;
+  const cands = sr.markers.filter((x) => x.kind === 'CANDIDATE');
+  const pts = (cands.length ? cands : sr.markers.filter((x) => x.in_radius)).map((x) => x.centroid);
+  const view = fitView(m.target.geometry, pts);
+  if (view) { m.view = view; m.aerial = 'LOADING'; renderMap(); }
+}
+const won = (n) => (n == null ? '미기재' : `${Number(n).toLocaleString('ko-KR')}원/㎡`);
+const dist = (d) => (d == null ? '거리 미산출' : d >= 1000 ? `${(d / 1000).toFixed(2)}km` : `${Math.round(d)}m`);
+function renderStdPanel(sr) {
+  const s = st.std;
+  const canQuery = st.pd?.status === PD_STATUS.OK && pdValue('zoning')?.base_year;
+  const head = `<div class="f-std-panel" data-f-std-panel><h3 class="small"><b>주변 표준지 · 비교표준지 후보</b> <span class="muted">검토 보조 · 화면 열람 전용(카드·인쇄 제외)</span></h3>`;
+  if (!s) {
+    return `${head}<button type="button" class="secondary" data-f-std-go ${canQuery ? '' : 'disabled'}>주변 표준지 조회</button>
+    <p class="small muted">대상 중심 반경 1km에 걸친 법정동(인접 법정동 포함)의 ${esc(pdValue('zoning')?.base_year || '')}년 표준지를 VWorld에서 조회합니다. 위치가 공식 지적경계로 확인된 표준지만 지도에 표시합니다.</p></div>`;
+  }
+  if (s.status === 'LOADING') return `${head}<p class="small muted" data-f-std-state="LOADING">표준지 조회 중…</p></div>`;
+  if (s.status === 'FAILED') {
+    return `${head}<p class="small" data-f-std-state="FAILED"><span class="chip bad">표준지 미조회</span> ${esc(s.error?.reason || s.error?.error_code || '')} — 임의 표식·가상 후보를 만들지 않습니다.</p><button type="button" class="ghost" data-f-std-go>다시 조회</button></div>`;
+  }
+  if (!sr || sr.status === 'TARGET_NOT_EXACT' || sr.status === 'FAILED') {
+    return `${head}<p class="small" data-f-std-state="${esc(sr?.status || 'FAILED')}"><span class="chip bad">후보 판정 안 함</span> ${esc((sr?.notes || []).join(' '))}</p></div>`;
+  }
+  const sel = sr.list.find((x) => x.pnu === s.selected) || null;
+  const item = (x) => `<li><button type="button" class="f-std-item ${x.kind === 'CANDIDATE' ? 'cand' : 'std'}${x.pnu === s.selected ? ' sel' : ''}" data-f-std-item="${esc(x.pnu)}" data-f-std-item-kind="${x.kind}">
+      ${x.kind === 'CANDIDATE' ? `<span class="n">${x.rank}</span>` : ''}<b>${esc(x.label)}</b> <span class="small">${esc(won(x.price))} · ${esc(x.zoning || '용도지역 미기재')} · ${esc(x.land_use || '이용상황 미기재')} · ${esc(dist(x.distance_m))}</span>
+      <span class="small muted">${esc(x.status_label)}${x.located ? '' : ' · 지도 미표시'}${x.kind !== 'CANDIDATE' && x.reasons?.length ? ` — ${esc(x.reasons[0])}` : ''}</span></button></li>`;
+  const cands = sr.list.filter((x) => x.kind === 'CANDIDATE'); const rest = sr.list.filter((x) => x.kind !== 'CANDIDATE');
+  const statusChip = { FOUND: `<span class="chip warn">후보 ${cands.length}건 — 확정 아님</span>`, NONE: '<span class="chip bad">조건에 맞는 후보 없음</span>',
+    SCHEMA_UNMAPPED: '<span class="chip bad">필드 해석 불가 — 판정 보류</span>', INSUFFICIENT_TARGET: '<span class="chip bad">대상 용도지역·이용상황 미확보 — 판정 보류</span>' }[sr.status] || '';
+  return `${head}<div data-f-std-state="${esc(sr.status)}">
+    <p class="small">${statusChip} <span data-f-std-review-zoning="${esc(sr.review.basis)}">후보 검토 용도지역: <b>${esc(sr.review.label)}</b></span></p>
+    <p class="small muted" data-f-std-scope>조회 범위: ${esc(sr.scope.label)} · 표준지 ${sr.meta.total_rows}행 · 위치 확인 ${sr.meta.located}곳(반경 안 ${sr.meta.in_radius}행) · 조회 ${esc(new Date(s.fetched_at).toLocaleString('ko-KR', { hour12: false }))}</p>
+    ${sel ? `<div class="f-std-detail" data-f-std-detail="${esc(sel.pnu)}"><b>${sel.kind === 'CANDIDATE' ? `${STD_LABEL.CANDIDATE} ${sel.rank}` : esc(sel.status_label)}</b> <span class="chip warn">${esc(STD_LABEL.NOT_SELECTED)}</span>
+      <dl class="small"><dt>지번</dt><dd data-f-std-d="lot">${esc(sel.label)}</dd><dt>PNU</dt><dd data-f-std-d="pnu">${esc(sel.pnu)}</dd>
+      <dt>공시지가</dt><dd data-f-std-d="price">${esc(won(sel.price))}</dd><dt>공시연도</dt><dd data-f-std-d="year">${esc(sel.year || '미상')}년</dd>
+      <dt>용도지역</dt><dd data-f-std-d="zoning">${esc(sel.zoning || '미기재')}</dd><dt>이용상황</dt><dd data-f-std-d="land_use">${esc(sel.land_use || '미기재')}</dd>
+      <dt>지목</dt><dd>${esc(sel.land_category || '미기재')}</dd><dt>거리</dt><dd data-f-std-d="distance">대상 필지 중심↔표준지 중심 직선 ${esc(dist(sel.distance_m))}</dd>
+      <dt>위치</dt><dd>${sel.located ? '연속지적도 exact-one 경계로 확인' : '위치 미확인 — 지도 미표시'}</dd>
+      <dt>검토 근거</dt><dd data-f-std-d="reasons">${(sel.reasons || []).map((r) => `<div>${esc(r)}</div>`).join('')}${(sel.review || []).map((r) => `<div class="muted">${esc(r)}</div>`).join('')}</dd>
+      <dt>출처</dt><dd class="muted">VWorld 표준지공시지가(getReferLandPriceAttr)${sel.names_from_land_characteristics.length ? ' · 코드 명칭은 같은 연도 토지특성 응답으로 채움' : ''} · 감정평가서 선정 여부 미확인</dd></dl></div>` : ''}
+    ${cands.length ? `<ol class="f-std-list" data-f-std-list>${cands.map(item).join('')}</ol>` : ''}
+    ${rest.length ? `<details data-f-std-rest><summary class="small">제외·반경 밖·위치 미확인 ${rest.length}건</summary><ul class="f-std-list">${rest.map(item).join('')}</ul></details>` : ''}
+    ${sr.notes.map((n) => `<p class="small warn-note">${esc(n)}</p>`).join('')}
+    <button type="button" class="ghost" data-f-std-go>다시 조회</button></div></div>`;
 }
 
 function renderCard() {
@@ -246,7 +348,9 @@ function renderZoningResult() {
       <dt data-f-zoning-trigger-h>${esc(t.trigger_heading)}</dt><dd data-f-zoning-trigger>${t.trigger ? `${esc(t.trigger.event.notice_no)} · 고시일 ${esc(t.trigger.event.notice_date || '미상')} · ${t.trigger.event.effective_date ? `효력 ${esc(t.trigger.event.effective_date)}` : `<span class="chip warn">효력 기준일 미확인</span>`}
         <div class="small">${esc(t.trigger.event.kind || '')}</div><div class="small">변경 구간 ${esc(t.trigger.change.window_start)} ~ ${esc(t.trigger.change.window_end)} 사이 · ${esc(t.trigger.change.from)} → ${esc(t.trigger.change.to)}</div>
         <div class="small" data-f-zoning-trigger-window>${esc(t.trigger_window_note)}</div>
-        <div class="small muted">${esc(t.trigger.event.effective_basis || '')}</div>`
+        <div class="small muted">${esc(t.trigger.event.effective_basis || '')}</div>
+        ${!t.trigger.event.effective_date && t.trigger.event.effective_legal_basis ? `<div class="small" data-f-zoning-legal><span class="chip warn">법령 근거 검토 필요</span> 효력일 후보 ${esc(t.trigger.event.effective_legal_basis.candidate_date || '미정')} — 자동 확정 안 함
+          ${(t.trigger.event.effective_legal_basis.provisions || []).map((p) => `<div class="small muted">${esc(p)}</div>`).join('')}<div class="small muted">${esc(t.trigger.event.effective_legal_basis.note || '')}</div></div>` : ''}`
         : `<span class="chip bad">미확인</span>${t.candidate_events.map((c) => `<div class="small">${esc(c.notice_no)} — ${c.match === 'DECISION_UNVERIFIED' ? '용도지역 결정 포함 여부 원문 확인 전(명칭만으로 추정 안 함)' : '사업 관련 사유 원문 확인 전'}</div>`).join('')}`}</dd>
       <dt>대조한 문서</dt><dd data-f-zoning-docs>${t.evidence.length ? t.evidence.map((e) => `<div class="f-zoning-ev" data-f-zoning-ev-grade="${e.grade}" data-f-zoning-ev-status="${esc(e.status)}"><b>${esc(['', '①', '②', '③', '④'][e.grade])}</b> ${esc(e.title)} <span class="chip ${e.status === 'CONFIRMED' ? 'ok' : e.status === 'OBSERVED' || e.status === 'AGGREGATE_ONLY' ? 'warn' : 'bad'}">${esc(EVIDENCE_STATUS_LABEL[e.status] || e.status)}</span>
         ${e.finding ? `<div class="small">${esc(e.finding)}</div>` : ''}${e.dates ? `<div class="small muted">${esc(Object.entries(e.dates).filter(([, v]) => v).map(([k, v]) => `${{ notice_date: '고시일', effective_date: '효력일', document_date: '작성', survey_basis: '조사 기준', base_year: '기준연도' }[k] || k} ${v}`).join(' · '))}</div>` : ''}
@@ -327,7 +431,7 @@ function saveCard() {
 function init() {
   $('[data-f-form]').addEventListener('submit', (e) => {
     e.preventDefault();
-    st.epoch += 1; st.row = null; st.direct = null; st.directOffer = null; st.pd = null; st.issues = new Set(); st.memo = ''; st.map = null; st.other = ''; st.zoningConfirm = { relation: '', basis_doc: '', by: '', valuation_date: '' }; st.zoningExtra = null; $('[data-f-memo]').value = ''; $('[data-f-out]').textContent = '';
+    st.epoch += 1; st.row = null; st.direct = null; st.directOffer = null; st.pd = null; st.issues = new Set(); st.memo = ''; st.map = null; st.std = null; st.other = ''; st.zoningConfirm = { relation: '', basis_doc: '', by: '', valuation_date: '' }; st.zoningExtra = null; $('[data-f-memo]').value = ''; $('[data-f-out]').textContent = '';
     const q = $('[data-f-q]').value;
     st.search = st.index ? searchNoticeIndex(st.index, q)
       : (q.trim() ? { status: SEARCH_STATUS.NOT_IN_INDEX, message: '고시 색인이 없습니다. 전체 주소로 전국 공적자료만 조회할 수 있습니다(편입 여부 미확인).', matches: [] } : { status: SEARCH_STATUS.EMPTY, matches: [] });

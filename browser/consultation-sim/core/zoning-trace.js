@@ -96,7 +96,7 @@ export function triggerWindowNote(trigger) {
 }
 
 const eventRef = (ev) => ({ id: ev.id || null, notice_no: ev.notice_no || null, notice_date: isoDate(ev.notice_date), effective_date: isoDate(ev.effective_date),
-  effective_basis: ev.effective_basis || null, kind: ev.kind || null, decision_verified: ev.decision_verified || null });
+  effective_basis: ev.effective_basis || null, effective_legal_basis: ev.effective_legal_basis || null, kind: ev.kind || null, decision_verified: ev.decision_verified || null });
 
 // events: 사업별 고시 [{ id, notice_no, notice_date, effective_date?, effective_basis?, kind, zoning_decision:'INCLUDED'|'NOT_INCLUDED'|'UNVERIFIED',
 //          project_related:true|false|null, decision_verified, changes:[{from,to,area_m2,reason,source,verified,parcel_level}] }]
@@ -148,8 +148,13 @@ export function traceZoningOrigin({ history = [], events = [], priorDesignations
   const g2 = pe.filter((e) => Number(e.grade) === 2);
   for (const d of priorDesignations || []) {
     const hit = g2.find((e) => e.ref === d.id);
-    evidence.push({ grade: 2, title: `${d.notice_no}(${d.notice_date || '고시일 미상'}) ${d.kind || '기정 용도지역 결정도면'}`, status: hit?.status || EVIDENCE_STATUS.PENDING,
-      finding: hit?.finding || '개별필지 대조 미완료', checked: hit?.checked || null, dates: { notice_date: isoDate(d.notice_date) } });
+    evidence.push({ grade: 2, title: `${d.notice_no}(${d.notice_date || '고시일 미상'}) ${d.kind || '기정 용도지역 결정도면'}`, status: hit?.status || d.status || EVIDENCE_STATUS.PENDING,
+      finding: hit?.finding || d.finding || '개별필지 대조 미완료', checked: hit?.checked || d.checked || null, caution: d.caution || null, dates: { notice_date: isoDate(d.notice_date) } });
+    // 총괄(시 전체 누계) 기정 근거만 확인된 경우: 개별 필지의 기정 지정이력은 별도 확보 대상으로 남긴다(읽은 사실 ≠ 필지 확인)
+    if (d.scope === 'CITY_AGGREGATE' && !hit) {
+      evidence.push({ grade: 2, title: d.parcel_followup || '고시 전 PNU별 지정이력·당시 토지이용계획·해당 지역 기정도면', status: EVIDENCE_STATUS.PENDING,
+        finding: '개별 필지의 기존 용도지역 직접 근거 — 별도 확보 필요' });
+    }
   }
   for (const e of g2.filter((x) => !(priorDesignations || []).some((d) => d.id === x.ref))) {
     evidence.push({ grade: 2, title: e.document || e.label, status: e.status || EVIDENCE_STATUS.PENDING, finding: e.finding || null, checked: e.checked || null });
@@ -187,7 +192,10 @@ export function traceZoningOrigin({ history = [], events = [], priorDesignations
   if (!trigger && changes.length) unverified.push('변경을 일으킨 고시(용도지역 결정·변경 포함 여부와 사업 관련 사유) 미확인');
   if (trigger && !evidence.some((e) => e.grade === 1 && e.status === EVIDENCE_STATUS.CONFIRMED)) unverified.push('이 필지가 변경 구역에 포함되는지(필지별 변경도면 대조)');
   for (const e of evidence.filter((x) => x.grade === 2 && x.status !== EVIDENCE_STATUS.CONFIRMED)) unverified.push(`${e.title} — ${EVIDENCE_STATUS_LABEL[e.status]}`);
-  if (trigger && !trigger.event.effective_date) unverified.push(`${trigger.event.notice_no}의 효력 기준일(${trigger.event.effective_basis || '고시일과 효력발생일 구별 — 원문 확인'})`);
+  if (trigger && !trigger.event.effective_date) {
+    const lb = trigger.event.effective_legal_basis;
+    unverified.push(`${trigger.event.notice_no}의 효력 기준일(${trigger.event.effective_basis || '고시일과 효력발생일 구별 — 원문 확인'})${lb ? ` — 법령 근거 검토 필요(후보 ${lb.candidate_date || '미정'} · 변호사 확인 전 확정 안 함)` : ''}`);
+  }
   if (pastBasis?.missing_years.length) unverified.push(`${pastBasis.missing_years.join('·')}년 용도지역(조회 응답 없음·실패)`);
   if (rows.length && pastBasis && rows[0].year === pastBasis.observed_from_year) unverified.push(`${rows[0].year}년 이전 용도지역 이력(조회 범위 밖)`);
   for (const c of otherChanges) unverified.push(`${c.window}년 기준 사이 ${c.from} → ${c.to} 변경의 원인 고시`);
@@ -196,7 +204,7 @@ export function traceZoningOrigin({ history = [], events = [], priorDesignations
 
   // 검증 상태 문구: 확인한 것 · 대조 전인 것 · 전문가 검증 전
   const confirmed = pe.filter((e) => e.status === EVIDENCE_STATUS.CONFIRMED && e.short).map((e) => `${e.short} 확인`);
-  const pendingPrior = (priorDesignations || []).filter((d) => !g2.some((e) => e.ref === d.id && e.status === EVIDENCE_STATUS.CONFIRMED)).map((d) => `${d.short || d.notice_no} 대조 전`);
+  const pendingPrior = (priorDesignations || []).filter((d) => !g2.some((e) => e.ref === d.id && e.status === EVIDENCE_STATUS.CONFIRMED)).map((d) => d.pending_label || `${d.short || d.notice_no} 대조 전`);
   const parcelMapConfirmed = map1.some((e) => e.status === EVIDENCE_STATUS.CONFIRMED);
   const verificationLabel = trigger
     ? [...(confirmed.length ? confirmed : ['고시 사유서 확인']), ...(parcelMapConfirmed ? [] : ['필지별 변경도면 대조 전']), ...pendingPrior, '전문가 검증 전'].join(' · ')

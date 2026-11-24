@@ -582,15 +582,16 @@ test('역추적: 같은 사업 고시가 여러 번 바꾸면 가장 앞선 사�
 test('오송3 궁평리 320-1: 첨부 변경도 제4도엽 대조 반영 · 검증 문구 · 증거등급 ①~④ 분리 · 총괄 면적은 필지 근거 아님', () => {
   const ev = OSONG.parcel_zoning_evidence[GUNGPYEONG];
   const z = zb.evaluateZoningBasis({ history: HIST, project: OSONG_PROJ, parcelEvidence: ev });
-  assert.equal(z.verification_label, '제2025-456호 첨부 변경도 제4도엽의 변경 후 용도지역 확인 · 2020-236 기정도면 대조 전 · 전문가 검증 전');
+  assert.equal(z.verification_label, '제2025-456호 첨부 변경도 제4도엽의 변경 후 용도지역 확인 · 2020-236 총괄 기정 근거 확인·개별 필지 기정 지정이력 별도 확인 필요 · 전문가 검증 전');
   assert.equal(z.verification, 'NOTICE_REASON_AND_PARCEL_MAP_CONFIRMED_UNVERIFIED_BY_EXPERT');
-  assert.deepEqual(z.trace.evidence.map((e) => [e.grade, e.status]), [[1, 'AGGREGATE_ONLY'], [1, 'CONFIRMED'], [2, 'PENDING'], [2, 'NOT_OBTAINED'], [3, 'AGGREGATE_ONLY'], [4, 'OBSERVED']]);
+  assert.deepEqual(z.trace.evidence.map((e) => [e.grade, e.status]), [[1, 'AGGREGATE_ONLY'], [1, 'CONFIRMED'], [2, 'AGGREGATE_ONLY'], [2, 'PENDING'], [2, 'NOT_OBTAINED'], [3, 'AGGREGATE_ONLY'], [4, 'OBSERVED']]);
   assert.match(z.trace.evidence[0].finding, /217,424㎡\(변경 유형 총량 — 이 필지 면적 아님\)/);
   assert.match(z.trace.evidence[1].caution, /붉은 선을 토지보상 편입선으로 해석하지 않음/);
-  assert.match(z.trace.evidence[4].caution, /개별 필지의 기존 용도지역 확정 근거로 쓰지 않음/);
+  assert.match(z.trace.evidence[5].caution, /개별 필지의 기존 용도지역 확정 근거로 쓰지 않음/);
   assert.ok(z.trace.cross_check.some((c) => /① 필지별 도면.*= ④ 조회 변경 후 값/.test(c)));
   assert.ok(z.trace.cross_check.some((c) => /③ 총괄 기존 현황에 농림지역 포함\(사업 범위·작성 시점 다름 — 필지 확정 아님\)/.test(c)));
-  assert.ok(z.trace.unverified.some((u) => /청주시 고시 제2020-236호.*대조 전/.test(u)));
+  assert.ok(z.trace.unverified.some((u) => /청주시 고시 제2020-236호/.test(u)));
+  assert.ok(z.trace.unverified.some((u) => /고시 전 PNU별 지정이력·당시 토지이용계획·해당 지역 기정도면\(개별 필지\) — 대조 전/.test(u)));
   assert.ok(z.trace.unverified.some((u) => /효력 기준일/.test(u)));
   assert.ok(!z.trace.unverified.some((u) => /필지별 변경도면 대조/.test(u)));
   const doc = OSONG.supporting_documents[0];
@@ -599,14 +600,14 @@ test('오송3 궁평리 320-1: 첨부 변경도 제4도엽 대조 반영 · 검�
 
 test('오송3 다른 필지(대조 기록 없음)는 필지별 변경도면 대조 전으로 유지 · 카드엔 변경 유발 고시·대조 문서·검증 상태만', () => {
   const z = zb.evaluateZoningBasis({ history: HIST, project: OSONG_PROJ, parcelEvidence: [] });
-  assert.equal(z.verification_label, '고시 사유서 확인 · 필지별 변경도면 대조 전 · 2020-236 기정도면 대조 전 · 전문가 검증 전');
+  assert.equal(z.verification_label, '고시 사유서 확인 · 필지별 변경도면 대조 전 · 2020-236 총괄 기정 근거 확인·개별 필지 기정 지정이력 별도 확인 필요 · 전문가 검증 전');
   const idx = load();
   const withMap = zb.evaluateZoningBasis({ history: HIST, project: OSONG_PROJ, parcelEvidence: OSONG.parcel_zoning_evidence[GUNGPYEONG] });
   const text = buildFieldCard({ profile: profileForIndex(idx), index: idx, row: idx.rows[0], zoning: withMap }).text;
   assert.match(text, /사업 관련 변경 고시\(효력일 확인 필요\): 국토교통부 고시 제2025-456호\(2025-08-28\) — 용도지역 결정\(변경\) 포함 · 사업 관련 사유 명시 · 효력 기준일 원문 확인 전 · 고시일 2025-08-28 기준 달력 구간 적합\(법적 변경일 확정 아님/);
   assert.doesNotMatch(text, /변경 유발 고시:|필지별 변경도면 대조 전/);
   assert.match(text, /대조 문서: ① .*\(필지 대조함\) \/ ② 청주시 고시 제2020-236호/);
-  assert.match(text, /검증 상태: 제2025-456호 첨부 변경도 제4도엽의 변경 후 용도지역 확인 · 2020-236 기정도면 대조 전 · 전문가 검증 전/);
+  assert.match(text, /검증 상태: 제2025-456호 첨부 변경도 제4도엽의 변경 후 용도지역 확인 · 2020-236 총괄 기정 근거 확인·개별 필지 기정 지정이력 별도 확인 필요 · 전문가 검증 전/);
   assert.doesNotMatch(text, /제1종일반주거지역|6,264,847/);
 });
 
@@ -670,4 +671,123 @@ test('GPT QA(7673767) 3: 효력일 미확인이면 고시일 기준 잠정 연�
   const late = OSONG.zoning_events.map((e) => ({ ...e, effective_date: '2026-03-01' }));
   const out = zb.evaluateZoningBasis({ history: HIST, project: { ...OSONG_PROJ, zoning_events: late } });
   assert.equal(out.trace.trigger, null); assert.equal(out.status, 'CHANGE_UNCONFIRMED');
+});
+
+test('GPT 후속 A: 2020-236은 청주시 전체 기정 총량 근거 — 개별 필지 기정도면으로 취급하지 않음', () => {
+  const z = zb.evaluateZoningBasis({ history: HIST, project: OSONG_PROJ, parcelEvidence: OSONG.parcel_zoning_evidence[GUNGPYEONG] });
+  const g2 = z.trace.evidence.filter((e) => e.grade === 2);
+  assert.equal(g2[0].status, 'AGGREGATE_ONLY');
+  assert.match(g2[0].finding, /월오동 산1-1·산10 일원 자연녹지→보전녹지 86,448㎡/);
+  assert.match(g2[0].finding, /제2016-360호\(2016-12-30\) 기준 누계 총량/);
+  assert.match(g2[0].caution, /원문을 읽은 사실과 이 필지의 기존 용도지역 확인은 다름/);
+  assert.equal(g2[1].status, 'PENDING'); assert.match(g2[1].title, /고시 전 PNU별 지정이력/);
+  assert.doesNotMatch(z.verification_label, /기정도면 대조 전/);
+  assert.match(z.verification_label, /2020-236 총괄 기정 근거 확인·개별 필지 기정 지정이력 별도 확인 필요/);
+});
+
+test('GPT 후속 B: 효력일 법령 근거 후보는 표시하되 자동 확정하지 않음', () => {
+  const z = zb.evaluateZoningBasis({ history: HIST, project: OSONG_PROJ, parcelEvidence: OSONG.parcel_zoning_evidence[GUNGPYEONG] });
+  const lb = z.trace.trigger.event.effective_legal_basis;
+  assert.equal(lb.status, 'LEGAL_REVIEW_REQUIRED'); assert.equal(lb.candidate_date, '2025-08-28');
+  assert.ok(lb.provisions.some((p) => /국토의 계획 및 이용에 관한 법률」 제31조 제1항/.test(p)));
+  assert.equal(z.trace.trigger.event.effective_date, null);
+  assert.equal(z.trace.trigger_heading, '사업 관련 변경 고시(효력일 확인 필요)');
+  assert.ok(z.trace.unverified.some((u) => /법령 근거 검토 필요\(후보 2025-08-28 · 변호사 확인 전 확정 안 함\)/.test(u)));
+  assert.match(zb.zoningCardLines(z).join(' / '), /효력일: 법령 근거 검토 필요\(후보 2025-08-28/);
+});
+
+// ── 주변 표준지 · 비교표준지 후보 지도(합성 응답) ──────────────────────────────────────
+const fs_ = await import('../../browser/consultation-sim/core/field-standard.js');
+const fmap = await import('../../browser/consultation-sim/core/field-map.js');
+const { queryStandardLands } = await import('../../browser/consultation-sim/core/field-public-data.js');
+const STD = (pnu, zoning, use, price, extra = {}) => ({ pnu, stdrYear: '2026', pblntfPclnd: String(price), prposAreaNm1: zoning, ladUseSittnNm: use, lndcgrCodeNm: '답',
+  ldCode: pnu.slice(0, 10), ldCodeNm: pnu.startsWith('9999910102') ? '가상도 가상시 숲내읍 냇가리' : '가상도 가상시 숲내읍 바위리', mnnmSlno: pnu.slice(11, 15).replace(/^0+/, ''),
+  name_filled_from_land_characteristics: ['prposAreaNm1'], ...extra });
+const SA = '9999910101100020000'; const SB = '9999910101100030000'; const SC = '9999910102100040000'; const SD = '9999910102100050000'; const SE = '9999910101100060000';
+const STD_RESPONSE = {
+  ok: true, status: 'OK', target: { pnu: '9999910101100010000', centroid: [127.0, 36.0] },
+  search: { year: 2026, radius_m: 1000, legal_dongs: [{ ld_code: '9999910101', name: '가상도 가상시 숲내읍 바위리', status: 'OK', count: 3 }, { ld_code: '9999910102', name: '가상도 가상시 숲내읍 냇가리', status: 'OK', count: 2 }], legal_dongs_not_queried: [] },
+  rows: [STD(SA, '농림지역', '전', 100000), STD(SB, '제1종일반주거지역', '전', 150000), STD(SC, '농림지역', '전', 90000), STD(SD, '농림지역', '전', 95000), STD(SE, '농림지역', '전', 99000)],
+  locations: {
+    [SA]: { status: 'EXACT_ONE', centroid: [127.002, 36.0], distance_m: 180 }, [SB]: { status: 'EXACT_ONE', centroid: [127.0, 36.001], distance_m: 111 },
+    [SC]: { status: 'NOT_FOUND' }, [SD]: { status: 'EXACT_ONE', centroid: [127.02, 36.0], distance_m: 1800 }, [SE]: { status: 'NOT_ATTEMPTED' },
+  },
+  limits: { not_located_by_limit: 1 }, name_resolution: { unresolved: [] },
+};
+const TGT = { zoning: '제1종일반주거지역', land_use: '전', land_category: '답' };
+
+test('표준지 후보: 사업 영향 배제 기준 용도지역(농림지역)으로 판정 — 현재 제1종일반주거지역을 필터로 쓰지 않음', () => {
+  const z = zb.evaluateZoningBasis({ history: HIST, project: OSONG_PROJ, parcelEvidence: OSONG.parcel_zoning_evidence[GUNGPYEONG] });
+  const r = fs_.buildStandardReview({ response: STD_RESPONSE, target: TGT, zoning: z });
+  assert.equal(r.review.basis, 'PROJECT_EXCLUDED'); assert.equal(r.review.zoning, '농림지역');
+  assert.match(r.review.label, /사업 영향 배제 기준 용도지역 후보 농림지역\(현재 제1종일반주거지역 아님\)/);
+  assert.equal(r.status, 'FOUND');
+  assert.deepEqual(r.analysis.candidates.map((c) => c.row.pnu), [SA]); // 112m 제1종일반주거 표준지는 후보 아님
+  assert.ok(r.list.find((x) => x.pnu === SB).reasons.some((x) => /용도지역 상이\(제1종일반주거지역\)/.test(x)));
+  assert.match(r.scope.label, /반경 1,000m에 걸친 법정동 2곳\(바위리·냇가리\) · 2026년 공시/);
+});
+
+test('표준지 후보: 사업 관련 변경이 없으면 현재 용도지역 · 변경 관찰만 있으면 경고와 함께 현재값', () => {
+  const plain = fs_.buildStandardReview({ response: STD_RESPONSE, target: TGT, zoning: null });
+  assert.equal(plain.review.basis, 'CURRENT'); assert.deepEqual(plain.analysis.candidates.map((c) => c.row.pnu), [SB]);
+  const unconfirmed = fs_.reviewZoningFor({ status: 'CHANGE_UNCONFIRMED', change: { before: '농림지역' } }, '제1종일반주거지역');
+  assert.equal(unconfirmed.basis, 'CURRENT_CHANGE_UNCONFIRMED'); assert.match(unconfirmed.note, /변경 전 용도지역으로 후보를 다시 검토/);
+});
+
+test('표준지 지도: 공식 위치(exact-one)만 표식 · 위치 미확인·한도 초과는 목록에만 · 반경 밖은 후보 판정 제외', () => {
+  const z = zb.evaluateZoningBasis({ history: HIST, project: OSONG_PROJ, parcelEvidence: OSONG.parcel_zoning_evidence[GUNGPYEONG] });
+  const r = fs_.buildStandardReview({ response: STD_RESPONSE, target: TGT, zoning: z });
+  assert.deepEqual(r.markers.map((m) => [m.pnu, m.kind, m.rank]).sort(), [[SA, 'CANDIDATE', 1], [SB, 'STANDARD', null], [SD, 'STANDARD', null]].sort());
+  assert.ok(!r.markers.some((m) => [SC, SE].includes(m.pnu)));
+  const held = Object.fromEntries(r.list.filter((x) => x.kind === 'HELD').map((x) => [x.pnu, x]));
+  assert.match(held[SC].reasons[0], /위치 미확인 — 연속지적도 exact-one 아님\(NOT_FOUND\) · 지도 미표시/); assert.equal(held[SC].located, false);
+  assert.match(held[SE].reasons[0], /위치 조회 한도 초과/);
+  assert.match(held[SD].reasons[0], /검색 반경 1,000m 밖\(1\.80km\)/);
+  const cand = r.list.find((x) => x.kind === 'CANDIDATE');
+  assert.equal(cand.status_label, '비교표준지 후보'); assert.equal(cand.price, 100000); assert.equal(cand.year, 2026); assert.equal(cand.distance_m, 180);
+  assert.equal(cand.label, '가상도 가상시 숲내읍 바위리 2');
+  assert.ok(cand.reasons.some((x) => /용도지역 동일\(농림지역\)/.test(x)));
+  assert.ok(r.notes.some((n) => /가장 가까운 표준지를 적정 비교표준지로 확정하지 않음/.test(n)));
+  assert.ok(r.notes.some((n) => /1건은 위치 조회 한도로 미확인/.test(n)));
+  assert.equal(fs_.STD_LABEL.NOT_SELECTED, '감정평가사가 선정한 비교표준지 아님 — 자동 확정 안 함');
+});
+
+test('표준지 지도: 조회 실패·대상 경계 불확정이면 표식·후보 없음(가상 후보 생성 안 함)', () => {
+  const fail = fs_.buildStandardReview({ response: { ok: false, error_code: 'VWORLD_API_ERROR' }, target: TGT });
+  assert.equal(fail.status, 'FAILED'); assert.deepEqual(fail.markers, []); assert.deepEqual(fail.list, []);
+  const notExact = fs_.buildStandardReview({ response: { ok: true, status: 'TARGET_NOT_EXACT', rows: [] }, target: TGT });
+  assert.equal(notExact.status, 'TARGET_NOT_EXACT'); assert.deepEqual(notExact.markers, []);
+});
+
+test('표준지 지도 표식: 후보는 번호 버튼 · 일반 표준지는 회색 · 화면 밖은 개수만 · 맞춤 줌은 후보를 포함', () => {
+  const z = zb.evaluateZoningBasis({ history: HIST, project: OSONG_PROJ, parcelEvidence: OSONG.parcel_zoning_evidence[GUNGPYEONG] });
+  const r = fs_.buildStandardReview({ response: STD_RESPONSE, target: TGT, zoning: z });
+  const geom = { type: 'MultiPolygon', coordinates: [[[[127.0, 36.0], [127.0002, 36.0], [127.0002, 36.0002], [127.0, 36.0002], [127.0, 36.0]]]] };
+  const tight = fmap.fitView(geom);
+  const out = fmap.renderStandardPins(tight, { markers: r.markers, selected: SA, showStandards: true, showCandidates: true });
+  assert.ok(out.offscreen >= 1);
+  const fit = fmap.fitView(geom, r.markers.filter((m) => m.kind === 'CANDIDATE').map((m) => m.centroid));
+  assert.ok(fit.zoom <= tight.zoom);
+  const far = fmap.fitView(geom, [[127.02, 36.0]]); assert.ok(far.zoom < tight.zoom); // 멀리 있는 지점을 넣으면 축소
+  const pins = fmap.renderStandardPins(fit, { markers: r.markers, selected: SA, showStandards: true, showCandidates: true }).pins;
+  assert.match(pins, new RegExp(`data-f-std-pin="${SA}" data-f-std-kind="CANDIDATE" data-f-std-rank="1"[^>]*>1</button>`));
+  assert.match(pins, /class="f-std-pin cand sel"/);
+  const hidden = fmap.renderStandardPins(fit, { markers: r.markers, selected: null, showStandards: false, showCandidates: true }).pins;
+  assert.doesNotMatch(hidden, /data-f-std-kind="STANDARD"/);
+  const html = fmap.renderFieldMap({ status: 'EXACT_ONE', pnu: '9999910101100010000', target: { geometry: geom }, neighbors: [], view: fit, showTarget: true, showNeighbors: true, aerial: 'OK',
+    std: { markers: r.markers, selected: SA, showStandards: true, showCandidates: true } });
+  assert.match(html, /data-f-map-toggle="standards" checked/); assert.match(html, /data-f-map-toggle="candidates" checked/); assert.match(html, /data-f-map-fit="std"/);
+  assert.match(html, /비교표준지 후보\(감정평가사 선정 아님\)/);
+});
+
+test('표준지 조회 요청: 확인된 PNU·기준연도만 · 오프라인·PNU 미확인이면 호출 안 함', async () => {
+  const noCall = async () => { throw new Error('no call'); };
+  assert.equal((await queryStandardLands({ fetchImpl: noCall, location: { protocol: 'file:', hostname: '' }, pnu: GUNGPYEONG, year: 2026 })).error_code, 'OFFLINE');
+  assert.equal((await queryStandardLands({ fetchImpl: noCall, location: loop, pnu: '1', year: 2026 })).error_code, 'PNU_INVALID');
+  assert.equal((await queryStandardLands({ fetchImpl: noCall, location: loop, pnu: GUNGPYEONG, year: null })).error_code, 'YEAR_INVALID');
+  let sent = null;
+  const r = await queryStandardLands({ location: loop, pnu: GUNGPYEONG, year: 2026, reviewZoning: '농림지역', fetchImpl: fakeBridge({ standard_lands: (b) => { sent = b; return { ok: true, status: 'OK', rows: [] }; } }) });
+  assert.deepEqual(sent, { pnu: GUNGPYEONG, year: 2026, radius_m: 1000, review_zoning: '농림지역' }); assert.equal(r.ok, true);
+  const f = await queryStandardLands({ location: loop, pnu: GUNGPYEONG, year: 2026, fetchImpl: fakeBridge({ standard_lands: () => ({ ok: false, error_code: 'FIELD_ROUTE_NOT_ALLOWED' }) }) });
+  assert.equal(f.ok, false); assert.ok(f.reason);
 });

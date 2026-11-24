@@ -12,7 +12,7 @@ const root = path.resolve(__dirname, '..');
 const src = path.join(root, 'browser', 'consultation-sim');
 const arg = (name) => { const i = process.argv.indexOf(`--${name}`); return i > 0 ? process.argv[i + 1] : null; };
 
-const ORDER = ['core/pnu.js', 'core/notice-index.js', 'core/field-issues.js', 'core/zoning-trace.js', 'core/zoning-basis.js', 'core/field-card.js', 'core/field-direct.js', 'core/field-public-data.js', 'core/field-map.js',
+const ORDER = ['core/pnu.js', 'core/notice-index.js', 'core/field-issues.js', 'core/zoning-trace.js', 'core/zoning-basis.js', 'core/field-card.js', 'core/field-direct.js', 'core/field-public-data.js', 'core/field-map.js', 'core/ned-revisions.js', 'core/standard-land-engine.js', 'core/field-standard.js',
   'profiles/osong3.js', 'profiles/index.js', 'field.js'];
 
 function transform(key, code) {

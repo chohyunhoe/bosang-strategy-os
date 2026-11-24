@@ -395,12 +395,15 @@ test('용도지역 역추적: 이전 연도 추가 조회 → 변경 유발 고�
   await expect(page.locator('[data-f-zoning-trigger]')).toContainText('효력 기준일 미확인');
   // 효력일 미확인 → '변경 유발 고시'로 단정하지 않고 고시일 기준 달력 구간 적합만 표시
   await expect(page.locator('[data-f-zoning-trigger-h]')).toHaveText('사업 관련 변경 고시(효력일 확인 필요)');
+  await expect(page.locator('[data-f-zoning-legal]')).toContainText('법령 근거 검토 필요');
+  await expect(page.locator('[data-f-zoning-legal]')).toContainText('제31조 제1항');
+  await expect(page.locator('[data-f-zoning-legal]')).toContainText('자동 확정 안 함');
   await expect(page.locator('[data-f-zoning-trigger-window]')).toHaveText('고시일 2025-08-28 기준 달력 구간 적합(법적 변경일 확정 아님 — 효력일 원문 확인 후 재대조)');
   // 필지 대조 상태 문구가 근거자료·안내문·상태칩 모두에서 같아야 함(대조함 ↔ 대조 전 혼재 금지)
   await expect(page.locator('[data-f-zoning-evidence]')).toContainText('필지별 변경도면 대조함');
   await expect(page.locator('[data-f-zoning-result]')).not.toContainText('필지별 변경도면 대조 전');
   await expect(page.locator('[data-f-zoning-docs] [data-f-zoning-ev-status="CONFIRMED"]')).toContainText('(1/1,500) 제4도엽');
-  await expect(page.locator('[data-f-zoning-verification]')).toHaveText('제2025-456호 첨부 변경도 제4도엽의 변경 후 용도지역 확인 · 2020-236 기정도면 대조 전 · 전문가 검증 전');
+  await expect(page.locator('[data-f-zoning-verification]')).toHaveText('제2025-456호 첨부 변경도 제4도엽의 변경 후 용도지역 확인 · 2020-236 총괄 기정 근거 확인·개별 필지 기정 지정이력 별도 확인 필요 · 전문가 검증 전');
   await expect(page.locator('[data-f-zoning-docs] [data-f-zoning-ev-status="CONFIRMED"]')).toContainText('제4도엽');
   await expect(page.locator('[data-f-zoning-docs] [data-f-zoning-ev-grade="3"]')).toContainText('필지 확정 근거 아님');
   await expect(page.locator('[data-f-zoning-unverified]')).toContainText('청주시 고시 제2020-236호');
@@ -421,8 +424,134 @@ test('용도지역 역추적: 이전 연도 추가 조회 → 변경 유발 고�
   expect(text).toContain('사업 관련 변경 고시(효력일 확인 필요): 국토교통부 고시 제2025-456호(2025-08-28)');
   expect(text).not.toContain('변경 유발 고시:');
   expect(text).not.toContain('필지별 변경도면 대조 전');
-  expect(text).toContain('검증 상태: 제2025-456호 첨부 변경도 제4도엽의 변경 후 용도지역 확인 · 2020-236 기정도면 대조 전 · 전문가 검증 전');
+  expect(text).toContain('검증 상태: 제2025-456호 첨부 변경도 제4도엽의 변경 후 용도지역 확인 · 2020-236 총괄 기정 근거 확인·개별 필지 기정 지정이력 별도 확인 필요 · 전문가 검증 전');
   expect(text).not.toMatch(/제1종일반주거지역|관리지역/);
   await page.locator('[data-f-new]').click();
   await expect(page.locator('[data-f-zoning]')).toBeHidden();
+});
+
+// ── 주변 표준지 · 비교표준지 후보 지도(합성 브리지 응답) ─────────────────────────────
+const OS_PNU = '4311325027103200001'; // 공개 고시 표본 필지(합성 색인 행 연결 — 소유 정보 없음)
+const sqAt = (lon, lat, d = 0.0002) => ({ type: 'MultiPolygon', coordinates: [[[[lon, lat], [lon + d, lat], [lon + d, lat + d], [lon, lat + d], [lon, lat]]]] });
+const SA = '9999910101100020000'; const SB = '9999910101100030000'; const SC = '9999910102100040000'; const SD = '9999910102100050000';
+const stdRow = (pnu, zoning, use, price, lot) => ({ pnu, stdrYear: '2026', pblntfPclnd: String(price), prposAreaNm1: zoning, ladUseSittnNm: use, lndcgrCodeNm: '답',
+  ldCode: pnu.slice(0, 10), ldCodeNm: pnu.startsWith('9999910102') ? '가상도 가상시 숲내읍 냇가리' : '가상도 가상시 숲내읍 바위리', mnnmSlno: lot, name_filled_from_land_characteristics: ['prposAreaNm1'] });
+const STD_OK = {
+  ok: true, status: 'OK', target: { pnu: OS_PNU, centroid: [127.0005, 36.0005] },
+  search: { year: 2026, radius_m: 1000, legal_dongs: [{ ld_code: '9999910101', name: '가상도 가상시 숲내읍 바위리', status: 'OK', count: 2 }, { ld_code: '9999910102', name: '가상도 가상시 숲내읍 냇가리', status: 'OK', count: 2 }], legal_dongs_not_queried: [] },
+  rows: [stdRow(SA, '농림지역', '전', 100000, '2'), stdRow(SB, '제1종일반주거지역', '전', 150000, '3'), stdRow(SC, '농림지역', '전', 90000, '4'), stdRow(SD, '농림지역', '전', 95000, '5')],
+  locations: {
+    [SA]: { status: 'EXACT_ONE', centroid: [127.0012, 36.0005], geometry: sqAt(127.0011, 36.0004), distance_m: 120 },
+    [SB]: { status: 'EXACT_ONE', centroid: [127.0005, 36.0010], geometry: sqAt(127.0004, 36.0009), distance_m: 60 },
+    [SC]: { status: 'NOT_FOUND' },
+    [SD]: { status: 'EXACT_ONE', centroid: [127.02, 36.0005], geometry: sqAt(127.02, 36.0004), distance_m: 1800 },
+  },
+  limits: { not_located_by_limit: 0 }, name_resolution: { unresolved: [] }, source: 'VWorld(합성 응답)',
+};
+async function mockStandard(page, std = STD_OK) {
+  const aerial = []; const calls = [];
+  await page.route('**/__field/aerial**', (route) => { aerial.push(new URL(route.request().url()).searchParams.get('zoom')); return route.fulfill({ status: 200, contentType: 'image/png', body: PNG_1PX }); });
+  await page.route('**/__public_data_bridge/**', async (route) => {
+    const op = new URL(route.request().url()).pathname.split('/').pop();
+    const req = route.request().postData() ? JSON.parse(route.request().postData()) : {};
+    if (op === 'standard_lands') calls.push(req);
+    const body = op === 'status' ? { ok: true, vworld_configured: true, public_data_configured: true }
+      : op === 'resolve_pnu' ? { ok: true, candidate: { pnu: OS_PNU, legal_dong_name: '가상도 연습시 숲내읍 바위리' } }
+        : op === 'pnu_parcel' ? { ok: true, parcel: { pnu: OS_PNU, address: '가상도 연습시 숲내읍 바위리 12-3', jibun: '12-3 답' } }
+          : op === 'parcel_map' ? { ok: true, target: { status: 'EXACT_ONE', pnu: OS_PNU, geometry: SQ, jibun: '12-3 답' }, neighbors: [] }
+            : op === 'standard_lands' ? std
+              : { ok: true, record: { land_category: '답', land_use: '전', zoning: req.standard_year === 2026 ? '제1종일반주거지역' : '농림지역', individual_official_price: 1000, price_year: req.standard_year } };
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+  });
+  return { aerial, calls };
+}
+async function openOsong(page) {
+  const idx = JSON.parse(fs.readFileSync(FIXTURE, 'utf8'));
+  idx.notice = { ...idx.notice, id: 'molit-2025-456', notice_no: '국토교통부 고시 제2025-456호', notice_date: '2025-08-28' };
+  await page.goto('/field.html');
+  await page.locator('[data-f-index-file]').setInputFiles({ name: 'osong-profile-synthetic.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(idx)) });
+  await search(page, '바위리 12-3');
+  await page.locator('[data-f-pd-go]').click();
+  await expect(page.locator('.f-map')).toHaveAttribute('data-f-map-pnu', OS_PNU);
+}
+
+test('표준지 지도: 대상 빨간 경계 · 주변 표준지 회색 · 후보 번호 파란 표식 · 후보↔목록 연동 · 토글·맞춤 · 카드·인쇄 제외', async ({ page }) => {
+  const { calls } = await mockStandard(page);
+  await openOsong(page);
+  await expect(page.locator('[data-f-std-pin]')).toHaveCount(0); // 누르기 전에는 조회·표시 안 함
+  expect(calls).toEqual([]);
+  await page.locator('[data-f-std-go]').click();
+  await expect(page.locator('[data-f-std-state="FOUND"]')).toBeVisible();
+  expect(calls).toEqual([{ pnu: OS_PNU, year: 2026, radius_m: 1000, review_zoning: '농림지역' }]);
+  // 사업으로 바뀐 현재 용도지역(제1종일반주거지역)이 아니라 사업 영향 배제 기준(농림지역)으로 검토
+  await expect(page.locator('[data-f-std-review-zoning="PROJECT_EXCLUDED"]')).toContainText('사업 영향 배제 기준 용도지역 후보 농림지역(현재 제1종일반주거지역 아님)');
+  await expect(page.locator('[data-f-std-scope]')).toContainText('법정동 2곳(바위리·냇가리)');
+  await expect(page.locator('[data-f-map-target]')).toHaveCount(1);
+  const cand = page.locator(`[data-f-std-pin="${SA}"]`);
+  await expect(cand).toHaveAttribute('data-f-std-kind', 'CANDIDATE'); await expect(cand).toHaveText('1');
+  await expect(page.locator(`[data-f-std-pin="${SB}"]`)).toHaveAttribute('data-f-std-kind', 'STANDARD');
+  await expect(page.locator(`[data-f-std-pin="${SC}"]`)).toHaveCount(0); // 위치 미확인은 지도 미표시
+  const box = await cand.boundingBox(); expect(box.width).toBeGreaterThanOrEqual(28);
+  const color = await cand.evaluate((el) => getComputedStyle(el).backgroundColor); expect(color).toBe('rgb(31, 111, 255)');
+  const gray = await page.locator(`[data-f-std-pin="${SB}"]`).evaluate((el) => getComputedStyle(el).backgroundColor); expect(gray).toBe('rgb(154, 160, 166)');
+  // 첫 후보 상세가 기본 선택
+  const d = page.locator('[data-f-std-detail]');
+  await expect(d).toHaveAttribute('data-f-std-detail', SA);
+  await expect(d).toContainText('비교표준지 후보 1'); await expect(d).toContainText('감정평가사가 선정한 비교표준지 아님 — 자동 확정 안 함');
+  await expect(d.locator('[data-f-std-d="lot"]')).toHaveText('가상도 가상시 숲내읍 바위리 2');
+  await expect(d.locator('[data-f-std-d="pnu"]')).toHaveText(SA);
+  await expect(d.locator('[data-f-std-d="price"]')).toHaveText('100,000원/㎡');
+  await expect(d.locator('[data-f-std-d="year"]')).toHaveText('2026년');
+  await expect(d.locator('[data-f-std-d="zoning"]')).toHaveText('농림지역');
+  await expect(d.locator('[data-f-std-d="land_use"]')).toHaveText('전');
+  await expect(d.locator('[data-f-std-d="distance"]')).toContainText('120m');
+  await expect(d.locator('[data-f-std-d="reasons"]')).toContainText('용도지역 동일(농림지역)');
+  // 지도 → 목록: 회색 표준지를 누르면 제외 사유
+  await page.locator(`[data-f-std-pin="${SB}"]`).click();
+  await expect(page.locator('[data-f-std-detail]')).toHaveAttribute('data-f-std-detail', SB);
+  await expect(page.locator('[data-f-std-detail]')).toContainText('용도지역 상이(제1종일반주거지역)');
+  // 목록 → 지도
+  await page.locator(`[data-f-std-item="${SA}"]`).click();
+  await expect(page.locator(`[data-f-std-pin="${SA}"]`)).toHaveClass(/sel/);
+  await expect(page.locator(`[data-f-std-item="${SA}"]`)).toHaveClass(/sel/);
+  // 위치 미확인·반경 밖은 목록에만
+  await page.locator('[data-f-std-rest] summary').click();
+  await expect(page.locator(`[data-f-std-item="${SC}"]`)).toContainText('지도 미표시');
+  await expect(page.locator(`[data-f-std-item="${SD}"]`)).toContainText('검색 반경 1,000m 밖');
+  // 표시 전환
+  await page.locator('[data-f-map-toggle="standards"]').uncheck();
+  await expect(page.locator('[data-f-std-pin][data-f-std-kind="STANDARD"]')).toHaveCount(0);
+  await expect(page.locator('[data-f-std-pin][data-f-std-kind="CANDIDATE"]')).toHaveCount(1);
+  await page.locator('[data-f-map-toggle="candidates"]').uncheck();
+  await expect(page.locator('[data-f-std-pin]')).toHaveCount(0);
+  await page.locator('[data-f-map-toggle="candidates"]').check();
+  // 확대·축소 후에도 같은 후보 표식(재투영)
+  const z0 = Number(await page.locator('.f-map').getAttribute('data-f-map-zoom'));
+  await page.locator('[data-f-map-step="-1"]').click();
+  await expect(page.locator('.f-map')).toHaveAttribute('data-f-map-zoom', String(z0 - 1));
+  await expect(page.locator(`[data-f-std-pin="${SA}"]`)).toHaveCount(1);
+  await page.locator('[data-f-map-step="1"]').click();
+  await page.locator('[data-f-map-fit="std"]').click();
+  await expect(page.locator(`[data-f-std-pin="${SA}"]`)).toBeVisible();
+  // 카드 저장·인쇄에는 표준지 값 없음
+  const [download] = await Promise.all([page.waitForEvent('download'), page.locator('[data-f-save]').click()]);
+  const text = fs.readFileSync(await download.path(), 'utf8');
+  expect(text).not.toMatch(/비교표준지|100,000|9999910101100020000/);
+  await page.emulateMedia({ media: 'print' });
+  await expect(page.locator('[data-f-map-panel]')).toBeHidden();
+  await page.emulateMedia({ media: 'screen' });
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(0);
+  await page.locator('[data-f-new]').click();
+  await expect(page.locator('[data-f-std-panel]')).toHaveCount(0);
+});
+
+test('표준지 지도: 조회 실패(서버 경로 미허용 등)면 표식·후보 없이 사유만 · 기존 지도·카드 유지', async ({ page }) => {
+  await mockStandard(page, { ok: false, error_code: 'FIELD_ROUTE_NOT_ALLOWED' });
+  await openOsong(page);
+  await page.locator('[data-f-std-go]').click();
+  await expect(page.locator('[data-f-std-state="FAILED"]')).toContainText('임의 표식·가상 후보를 만들지 않습니다');
+  await expect(page.locator('[data-f-std-pin]')).toHaveCount(0);
+  await expect(page.locator('[data-f-map-target]')).toHaveCount(1);
+  await expect(page.locator('[data-f-save]')).toBeEnabled();
 });

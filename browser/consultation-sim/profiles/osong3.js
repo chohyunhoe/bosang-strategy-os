@@ -36,15 +36,30 @@ export const OSONG3 = Object.freeze({
     Object.freeze({
       id: 'molit-2025-456', notice_no: '국토교통부 고시 제2025-456호', notice_date: '2025-08-28', effective_date: null,
       effective_basis: '고시일과 효력발생일 구별 — 고시문 시행일·효력 규정 원문 확인 필요(화면 등록일과도 구별)',
+      // 효력일 법령 근거 후보(GPT 검토 2026-11-24). 담당 변호사 확인 전에는 effective_date를 입력하지 않는다.
+      effective_legal_basis: Object.freeze({
+        status: 'LEGAL_REVIEW_REQUIRED', candidate_date: '2025-08-28',
+        provisions: Object.freeze(['「국토의 계획 및 이용에 관한 법률」 제31조 제1항 — 도시·군관리계획 결정 효력은 제32조 제4항 지형도면 고시일부터', '「토지이용규제 기본법」 제8조 제3항 — 지형도면등 고시로 지정 효력 발생']),
+        note: '제2025-456호는 산업단지계획 승인과 지형도면을 동시에 고시한다고 명시 — 2025-08-28은 효력발생일로 볼 법률상 근거가 강한 후보. 특례 적용·별도/정정고시·지형도면 고시 연계는 담당 변호사 확인 전 확정하지 않음',
+      }),
       kind: '산업단지계획 승인 및 지형도면 고시 — 도시·군관리계획 용도지역 결정(변경) 포함',
       zoning_decision: 'INCLUDED', project_related: true,
       decision_verified: 'GPT 원문 확인(2026-11-24) — 용도지역 결정(변경) 사유서에 사업 관련 변경 사유 명시',
       changes: Object.freeze([OSONG3_DECISION]),
     }),
   ]),
-  // 2025-456 직전의 기정 용도지역 결정(필지 대조 대상)
+  // 2025-456이 '기정'으로 인용한 고시. GPT 원문 대조(2026-11-24, 토지이음 seq=405418) 결과 개별 필지 기정도면이 아니라
+  // 청주시 전체 기정 용도지역 총량(제2016-360호 기준 누계)만 확인된다 — 궁평리 320-1의 개별 기존 용도지역 근거로 쓰지 않는다.
   prior_designations: Object.freeze([
-    Object.freeze({ id: 'cheongju-2020-236', notice_no: '청주시 고시 제2020-236호', notice_date: '2020-06-12', short: '2020-236 기정도면', kind: '기정 용도지역 결정도면' }),
+    Object.freeze({
+      id: 'cheongju-2020-236', notice_no: '청주시 고시 제2020-236호', notice_date: '2020-06-12', short: '2020-236 총괄 기정 근거',
+      kind: '2025-456이 인용한 기정 고시(청주시 전체 기정 용도지역 총량)', scope: 'CITY_AGGREGATE', status: 'AGGREGATE_ONLY',
+      finding: '이 고시의 실제 변경은 상당구 월오동 산1-1·산10 일원 자연녹지→보전녹지 86,448㎡. 기정 면적은 청주시 고시 제2016-360호(2016-12-30) 기준 누계 총량. 지형도면 승인고시도 게재 생략 — 궁평리 320-1 개별 기정도면 미수록',
+      checked: 'GPT 원문 확인(2026-11-24, 토지이음 고시 seq=405418, 청주시보 제311호 p.219~222)',
+      caution: '원문을 읽은 사실과 이 필지의 기존 용도지역 확인은 다름 — 개별 필지 근거로 쓰지 않음',
+      pending_label: '2020-236 총괄 기정 근거 확인·개별 필지 기정 지정이력 별도 확인 필요',
+      parcel_followup: '고시 전 PNU별 지정이력·당시 토지이용계획·해당 지역 기정도면(개별 필지)',
+    }),
   ]),
   // 보조 원천(③): 환경평가서의 기존 토지이용 현황 — 총괄 집계일 뿐 필지별 확정 근거 아님. 원본은 저장소에 넣지 않는다.
   supporting_documents: Object.freeze([

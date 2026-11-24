@@ -158,3 +158,15 @@ export async function queryParcelMap({ fetchImpl, location: loc, pnu, now = () =
   }
   return { status: 'EXACT_ONE', pnu, target: { geometry: t.geometry, jibun: t.jibun || null }, neighbors: Array.isArray(r.neighbors) ? r.neighbors : [], source: r.source, fetched_at: at };
 }
+
+// 주변 표준지(비교표준지 후보 검토용) — 상담자가 누를 때만. 확인된 PNU·기준연도만 보낸다(개인정보 없음).
+// review_zoning은 서버의 위치 확인 우선순위에만 쓰인다(후보 판정은 화면에서 기존 엔진으로).
+export async function queryStandardLands({ fetchImpl, location: loc, pnu, year, reviewZoning = null, radiusM = 1000, now = () => new Date() }) {
+  const at = now().toISOString();
+  if (!bridgeAllowed(loc)) return { ok: false, error_code: 'OFFLINE', reason: '오프라인 — 표준지 미조회', fetched_at: at };
+  if (!/^\d{19}$/.test(String(pnu || ''))) return { ok: false, error_code: 'PNU_INVALID', reason: 'PNU 미확인 — 표준지 조회 안 함', fetched_at: at };
+  if (year == null || year === '' || !Number.isInteger(Number(year)) || Number(year) < 2000) return { ok: false, error_code: 'YEAR_INVALID', reason: '공시 기준연도 미확인 — 표준지 조회 안 함', fetched_at: at };
+  const r = await call(fetchImpl, '/standard_lands', { pnu, year: Number(year), radius_m: radiusM, review_zoning: reviewZoning || '' });
+  if (!r.ok) return { ...r, reason: errorText(r.error_code, r.error_message), fetched_at: at };
+  return { ...r, fetched_at: at };
+}

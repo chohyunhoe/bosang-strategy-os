@@ -134,6 +134,7 @@ export function zoningCardLines(result) {
   if (result.status === ZONING_STATUS.NOTICE_PROJECT_REASON && result.trace?.trigger) {
     const t = result.trace.trigger;
     lines.push(`${result.trace.trigger_heading}: ${t.event.notice_no}(${t.event.notice_date || '고시일 미상'}) — 용도지역 결정(변경) 포함 · 사업 관련 사유 명시${t.event.effective_date ? ` · 효력 ${t.event.effective_date}` : ' · 효력 기준일 원문 확인 전'} · ${result.trace.trigger_window_note}`);
+    if (!t.event.effective_date && t.event.effective_legal_basis) lines.push(`효력일: 법령 근거 검토 필요(후보 ${t.event.effective_legal_basis.candidate_date || '미정'} — 지형도면 고시일 기준 규정 · 변호사 확인 전 확정 안 함)`);
     if (result.trace.past_basis) lines.push(`변경 전 기준 관찰: ${result.trace.past_basis.as_of} 기준 공적자료(조회 연도별 값은 화면 열람)`);
     lines.push(`대조 문서: ${result.trace.evidence.filter((e) => e.grade !== 4).map((e) => `${['', '①', '②', '③'][e.grade]} ${e.title}(${{ CONFIRMED: '필지 대조함', AGGREGATE_ONLY: '총괄', PENDING: '대조 전', NOT_OBTAINED: '미확보' }[e.status] || e.status})`).join(' / ')}`);
     lines.push(`검증 상태: ${result.verification_label}`);

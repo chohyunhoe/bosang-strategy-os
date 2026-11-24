@@ -21,9 +21,9 @@ export function allPoints(geometry) {
   return polys.flatMap((poly) => poly.flatMap((ring) => ring));
 }
 
-// 대상 필지가 영상 폭·높이의 절반 안에 들어오는 가장 큰 줌
-export function fitView(geometry) {
-  const pts = allPoints(geometry).map(mercator);
+// 대상 필지(+추가 지점)가 영상 폭·높이의 절반 안에 들어오는 가장 큰 줌
+export function fitView(geometry, extraPoints = []) {
+  const pts = [...allPoints(geometry), ...(extraPoints || [])].map(mercator);
   if (!pts.length) return null;
   const xs = pts.map((p) => p[0]); const ys = pts.map((p) => p[1]);
   const minX = Math.min(...xs); const maxX = Math.max(...xs); const minY = Math.min(...ys); const maxY = Math.max(...ys);
@@ -64,7 +64,28 @@ export function aerialUrl(view) {
 
 const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-// model: { status, pnu, target:{geometry,jibun}, neighbors:[{pnu,geometry}], view, showTarget, showNeighbors, aerial:'LOADING'|'OK'|'FAILED', reason, fetched_at }
+// 주변 표준지 표식(공식 위치 확인된 것만). 화면 크기와 무관하게 누를 수 있도록 SVG가 아니라 % 위치의 버튼으로 그린다.
+export function renderStandardPins(v, std) {
+  if (!std || !Array.isArray(std.markers)) return { pins: '', outlines: '' };
+  const pct = ([x, y]) => [(x / MAP.width) * 100, (y / MAP.height) * 100];
+  const inside = ([x, y]) => x >= 0 && x <= MAP.width && y >= 0 && y <= MAP.height;
+  const shown = std.markers.filter((m) => (m.kind === 'CANDIDATE' ? std.showCandidates : std.showStandards));
+  const outlines = std.showCandidates ? std.markers.filter((m) => m.kind === 'CANDIDATE' && m.geometry)
+    .map((m) => `<path class="f-std-shape${m.pnu === std.selected ? ' sel' : ''}" d="${svgPath(v, m.geometry)}" fill-rule="evenodd"/>`).join('') : '';
+  // 후보는 일반 표준지 위에 그린다
+  const pins = shown.slice().sort((a, b) => (a.kind === 'CANDIDATE') - (b.kind === 'CANDIDATE')).map((m) => {
+    const p = project(v, m.centroid);
+    if (!inside(p)) return '';
+    const [x, y] = pct(p);
+    const cand = m.kind === 'CANDIDATE';
+    return `<button type="button" class="f-std-pin ${cand ? 'cand' : 'std'}${m.pnu === std.selected ? ' sel' : ''}" style="left:${x.toFixed(2)}%;top:${y.toFixed(2)}%" data-f-std-pin="${esc(m.pnu)}" data-f-std-kind="${m.kind}"${cand ? ` data-f-std-rank="${m.rank}"` : ''} aria-label="${cand ? `비교표준지 후보 ${m.rank}` : '주변 표준지'} ${esc(m.label)}">${cand ? m.rank : ''}</button>`;
+  }).join('');
+  const offscreen = shown.filter((m) => !inside(project(v, m.centroid)));
+  return { pins, outlines, offscreen_candidates: offscreen.filter((m) => m.kind === 'CANDIDATE').length, offscreen: offscreen.length };
+}
+
+// model: { status, pnu, target:{geometry,jibun}, neighbors:[{pnu,geometry}], view, showTarget, showNeighbors, aerial:'LOADING'|'OK'|'FAILED', reason, fetched_at,
+//          std?: { markers, selected, showStandards, showCandidates } }
 export function renderFieldMap(model) {
   if (!model) return '';
   if (model.status === 'LOADING') return '<p class="small muted" data-f-map-state="LOADING">지도 불러오는 중…</p>';
@@ -74,19 +95,25 @@ export function renderFieldMap(model) {
   const v = model.view;
   const neighbors = model.showNeighbors ? (model.neighbors || []).map((n) => `<path class="f-cad" d="${svgPath(v, n.geometry)}"><title>${esc(n.jibun || n.pnu)}</title></path>`).join('') : '';
   const target = model.showTarget ? `<path class="f-target" data-f-map-target d="${svgPath(v, model.target.geometry)}" fill-rule="evenodd"/>` : '';
+  const std = renderStandardPins(v, model.std);
   return `<div class="f-map" data-f-map-state="EXACT_ONE" data-f-map-pnu="${esc(model.pnu)}" data-f-map-zoom="${v.zoom}">
     <div class="f-map-frame">
       <img class="f-map-img" data-f-map-img src="${esc(aerialUrl(v))}" width="${MAP.width}" height="${MAP.height}" alt="항공영상(VWorld PHOTO)" referrerpolicy="no-referrer">
-      <svg class="f-map-svg" viewBox="0 0 ${MAP.width} ${MAP.height}" preserveAspectRatio="none" aria-label="지적경계">${neighbors}${target}</svg>
+      <svg class="f-map-svg" viewBox="0 0 ${MAP.width} ${MAP.height}" preserveAspectRatio="none" aria-label="지적경계">${neighbors}${std.outlines}${target}</svg>
+      ${std.pins ? `<div class="f-std-layer" data-f-std-layer>${std.pins}</div>` : ''}
     </div>
     <div class="f-map-tools">
       <button type="button" class="ghost" data-f-map-step="-1" ${v.zoom <= MAP.minZoom ? 'disabled' : ''} aria-label="축소">−</button>
       <button type="button" class="ghost" data-f-map-step="1" ${v.zoom >= MAP.maxZoom ? 'disabled' : ''} aria-label="확대">＋</button>
       <label class="small"><input type="checkbox" data-f-map-toggle="target" ${model.showTarget ? 'checked' : ''}> 대상 경계</label>
       <label class="small"><input type="checkbox" data-f-map-toggle="neighbors" ${model.showNeighbors ? 'checked' : ''}> 주변 지적</label>
+      ${model.std ? `<label class="small"><input type="checkbox" data-f-map-toggle="standards" ${model.std.showStandards ? 'checked' : ''}> 주변 표준지</label>
+      <label class="small"><input type="checkbox" data-f-map-toggle="candidates" ${model.std.showCandidates ? 'checked' : ''}> 비교표준지 후보</label>
+      <button type="button" class="ghost f-fit" data-f-map-fit="std" aria-label="후보가 보이게 맞춤">후보 맞춤</button>` : ''}
       <span class="chip ${model.aerial === 'FAILED' ? 'bad' : model.aerial === 'OK' ? 'ok' : ''}" data-f-map-aerial="${esc(model.aerial)}">${model.aerial === 'FAILED' ? '항공영상 미수신' : model.aerial === 'OK' ? '항공영상 수신' : '영상 수신 중'}</span>
     </div>
     <p class="small muted" data-f-map-meta>지적: VWorld 연속지적도 exact-one(PNU ${esc(model.pnu)}${model.target.jibun ? ` · ${esc(model.target.jibun)}` : ''}) · 영상: VWorld 영상지도(PHOTO) · <b>촬영일 미확인</b> · 줌 ${v.zoom} · 조회 ${esc(model.fetched_at || '')}</p>
+    ${model.std ? `<p class="small" data-f-std-legend><span class="f-key red"></span> 대상 필지 <span class="f-key gray"></span> 주변 표준지 <span class="f-key blue">1</span> 비교표준지 후보(감정평가사 선정 아님)${std.offscreen ? ` · <span data-f-std-offscreen>화면 밖 ${std.offscreen}곳${std.offscreen_candidates ? `(후보 ${std.offscreen_candidates})` : ''} — 축소 또는 '후보 맞춤'</span>` : ''}</p>` : ''}
     <p class="small warn-note">빨간 선은 지적경계(연속지적도)이며 사업 편입선이 아닙니다. 편입선·사업경계는 이 지도에 연결되지 않았습니다. 지도·영상은 화면 열람용이며 저장·인쇄에서 제외됩니다.</p>
   </div>`;
 }
