@@ -3,6 +3,7 @@
 // - 법률판단·보상액·기간을 만들지 않는다.
 import { noticeFacts } from './notice-index.js';
 import { issuesFor, issueLabel } from './field-issues.js';
+import { zoningCardLines } from './zoning-basis.js';
 
 const fmt = (n) => (typeof n === 'number' ? n.toLocaleString('ko-KR', { maximumFractionDigits: 1 }) : '—');
 
@@ -15,7 +16,7 @@ export const UNVERIFIED_BASE = Object.freeze([
 ]);
 
 // 고시 색인 밖 필지(전국 직접 조회) 카드 — 고시 기재값이 없으므로 '확인 사실'은 입력 주소뿐이다.
-export function buildDirectCard({ profile, target, selectedIssueIds = [], memo = '', otherText = '', now = new Date() }) {
+export function buildDirectCard({ profile, target, selectedIssueIds = [], memo = '', otherText = '', zoning = undefined, now = new Date() }) {
   if (!target?.ok) return null;
   const issues = issuesFor(profile);
   const chosen = issues.filter((it) => selectedIssueIds.includes(it.id));
@@ -33,6 +34,7 @@ export function buildDirectCard({ profile, target, selectedIssueIds = [], memo =
     '', '■ 미확인', ...unverified.map((s) => `- ${s}`),
     '', '■ 상담자가 선택한 쟁점', ...(chosen.length ? chosen.map((it) => `- ${issueLabel(it, otherText)}`) : ['- (선택 없음)']),
     '', '■ 확보할 문서', ...(documents.length ? documents.map((s) => `- ${s}`) : ['- (쟁점 선택 후 표시)']),
+    ...(zoning !== undefined ? ['', '■ 용도지역 · 보상평가 기준 검토(확정 아님)', ...zoningCardLines(zoning).map((s) => `- ${s}`)] : []),
     '', '■ 후속조치', ...next.map((s) => `- ${s}`),
     ...(memoText ? ['', '■ 상담 메모', memoText] : []),
     '', '※ 보상액·법률 결론·기간을 정하지 않으며 증액을 약속하지 않습니다. 공적자료 실조회 값은 이용조건 확인 전이라 이 카드에 넣지 않았습니다.',
@@ -40,7 +42,7 @@ export function buildDirectCard({ profile, target, selectedIssueIds = [], memo =
   return { address: target.address || null, confirmed, unverified, chosen, documents, next, memo: memoText, text };
 }
 
-export function buildFieldCard({ profile, index, row, selectedIssueIds = [], memo = '', otherText = '', now = new Date() }) {
+export function buildFieldCard({ profile, index, row, selectedIssueIds = [], memo = '', otherText = '', zoning = undefined, now = new Date() }) {
   if (!row) return null;
   const facts = noticeFacts(row);
   const notice = index?.notice || profile?.notice || {};
@@ -72,6 +74,7 @@ export function buildFieldCard({ profile, index, row, selectedIssueIds = [], mem
     '', '■ 미확인', ...unverified.map((s) => `- ${s}`),
     '', '■ 상담자가 선택한 쟁점', ...(chosen.length ? chosen.map((it) => `- ${issueLabel(it, otherText)}`) : ['- (선택 없음)']),
     '', '■ 확보할 문서', ...(documents.length ? documents.map((s) => `- ${s}`) : ['- (쟁점 선택 후 표시)']),
+    ...(zoning !== undefined ? ['', '■ 용도지역 · 보상평가 기준 검토(확정 아님)', ...zoningCardLines(zoning).map((s) => `- ${s}`)] : []),
     '', '■ 후속조치', ...next.map((s) => `- ${s}`),
     ...(memoText ? ['', '■ 상담 메모', memoText] : []),
     '', '※ 보상액·법률 결론·기간을 정하지 않으며 증액을 약속하지 않습니다. 공적자료 실조회 값은 이용조건 확인 전이라 이 카드에 넣지 않았습니다.',

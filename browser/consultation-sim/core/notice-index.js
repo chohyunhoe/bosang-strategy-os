@@ -24,7 +24,7 @@ export function jimokName(code) {
 // 행·고시 메타에 허용하는 키(화이트리스트). 이 밖의 키가 있으면 개인정보 혼입 가능성으로 보고 색인을 거부한다.
 const ROW_KEYS = new Set(['serial', 'eupmyeon', 'ri', 'mountain', 'bun', 'ji', 'lot_label', 'jimok_code', 'jimok', 'ledger_area_m2',
   'incorporated_area_m2', 'pdf_page', 'ri_source']);
-const NOTICE_KEYS = new Set(['id', 'title', 'notice_no', 'notice_date', 'authority', 'project', 'operator', 'source_url', 'source_file_sha256', 'pages']);
+const NOTICE_KEYS = new Set(['id', 'title', 'notice_no', 'notice_date', 'authority', 'project', 'operator', 'source_url', 'source_file_sha256', 'pages', 'zoning_check']);
 const FORBIDDEN_KEY = /(owner|소유|성명|name_of|holder|relation|관계인|address|주소|phone|전화|resident|주민|birth|생년)/i;
 
 const round1 = (n) => Math.round(n * 10) / 10;

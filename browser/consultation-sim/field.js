@@ -6,6 +6,7 @@ import { buildFieldCard, buildDirectCard } from './core/field-card.js';
 import { directLookupTarget } from './core/field-direct.js';
 import { bridgeStatus, queryPublicData, queryParcelMap, PD_STATUS, PD_STAGE } from './core/field-public-data.js';
 import { fitView, withZoom, renderFieldMap } from './core/field-map.js';
+import { evaluateZoningBasis, RELATION_OPTIONS, ZONING_STATUS, ZONING_STATUS_LABEL } from './core/zoning-basis.js';
 import { profileForIndex } from './profiles/index.js';
 
 const $ = (s, r = document) => r.querySelector(s);
@@ -14,7 +15,7 @@ const fmt = (n) => (typeof n === 'number' ? n.toLocaleString('ko-KR', { maximumF
 const fmtTime = (iso) => (iso ? new Date(iso).toLocaleString('ko-KR', { hour12: false }) : '—');
 
 // row: 고시 색인 행 / direct: 색인 밖 전국 직접 조회 대상. 둘 중 하나만 활성.
-const st = { index: null, profile: profileForIndex(null), check: null, search: null, row: null, direct: null, directOffer: null, issues: new Set(), memo: '', other: '', map: null, pdBridge: null, pd: null, pdBusy: false, epoch: 0 };
+const st = { index: null, profile: profileForIndex(null), check: null, search: null, row: null, direct: null, directOffer: null, issues: new Set(), memo: '', other: '', map: null, zoningConfirm: { relation: '', basis_doc: '', by: '' }, pdBridge: null, pd: null, pdBusy: false, epoch: 0 };
 const active = () => st.row || st.direct;
 
 function setIndex(index, origin) {
@@ -37,14 +38,14 @@ function setIndex(index, origin) {
 function showIndexError(msg) { const e = $('[data-f-index-error]'); e.hidden = false; e.textContent = msg; $('[data-f-loader]').hidden = false; }
 
 function newConsultation() {
-  st.epoch += 1; st.search = null; st.row = null; st.direct = null; st.directOffer = null; st.issues = new Set(); st.memo = ''; st.map = null; st.other = ''; st.pd = null; st.pdBusy = false;
+  st.epoch += 1; st.search = null; st.row = null; st.direct = null; st.directOffer = null; st.issues = new Set(); st.memo = ''; st.map = null; st.other = ''; st.zoningConfirm = { relation: '', basis_doc: '', by: '' }; st.pd = null; st.pdBusy = false;
   $('[data-f-q]').value = ''; $('[data-f-memo]').value = ''; $('[data-f-out]').textContent = '';
   render();
   if (!$('[data-f-q]').disabled) $('[data-f-q]').focus();
 }
 
-function openDirect(target) { st.epoch += 1; st.row = null; st.direct = target; st.issues = new Set(); st.memo = ''; st.map = null; st.other = ''; st.pd = null; $('[data-f-memo]').value = ''; $('[data-f-out]').textContent = ''; render(); }
-function selectRow(row) { st.epoch += 1; st.direct = null; st.row = row; st.issues = new Set(); st.memo = ''; st.map = null; st.other = ''; st.pd = null; $('[data-f-memo]').value = ''; $('[data-f-out]').textContent = ''; render(); }
+function openDirect(target) { st.epoch += 1; st.row = null; st.direct = target; st.issues = new Set(); st.memo = ''; st.map = null; st.other = ''; st.zoningConfirm = { relation: '', basis_doc: '', by: '' }; st.pd = null; $('[data-f-memo]').value = ''; $('[data-f-out]').textContent = ''; render(); }
+function selectRow(row) { st.epoch += 1; st.direct = null; st.row = row; st.issues = new Set(); st.memo = ''; st.map = null; st.other = ''; st.zoningConfirm = { relation: '', basis_doc: '', by: '' }; st.pd = null; $('[data-f-memo]').value = ''; $('[data-f-out]').textContent = ''; render(); }
 
 function renderResult() {
   const box = $('[data-f-result]');
@@ -152,7 +153,7 @@ function renderCard() {
   main.hidden = !active();
   if (!active()) return;
   if (st.direct) { renderIssuesBox(renderDirectFacts()); return; }
-  const card = buildFieldCard({ profile: st.profile, index: st.index, row: st.row, selectedIssueIds: [...st.issues], memo: st.memo, otherText: st.other });
+  const card = buildFieldCard({ profile: st.profile, index: st.index, row: st.row, selectedIssueIds: [...st.issues], memo: st.memo, otherText: st.other, zoning: currentZoning() });
   const r = st.row; const f = noticeFacts(r);
   $('[data-f-facts]').innerHTML = `<div class="f-head" data-f-parcel="${r.serial}">${esc(r.ri)} ${esc(r.lot_label)} <span class="chip warn">원문확인 필요</span></div>
     <dl class="f-kv">
@@ -172,7 +173,7 @@ function renderCard() {
 }
 
 function renderDirectFacts() {
-  const card = buildDirectCard({ profile: st.profile, target: st.direct, selectedIssueIds: [...st.issues], memo: st.memo, otherText: st.other });
+  const card = buildDirectCard({ profile: st.profile, target: st.direct, selectedIssueIds: [...st.issues], memo: st.memo, otherText: st.other, zoning: currentZoning() });
   $('[data-f-facts]').innerHTML = `<div class="f-head" data-f-direct="${esc(st.direct.scope)}">${esc(st.direct.leaf)} ${esc(st.direct.lot_label)} <span class="chip bad">고시 색인 밖 · 편입 여부 미확인</span></div>
     <dl class="f-kv">${st.direct.scope === 'PNU' ? `<dt>입력 PNU</dt><dd data-f-direct-pnu class="mono">${esc(st.direct.pnu)} <span class="chip warn">검증 전</span></dd>` : `<dt>입력 주소</dt><dd data-f-direct-address>${esc(card.address)}</dd>`}<dt>고시 기재값</dt><dd>없음 — 미편입 판정 아님</dd></dl>
     <p class="small muted">법정동은 공적자료 조회 때 행정안전부 법정동코드로 다시 확인하며, 후보가 여럿이면 조회하지 않습니다.</p>`;
@@ -197,10 +198,68 @@ function renderIssuesBox(card) {
   $('[data-f-next]').innerHTML = card.next.map((d) => `<li>${esc(d)}</li>`).join('');
 }
 
-function render() { renderResult(); renderCard(); renderPublicData(); renderMap(); }
+// 용도지역 보상평가 기준: 사업 고시는 그 사업 색인의 필지(색인 행·색인 리 직접 조회)에만 연결한다.
+function zoningProject() {
+  const n = st.index?.notice;
+  if (!n || st.profile?.id === 'generic' && !n.notice_no) return null;
+  if (st.row || st.direct?.scope === 'INDEX_AREA') return { ...n, zoning_check: st.profile?.notice?.zoning_check || n.zoning_check || null };
+  return null;
+}
+function currentZoning() {
+  if (!st.pd) return null;
+  return evaluateZoningBasis({ history: st.pd.zoning_history || [], project: zoningProject(), confirmation: st.zoningConfirm });
+}
+const ZCHIP = { NO_DATA: 'bad', NO_CHANGE_OBSERVED: 'warn', CHANGE_UNCONFIRMED: 'bad', PROJECT_RELATED: 'warn', UNRELATED: 'warn' };
+let lastZoningKey = '';
+function renderZoningResult() {
+  const box = $('[data-f-zoning-result]'); if (!box) return;
+  const z = currentZoning(); if (!z) { box.innerHTML = ''; return; }
+  box.innerHTML = `<div data-f-zoning-status="${esc(z.status)}">
+    <p class="small"><span class="chip ${ZCHIP[z.status]}">${esc(ZONING_STATUS_LABEL[z.status])}</span></p>
+    <dl class="f-kv">
+      <dt>보상평가 검토 기준 후보</dt><dd data-f-zoning-basis>${z.basis_zoning ? `${esc(z.basis_zoning)} <span class="chip warn">후보 · 전문가 검증 전</span>` : '<span class="chip bad">확인 필요 — 임의 추정 안 함</span>'}</dd>
+      <dt>검증 상태</dt><dd data-f-zoning-verification>${z.verification === 'UNVERIFIED_BY_EXPERT' ? '미검증(자동 판정 없음)' : '상담자 표시 · 전문가 검증 전'}</dd>
+    </dl>
+    ${z.notes.map((n) => `<p class="small warn-note">${esc(n)}</p>`).join('')}</div>`;
+}
+function renderZoning() {
+  const wrap = $('[data-f-zoning]'); const h2 = $('[data-f-zoning-h2]');
+  if (!wrap) return;
+  const show = Boolean(active() && st.pd && st.pd.status !== PD_STATUS.OFFLINE);
+  wrap.hidden = !show; if (h2) h2.hidden = !show;
+  if (!show) { wrap.innerHTML = ''; lastZoningKey = ''; return; }
+  const key = `${st.epoch}|${st.pd.pnu || ''}|${(st.pd.zoning_history || []).map((h) => `${h.year}:${h.zoning}`).join(',')}`;
+  if (key !== lastZoningKey) {
+    lastZoningKey = key;
+    const z = currentZoning();
+    const proj = z.project;
+    wrap.innerHTML = `<div data-f-zoning-panel>
+      <dl class="f-kv">
+        <dt>현재 용도지역(공적자료)</dt><dd data-f-zoning-current>${z.current_zoning ? `${esc(z.current_zoning)} <span class="small muted">기준 ${z.current_year}</span>` : '<span class="chip">자료 없음</span>'}</dd>
+        <dt>연도별</dt><dd data-f-zoning-history>${z.history.length ? z.history.map((h) => `${h.year} ${esc(h.zoning)}`).join(' → ') : '—'}</dd>
+        ${z.change ? `<dt>변경 관찰</dt><dd data-f-zoning-change>변경 전 <b>${esc(z.change.before)}</b> → 변경 후 <b>${esc(z.change.after)}</b> <span class="small muted">(${esc(z.change.window)}년 기준 사이)</span></dd>` : ''}
+        <dt>확인 대상</dt><dd data-f-zoning-project>${proj?.notice_no ? `${esc(proj.notice_no)} · 고시일 ${esc(proj.notice_date || '미상')}${proj.zoning_check ? `<div class="small">${esc(proj.zoning_check)}</div>` : ''}${proj.source_url ? `<div class="small mono">${esc(proj.source_url)}</div>` : ''}` : '이 필지에 연결된 사업 고시 없음 — 사업 관련성 확인 불가'}</dd>
+        <dt>적용 근거</dt><dd data-f-zoning-rules>${z.rules.map((r) => `<div class="small">${esc(r.label)} — ${esc(r.note)}</div>`).join('')}</dd>
+      </dl>
+      ${z.change ? `<div class="f-zoning-confirm">
+        <label class="small">사업 관련성(상담자 확인) <select data-f-zoning-relation>${RELATION_OPTIONS.map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join('')}</select></label>
+        <label class="small">근거 문서(필수) <input data-f-zoning-doc maxlength="200" placeholder="예: 고시 제2025-456호 ○쪽 도시관리계획 결정(변경)조서"></label>
+        <label class="small">확인자 <input data-f-zoning-by maxlength="40" placeholder="이름 대신 직함·이니셜 가능"></label>
+      </div>` : ''}
+      <div data-f-zoning-result></div>
+      <p class="small muted">용도지역 판단은 검토 보조입니다. 실제 감정평가 기준은 감정평가사·법률 검토로 정합니다. 화면 열람 전용(인쇄 제외) — 카드에는 상태·근거만 기록합니다.</p></div>`;
+    const sel = $('[data-f-zoning-relation]', wrap); const doc = $('[data-f-zoning-doc]', wrap); const by = $('[data-f-zoning-by]', wrap);
+    if (sel) { sel.value = st.zoningConfirm.relation; doc.value = st.zoningConfirm.basis_doc; by.value = st.zoningConfirm.by; }
+    const sync = () => { st.zoningConfirm = { relation: sel.value, basis_doc: doc.value, by: by.value }; $('[data-f-out]').textContent = ''; renderZoningResult(); };
+    [sel, doc, by].forEach((el) => el?.addEventListener(el.tagName === 'SELECT' ? 'change' : 'input', sync));
+  }
+  renderZoningResult();
+}
 
-const currentCardText = () => (st.row ? buildFieldCard({ profile: st.profile, index: st.index, row: st.row, selectedIssueIds: [...st.issues], memo: st.memo, otherText: st.other }).text
-  : st.direct ? buildDirectCard({ profile: st.profile, target: st.direct, selectedIssueIds: [...st.issues], memo: st.memo, otherText: st.other }).text : '');
+function render() { renderResult(); renderCard(); renderPublicData(); renderZoning(); renderMap(); }
+
+const currentCardText = () => (st.row ? buildFieldCard({ profile: st.profile, index: st.index, row: st.row, selectedIssueIds: [...st.issues], memo: st.memo, otherText: st.other, zoning: currentZoning() }).text
+  : st.direct ? buildDirectCard({ profile: st.profile, target: st.direct, selectedIssueIds: [...st.issues], memo: st.memo, otherText: st.other, zoning: currentZoning() }).text : '');
 
 async function copyCard() {
   const text = currentCardText(); if (!text) return;
@@ -225,7 +284,7 @@ function saveCard() {
 function init() {
   $('[data-f-form]').addEventListener('submit', (e) => {
     e.preventDefault();
-    st.epoch += 1; st.row = null; st.direct = null; st.directOffer = null; st.pd = null; st.issues = new Set(); st.memo = ''; st.map = null; st.other = ''; $('[data-f-memo]').value = ''; $('[data-f-out]').textContent = '';
+    st.epoch += 1; st.row = null; st.direct = null; st.directOffer = null; st.pd = null; st.issues = new Set(); st.memo = ''; st.map = null; st.other = ''; st.zoningConfirm = { relation: '', basis_doc: '', by: '' }; $('[data-f-memo]').value = ''; $('[data-f-out]').textContent = '';
     const q = $('[data-f-q]').value;
     st.search = st.index ? searchNoticeIndex(st.index, q)
       : (q.trim() ? { status: SEARCH_STATUS.NOT_IN_INDEX, message: '고시 색인이 없습니다. 전체 주소로 전국 공적자료만 조회할 수 있습니다(편입 여부 미확인).', matches: [] } : { status: SEARCH_STATUS.EMPTY, matches: [] });
@@ -239,7 +298,7 @@ function init() {
   $('[data-f-save]').addEventListener('click', saveCard);
   $('[data-f-print]').addEventListener('click', () => window.print());
   // 인쇄·PDF 저장(버튼·브라우저 메뉴·window.print 모두): 공적자료 영역은 CSS로 숨기고, 인쇄 직전 DOM에서도 비운다.
-  window.addEventListener('beforeprint', () => { document.body.dataset.printing = '1'; ['[data-f-pd]', '[data-f-map]'].forEach((sel) => { const box = $(sel); if (box) box.innerHTML = ''; }); lastMapKey = ''; });
+  window.addEventListener('beforeprint', () => { document.body.dataset.printing = '1'; ['[data-f-pd]', '[data-f-map]', '[data-f-zoning]'].forEach((sel) => { const box = $(sel); if (box) box.innerHTML = ''; }); lastMapKey = ''; lastZoningKey = ''; });
   window.addEventListener('afterprint', () => { delete document.body.dataset.printing; render(); });
   $('[data-f-index-file]').addEventListener('change', async (e) => {
     const file = e.target.files?.[0]; if (!file) return;

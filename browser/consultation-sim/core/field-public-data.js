@@ -92,15 +92,23 @@ export async function queryPublicData({ fetchImpl, location: loc, index, row = n
   }
   const attempts = [];
   const base = { pnu, legal_dong_name: legalDong, parcel_address: parcel?.address || null, parcel_checked: Boolean(parcel), pnu_review_required: true, address, notes };
+  // 모든 조회 연도를 부른다: 최신 응답 연도의 값을 표시하고, 연도별 용도지역은 보상평가 기준 검토(변경 이력)에 쓴다.
+  const records = [];
   for (const year of years) {
     const res = await call(fetchImpl, '/vworld_land', { pnu, standard_year: year, dedupe_revisions: true });
     attempts.push({ year, ok: Boolean(res.ok), code: res.error_code || res.status || null, result_code: resultCodeOf(res.error_message), message: res.error_message || null, fetched_at: at() });
-    if (res.ok && res.record) {
-      const r = res.record; const src = 'VWorld 국가중점데이터 토지특성(로컬 브리지 경유)';
+    if (res.ok && res.record) records.push({ year, record: res.record, fetched_at: at() });
+  }
+  const zoningHistory = records.map((x) => ({ year: x.year, zoning: x.record.zoning ?? null, fetched_at: x.fetched_at, source: 'VWorld 국가중점데이터 토지특성' }));
+  const latest = records.slice().sort((a, b) => b.year - a.year)[0];
+  if (latest) {
+    {
+      const year = latest.year;
+      const r = latest.record; const src = 'VWorld 국가중점데이터 토지특성(로컬 브리지 경유)';
       const v = (key, label, value, extra = {}) => ({ key, label, value: value ?? null, source: src, base_year: year, fetched_at: at(), status: value == null ? PD_STATUS.NO_DATA : PD_STATUS.OK, ...extra });
       const jimokMismatch = r.land_category && row?.jimok && r.land_category !== row.jimok;
       return {
-        status: PD_STATUS.OK, stage: PD_STAGE.LIVE_DATA, ...base, attempts,
+        status: PD_STATUS.OK, stage: PD_STAGE.LIVE_DATA, ...base, attempts, zoning_history: zoningHistory,
         values: [
           v('land_category', '지목(현재 공부)', r.land_category, jimokMismatch ? { mismatch: `고시 기재 지목(${row.jimok})과 다름 — 지목변경·오기 확인` } : {}),
           v('zoning', '용도지역', r.zoning), v('land_use', '이용상황(공시지가 산정용)', r.land_use), v('road_access', '도로접면', r.road_access),
@@ -111,7 +119,7 @@ export async function queryPublicData({ fetchImpl, location: loc, index, row = n
     }
   }
   const last = attempts[attempts.length - 1];
-  return { status: attempts.every((a) => a.ok) ? PD_STATUS.NO_DATA : PD_STATUS.FAILED, stage: PD_STAGE.RESOLUTION_ONLY, step: 'vworld_land', ...base, attempts,
+  return { status: attempts.every((a) => a.ok) ? PD_STATUS.NO_DATA : PD_STATUS.FAILED, stage: PD_STAGE.RESOLUTION_ONLY, step: 'vworld_land', ...base, attempts, zoning_history: [],
     code: last?.code, result_code: last?.result_code || null, reason: attempts.every((a) => a.ok) ? '조회 연도에 토지특성 자료 없음' : errorText(last?.code, last?.message), values: [] };
 }
 

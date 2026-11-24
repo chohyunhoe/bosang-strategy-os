@@ -12,6 +12,8 @@ export const OSONG3 = Object.freeze({
     project: '오송 제3생명과학 국가산업단지',
     operator: '한국토지주택공사(LH)',
     source_url: 'https://www.eum.go.kr/web/gs/gv/gvGosiDet.jsp?seq=618070',
+    // 용도지역 보상평가 기준 검토용 확인 대상(내용 미대조 — 원문에서 해당 필지·용도지역 변경 여부를 직접 확인)
+    zoning_check: '국토교통부 고시 제2025-456호 중 도시관리계획 결정(변경)(용도지역) — 산업단지계획 승인에 따른 결정 의제 여부·대상 필지·변경 전후 용도지역 원문 대조 필요',
   }),
   location: Object.freeze({ sido: '충청북도', sigungu: '청주시 흥덕구', eupmyeon: '오송읍' }),
   ris: Object.freeze(['오송리', '동평리', '봉산리', '서평리', '정중리', '궁평리']),

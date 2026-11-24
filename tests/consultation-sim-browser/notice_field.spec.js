@@ -177,7 +177,7 @@ test('PNU 19자리 단독입력(색인 없음): 검증 전 카드 → 지적 확
   await page.locator('[data-f-pd-go]').click();
   await expect(page.locator('[data-f-pd-stage="LIVE_DATA"]')).toBeVisible();
   await expect(page.locator('[data-f-pd-parcel]')).toContainText('가상특별시 누리구 새솔동 12-3');
-  expect(calls.filter((c) => c !== 'status')).toEqual(['pnu_parcel', 'vworld_land', 'parcel_map']);
+  expect(calls.filter((c) => c !== 'status')).toEqual(['pnu_parcel', 'vworld_land', 'vworld_land', 'parcel_map']);
 });
 
 test('PNU가 지적에 없으면 토지특성 호출 없음 · 색인이 있어도 PNU는 직접 조회로', async ({ page }) => {
@@ -287,4 +287,59 @@ test('기타 자유입력: 체크 시 입력란 · 저장 카드에 반영 · �
   await search(page, '바위리 12-3');
   await expect(page.locator('[data-f-issue="other"]')).not.toBeChecked();
   await expect(page.locator('[data-f-other]')).toHaveValue('');
+});
+
+// ── 용도지역: 현재값 vs 보상평가 검토 기준 ─────────────────────────────────────
+async function mockZoning(page) {
+  await page.route('**/__public_data_bridge/**', async (route) => {
+    const op = new URL(route.request().url()).pathname.split('/').pop();
+    const req = route.request().postData() ? JSON.parse(route.request().postData()) : {};
+    const body = op === 'status' ? { ok: true, vworld_configured: true, public_data_configured: true }
+      : op === 'resolve_pnu' ? { ok: true, candidate: { pnu: '9800000000100120003', legal_dong_name: '가상도 연습시 숲내읍 바위리' } }
+        : op === 'pnu_parcel' ? { ok: true, parcel: { pnu: '9800000000100120003', address: '가상도 연습시 숲내읍 바위리 12-3', jibun: '12-3 답' } }
+          : op === 'parcel_map' ? { ok: true, target: { status: 'NOT_FOUND', pnu: '9800000000100120003' } }
+            : { ok: true, record: { land_category: '답', zoning: req.standard_year === 2026 ? '제1종일반주거지역' : '농림지역', individual_official_price: 1000, price_year: req.standard_year } };
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+  });
+}
+
+test('용도지역: 색인 필지 변경 관찰 → 확인 필요 → 근거와 사업 관련 표시 시 변경 전 후보 · 카드엔 상태만 · 인쇄 제외', async ({ page }) => {
+  await mockZoning(page);
+  await open(page);
+  await search(page, '바위리 12-3');
+  await page.locator('[data-f-pd-go]').click();
+  await expect(page.locator('[data-f-zoning-current]')).toContainText('제1종일반주거지역');
+  await expect(page.locator('[data-f-zoning-change]')).toContainText('농림지역');
+  await expect(page.locator('[data-f-zoning-project]')).toContainText('가상 고시 제0000-1호');
+  await expect(page.locator('[data-f-zoning-status]')).toHaveAttribute('data-f-zoning-status', 'CHANGE_UNCONFIRMED');
+  await expect(page.locator('[data-f-zoning-basis]')).toContainText('확인 필요');
+  await page.locator('[data-f-zoning-relation]').selectOption('PROJECT_RELATED');
+  await expect(page.locator('[data-f-zoning-status]')).toHaveAttribute('data-f-zoning-status', 'CHANGE_UNCONFIRMED'); // 근거 없으면 반영 안 함
+  await page.locator('[data-f-zoning-doc]').fill('가상 고시 ○쪽 결정조서');
+  await expect(page.locator('[data-f-zoning-status]')).toHaveAttribute('data-f-zoning-status', 'PROJECT_RELATED');
+  await expect(page.locator('[data-f-zoning-basis]')).toContainText('농림지역');
+  await expect(page.locator('[data-f-zoning-basis]')).toContainText('전문가 검증 전');
+  await expect(page.locator('[data-f-zoning-doc]')).toBeFocused();
+  const [download] = await Promise.all([page.waitForEvent('download'), page.locator('[data-f-save]').click()]);
+  const text = fs.readFileSync(await download.path(), 'utf8');
+  expect(text).toContain('■ 용도지역 · 보상평가 기준 검토(확정 아님)');
+  expect(text).toContain('상담자 표시 근거: 가상 고시 ○쪽 결정조서');
+  expect(text).not.toMatch(/농림지역|제1종일반주거지역/);
+  await page.emulateMedia({ media: 'print' });
+  await expect(page.locator('[data-f-zoning]')).toBeHidden();
+  await page.emulateMedia({ media: 'screen' });
+  await page.locator('[data-f-new]').click();
+  await search(page, '바위리 12-3');
+  await page.locator('[data-f-pd-go]').click();
+  await expect(page.locator('[data-f-zoning-relation]')).toHaveValue('');
+});
+
+test('용도지역: 사업 색인 밖 전국 필지는 사업 고시를 연결하지 않음', async ({ page }) => {
+  await mockZoning(page);
+  await open(page);
+  await search(page, '가상특별시 누리구 새솔동 12-3');
+  await page.locator('[data-f-direct-open]').click();
+  await page.locator('[data-f-pd-go]').click();
+  await expect(page.locator('[data-f-zoning-project]')).toContainText('연결된 사업 고시 없음');
+  await expect(page.locator('[data-f-zoning-status]')).toHaveAttribute('data-f-zoning-status', 'CHANGE_UNCONFIRMED');
 });

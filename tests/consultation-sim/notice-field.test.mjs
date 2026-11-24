@@ -305,7 +305,7 @@ test('PNU 조회: 지적 확인 후 실데이터 · 법정동은 지적 주소�
     vworld_land: (b) => { calls.push(`vworld_land:${b.pnu}`); return { ok: true, record: { land_category: '답', individual_official_price: 5000, price_year: 2026 } }; },
   });
   const r = await queryPublicData({ fetchImpl, location: loop, index: null, target: directLookupTarget(null, '9800000000100120003') });
-  assert.deepEqual(calls, ['pnu_parcel', 'vworld_land:9800000000100120003']);
+  assert.deepEqual(calls, ['pnu_parcel', 'vworld_land:9800000000100120003', 'vworld_land:9800000000100120003']); // 연도별(2026·2025) 용도지역 이력
   assert.equal(r.stage, 'LIVE_DATA'); assert.equal(r.legal_dong_name, '가상도 연습시 숲내읍 바위리'); assert.equal(r.parcel_address, '가상도 연습시 숲내읍 바위리 12-3');
 });
 
@@ -440,4 +440,57 @@ test('전용 최소 서버: 허용 연산만 · 영상 좌표 검증 · 보안 �
   const { spawnSync } = await import('node:child_process');
   const lan = spawnSync(process.execPath, [path.join(root, 'scripts', 'field_server.js'), '--lan'], { encoding: 'utf8' });
   assert.equal(lan.status, 2);
+});
+
+// ── 용도지역: 현재값과 보상평가 검토 기준 분리(시행규칙 제23조 제2항 · 실무기준 6.1.2) ──────────────
+const zb = await import('../../browser/consultation-sim/core/zoning-basis.js');
+const PROJ = { notice_no: '가상 고시 제0000-1호', notice_date: '2025-08-28', source_url: null, zoning_check: '가상 고시 도시관리계획 결정(변경) 원문 대조' };
+const HIST = [{ year: 2025, zoning: '농림지역' }, { year: 2026, zoning: '제1종일반주거지역' }];
+
+test('용도지역: 변경 관찰 + 관련성 미확인 → 확인 필요, 기준 후보 없음, 고시일이 변경 구간에 포함됨을 기록', () => {
+  const z = zb.evaluateZoningBasis({ history: HIST, project: PROJ });
+  assert.equal(z.status, 'CHANGE_UNCONFIRMED'); assert.equal(z.basis_zoning, null);
+  assert.equal(z.current_zoning, '제1종일반주거지역'); assert.deepEqual([z.change.before, z.change.after, z.change.window], ['농림지역', '제1종일반주거지역', '2025~2026']);
+  assert.match(z.notes.join(), /사업 고시일\(2025-08-28\)이 포함됩니다 — 사업 관련 가능성이 있으나 확정 아님/);
+  assert.equal(z.verification, 'UNVERIFIED_BY_EXPERT');
+  assert.deepEqual(z.rules.map((r) => r.id), ['ENFORCEMENT_RULE_23_2', 'APPRAISAL_PRACTICE_6_1_2']);
+});
+
+test('용도지역: 상담자가 근거와 함께 사업 관련 표시 → 변경 전 용도지역 후보, 근거 없으면 반영 안 함', () => {
+  const noDoc = zb.evaluateZoningBasis({ history: HIST, project: PROJ, confirmation: { relation: 'PROJECT_RELATED', basis_doc: ' ' } });
+  assert.equal(noDoc.status, 'CHANGE_UNCONFIRMED'); assert.match(noDoc.notes.join(), /근거 문서를 함께/);
+  const z = zb.evaluateZoningBasis({ history: HIST, project: PROJ, confirmation: { relation: 'PROJECT_RELATED', basis_doc: '고시 ○쪽 결정조서', by: '상담A' } });
+  assert.deepEqual([z.status, z.basis_zoning, z.basis_reason, z.verification], ['PROJECT_RELATED', '농림지역', 'ENFORCEMENT_RULE_23_2', 'COUNSELOR_MARKED_UNVERIFIED_BY_EXPERT']);
+  const u = zb.evaluateZoningBasis({ history: HIST, project: PROJ, confirmation: { relation: 'UNRELATED', basis_doc: '시 도시관리계획 결정 고시(별건)' } });
+  assert.deepEqual([u.status, u.basis_zoning, u.basis_reason], ['UNRELATED', '제1종일반주거지역', 'VALUATION_DATE_PRINCIPLE']);
+});
+
+test('용도지역: 변경 없음·자료 없음·사업 미지정은 확인 필요(자동 기준 없음)', () => {
+  const same = zb.evaluateZoningBasis({ history: [{ year: 2025, zoning: '대' === '대' ? '일반상업지역' : '' }, { year: 2026, zoning: '일반상업지역' }], project: null });
+  assert.equal(same.status, 'NO_CHANGE_OBSERVED'); assert.equal(same.basis_zoning, null); assert.match(same.notes[0], /그 이전 변경 여부와 사업 관련성은/);
+  assert.equal(zb.evaluateZoningBasis({ history: [] }).status, 'NO_DATA');
+  const noProj = zb.evaluateZoningBasis({ history: HIST, project: null });
+  assert.equal(noProj.status, 'CHANGE_UNCONFIRMED'); assert.match(noProj.notes.join(), /사업 고시가 지정되지 않아/);
+  const outside = zb.evaluateZoningBasis({ history: [{ year: 2023, zoning: 'A' }, { year: 2024, zoning: 'B' }], project: PROJ });
+  assert.match(outside.notes.join(), /겹치지 않습니다/);
+});
+
+test('카드: 용도지역 검토 상태·근거·고시·상담자 표시만, 용도지역 값은 넣지 않음', () => {
+  const idx = load();
+  const z = zb.evaluateZoningBasis({ history: HIST, project: PROJ, confirmation: { relation: 'PROJECT_RELATED', basis_doc: '고시 ○쪽 결정조서' } });
+  const card = buildFieldCard({ profile: profileForIndex(idx), index: idx, row: idx.rows[0], zoning: z });
+  assert.match(card.text, /■ 용도지역 · 보상평가 기준 검토\(확정 아님\)/);
+  assert.match(card.text, /전문가 검증 전/); assert.match(card.text, /제23조 제2항/); assert.match(card.text, /가상 고시 제0000-1호\(2025-08-28\)/);
+  assert.doesNotMatch(card.text, /농림지역|제1종일반주거지역/);
+  assert.match(buildFieldCard({ profile: profileForIndex(idx), index: idx, row: idx.rows[0], zoning: null }).text, /공적자료 미조회 — 확인 필요/);
+});
+
+test('공적자료: 모든 조회 연도의 용도지역 이력을 모은다', async () => {
+  const fetchImpl = fakeBridge({
+    resolve_pnu: () => ({ ok: true, candidate: { pnu: '9800000000100120003' } }),
+    vworld_land: (b) => ({ ok: true, record: { zoning: b.standard_year === 2026 ? '제1종일반주거지역' : '농림지역', land_category: '답' } }),
+  });
+  const r = await queryPublicData({ fetchImpl, location: loop, index: load(), row: load().rows[0] });
+  assert.deepEqual(r.zoning_history.map((h) => [h.year, h.zoning]), [[2026, '제1종일반주거지역'], [2025, '농림지역']]);
+  assert.equal(r.values.find((v) => v.key === 'zoning').value, '제1종일반주거지역');
 });
