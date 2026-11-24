@@ -385,9 +385,10 @@ test('기타 자유입력: 항상 마지막 쟁점 · 카드에 내용 반영 ·
 test('전용 최소 서버: 허용 연산만 · 영상 좌표 검증 · 보안 헤더 · LAN 토큰', async () => {
   const { spawn } = await import('node:child_process');
   const page = path.join(root, 'dist', 'notice-field-test', 'synthetic-field.html');
+  const stateDir = fs.mkdtempSync(path.join((await import('node:os')).tmpdir(), 'bso-field-test-'));
   const startServer = (port, extra = []) => new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [path.join(root, 'scripts', 'field_server.js'), '--page', page, '--port', String(port), '--env', path.join(root, 'no-such.env'), ...extra],
-      { env: { ...process.env, VWORLD_API_KEY: '', VWORLD_DOMAIN: '' }, stdio: ['ignore', 'pipe', 'pipe'] });
+      { env: { ...process.env, VWORLD_API_KEY: '', VWORLD_DOMAIN: '', BSO_FIELD_STATE_DIR: stateDir }, stdio: ['ignore', 'pipe', 'pipe'] });
     child.stdout.on('data', (b) => { if (String(b).includes('BSO field server')) resolve(child); });
     child.on('error', reject); setTimeout(() => reject(new Error('server start timeout')), 8000);
   });
@@ -408,7 +409,7 @@ test('전용 최소 서버: 허용 연산만 · 영상 좌표 검증 · 보안 �
   const s2 = await startServer(4198, ['--require-token']);
   try {
     const B = 'http://127.0.0.1:4198';
-    const token = fs.readFileSync(path.join(root, 'local-data', 'field-server', 'access-token.txt'), 'utf8').trim();
+    const token = fs.readFileSync(path.join(stateDir, 'access-token.txt'), 'utf8').trim();
     assert.equal((await fetch(`${B}/`)).status, 401);
     assert.equal((await fetch(`${B}/__public_data_bridge/status`)).status, 401);
     const plain = await fetch(`${B}/?t=${token}`, { redirect: 'manual' });
@@ -417,6 +418,15 @@ test('전용 최소 서버: 허용 연산만 · 영상 좌표 검증 · 보안 �
     const ok = await fetch(`${B}/?t=${token}`, { redirect: 'manual', headers: { 'x-forwarded-proto': 'https' } });
     assert.equal(ok.status, 303); assert.match(ok.headers.get('set-cookie'), /HttpOnly; SameSite=Strict; Path=\/; Max-Age=43200; Secure/);
     assert.equal((await fetch(`${B}/`, { headers: { cookie: `bso_field=${token}` } })).status, 200);
+    // 페어링: HTTPS만, 틀린 코드 401, 맞는 코드 1회 → Secure 쿠키, 재사용 불가
+    assert.equal((await fetch(`${B}/pair`)).status, 403);
+    assert.equal((await fetch(`${B}/pair`, { headers: { 'x-forwarded-proto': 'https' } })).status, 200);
+    const code = /코드: (\d{6})/.exec(fs.readFileSync(path.join(stateDir, 'pair-code.txt'), 'utf8'))[1];
+    const pair = (c) => fetch(`${B}/pair`, { method: 'POST', headers: { 'x-forwarded-proto': 'https', 'content-type': 'application/json' }, body: JSON.stringify({ code: c }) });
+    assert.equal((await pair(code === '000000' ? '111111' : '000000')).status, 401);
+    const good = await pair(code);
+    assert.equal(good.status, 200); assert.match(good.headers.get('set-cookie'), /HttpOnly; SameSite=Strict; Path=\/; Max-Age=43200; Secure/);
+    assert.equal((await pair(code)).status, 410);
   } finally { s2.kill(); }
   // --allowed-login: Serve가 붙이는 Tailscale-User-Login이 목록에 없으면 403
   const s3 = await startServer(4199, ['--allowed-login', 'allowed@example.test']);

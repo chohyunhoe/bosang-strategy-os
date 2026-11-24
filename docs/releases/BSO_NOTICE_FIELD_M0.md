@@ -129,3 +129,9 @@ node scripts/field_server.js --page dist/notice-field/molit-2025-456-field.html 
 # 끄기
 & "C:\Program Files\Tailscale	ailscale.exe" serve --https=443 off
 ```
+
+### Fold8 연결 절차 (Tailscale Serve, 2026-11-24 연결 확인)
+1. PC: 위 명령으로 서버 + `tailscale serve` 실행(Serve 상태 `tailnet only`, Funnel 없음).
+2. Fold8(같은 tailnet 계정): Chrome에서 `https://<PC>.<tailnet>.ts.net/pair` → PC의 `local-data/field-server/pair-code.txt`에 있는 6자리 코드 입력(10분·1회용·실패 5회 폐기) → 쿠키(Secure·HttpOnly·SameSite=Strict, 12시간) 발급 후 상담 화면.
+3. 다른 기기 추가·쿠키 만료 시 서버를 다시 시작하면 새 코드.
+- 서버 시험(PC→Serve HTTPS): 토큰 없음 401 · 틀린 토큰 401 · 평문 HTTP 토큰 교환 403 · 정상 교환 303+Secure 쿠키 · 허용 안 된 연산 404 · tailnet IP:4190 직접 접속 불가.

@@ -60,7 +60,8 @@ function sendJson(res, status, payload) {
 }
 
 // ── 접근 토큰(--require-token) ─────────────────────────────────────────────
-const tokenFile = path.join(root, 'local-data', 'field-server', 'access-token.txt');
+const STATE_DIR = process.env.BSO_FIELD_STATE_DIR ? path.resolve(process.env.BSO_FIELD_STATE_DIR) : path.join(root, 'local-data', 'field-server');
+const tokenFile = path.join(STATE_DIR, 'access-token.txt');
 function accessToken() {
   if (!REQUIRE_TOKEN) return null;
   fs.mkdirSync(path.dirname(tokenFile), { recursive: true });
@@ -70,6 +71,24 @@ function accessToken() {
 const TOKEN = accessToken();
 const cookieToken = (req) => (/(?:^|;\s*)bso_field=([A-Za-z0-9_-]+)/.exec(req.headers.cookie || '') || [])[1] || null;
 const safeEqual = (a, b) => Boolean(a && b) && a.length === b.length && crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
+
+// ── 기기 페어링(--require-token): 휴대폰에서 긴 토큰 대신 PC에 표시된 6자리 코드 입력 ─────────────
+// 1회용·10분 만료·실패 5회면 폐기. HTTPS(Serve) 요청에서만. 코드는 PC 로컬 파일에만 기록(채팅·로그 출력 없음).
+const pairFile = path.join(STATE_DIR, 'pair-code.txt');
+let pairing = null;
+function newPairCode() {
+  if (!REQUIRE_TOKEN) return null;
+  pairing = { code: String(crypto.randomInt(0, 1_000_000)).padStart(6, '0'), expires: Date.now() + 10 * 60_000, failures: 0 };
+  fs.mkdirSync(path.dirname(pairFile), { recursive: true });
+  fs.writeFileSync(pairFile, `BSO 현장 서버 기기 페어링 코드: ${pairing.code}\n만료: ${new Date(pairing.expires).toLocaleString('ko-KR', { hour12: false })} (1회용)\n휴대폰에서 /pair 를 열고 입력하세요.\n`, { mode: 0o600 });
+  return pairing;
+}
+const PAIR_PAGE = `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>BSO 현장 기기 연결</title>
+<style>body{font-family:system-ui,sans-serif;margin:24px;font-size:17px}input{font-size:28px;letter-spacing:.3em;width:8em;padding:8px}button{font-size:18px;padding:10px 18px;margin-top:12px}</style></head>
+<body><h1>BSO 현장 기기 연결</h1><p>PC에 표시된 6자리 코드를 입력하세요(10분·1회용).</p>
+<input id="c" inputmode="numeric" maxlength="6" autocomplete="one-time-code" autofocus><br><button id="b">연결</button><p id="m"></p>
+<script>document.getElementById('b').onclick=async()=>{const r=await fetch('/pair',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:document.getElementById('c').value.trim()})});
+const j=await r.json().catch(()=>({}));if(j.ok){location.replace('/');}else{document.getElementById('m').textContent='연결 실패: '+(j.error_code||r.status);}};</script></body></html>`;
 
 // ── 속도 제한 ──────────────────────────────────────────────────────────────
 const hits = new Map();
@@ -139,6 +158,24 @@ async function route(req, res) {
     const login = tailnetLogin(req);
     if (!login || !ALLOWED_LOGINS.includes(login)) return sendJson(res, 403, { ok: false, error_code: 'FIELD_TAILNET_LOGIN_NOT_ALLOWED' });
   }
+  if (REQUIRE_TOKEN && url.pathname === '/pair') {
+    if (!viaHttpsProxy(req) && !ALLOW_HTTP_TOKEN) return sendJson(res, 403, { ok: false, error_code: 'FIELD_TOKEN_EXCHANGE_HTTPS_ONLY' });
+    if (req.method === 'GET') { res.writeHead(200, securityHeaders({ 'Content-Type': 'text/html; charset=utf-8' })); return res.end(PAIR_PAGE); }
+    if (req.method !== 'POST') return sendJson(res, 405, { ok: false, error_code: 'METHOD_NOT_ALLOWED' });
+    if (limited(req, 'bridge')) return sendJson(res, 429, { ok: false, error_code: 'RATE_LIMITED' });
+    let code = '';
+    try { code = String(JSON.parse((await readBody(req)) || '{}').code || ''); } catch (_e) { return sendJson(res, 400, { ok: false, error_code: 'INVALID_JSON' }); }
+    if (!pairing || Date.now() > pairing.expires) return sendJson(res, 410, { ok: false, error_code: 'PAIR_CODE_EXPIRED' });
+    if (!/^\d{6}$/.test(code) || !safeEqual(code, pairing.code)) {
+      pairing.failures += 1;
+      if (pairing.failures >= 5) { pairing = null; try { fs.writeFileSync(pairFile, '페어링 코드 폐기(실패 5회). 서버를 다시 시작하면 새 코드가 생깁니다.\n'); } catch (_e) { /* ignore */ } }
+      return sendJson(res, 401, { ok: false, error_code: 'PAIR_CODE_INVALID' });
+    }
+    pairing = null; // 1회용
+    try { fs.writeFileSync(pairFile, '페어링 코드 사용됨. 다른 기기를 연결하려면 서버를 다시 시작하세요.\n'); } catch (_e) { /* ignore */ }
+    res.writeHead(200, securityHeaders({ 'Content-Type': 'application/json; charset=utf-8', 'Set-Cookie': `bso_field=${TOKEN}; HttpOnly; SameSite=Strict; Path=/; Max-Age=43200${viaHttpsProxy(req) ? '; Secure' : ''}` }));
+    return res.end(JSON.stringify({ ok: true }));
+  }
   if (REQUIRE_TOKEN) {
     const t = url.searchParams.get('t');
     if (url.pathname === '/' && t) {
@@ -181,6 +218,7 @@ function start() {
   server.listen(PORT, host, () => {
     console.log(`BSO field server: http://127.0.0.1:${PORT}/  (page: ${path.relative(root, PAGE)})`);
     console.log(`env vars loaded: ${loaded.length ? loaded.join(', ') : '(none, using process env)'} · values not printed`);
+    if (REQUIRE_TOKEN) { newPairCode(); console.log(`device pairing: open /pair on the phone; 6-digit code in ${path.relative(root, pairFile)} (10 min, single use)`); }
     if (REQUIRE_TOKEN) console.log(`access token required (exchange over HTTPS only${ALLOW_HTTP_TOKEN ? '; local HTTP exchange allowed for testing' : ''}). Token file: ${path.relative(root, tokenFile)}`);
     if (ALLOWED_LOGINS.length) console.log(`tailnet login allowlist: ${ALLOWED_LOGINS.length} account(s)`);
   });
