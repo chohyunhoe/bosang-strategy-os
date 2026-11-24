@@ -42,6 +42,7 @@ function text(value) { return value == null ? '' : String(value).trim(); }
 function clone(value) { return value == null ? value : JSON.parse(JSON.stringify(value)); }
 
 let requestSeq = 0;
+let draftSeq = 0;
 function nextRequestId() { requestSeq += 1; return `REQ-${Date.now().toString(36)}-${requestSeq}`; }
 
 export function evaluateGeometry(requestedPnu, response) {
@@ -65,7 +66,8 @@ function emptyField(def) {
 export function createDraft({ dataMode, input, candidate, baseYear, requestId }) {
   return {
     schema: 'bso-consultation-draft/0.1',
-    draft_id: `CD-${Date.now().toString(36)}`,
+    // 조회마다 고유. 상담 기록(consult-record) 결속 키로 쓰이므로 같은 ms 안의 연속 조회도 구분한다.
+    draft_id: `CD-${Date.now().toString(36)}-${(draftSeq += 1).toString(36)}`,
     created_at: new Date().toISOString(),
     data_mode: dataMode,
     synthetic: dataMode === 'SYNTHETIC',
@@ -304,7 +306,7 @@ export function createConsultationSession({ adapter, onChange = () => {} }) {
       d.analysis.opinion = buildConsultOpinion(d); notify(); return;
     }
     const target = targetFromDraft(d);
-    const pre = analyzeStandardCandidates({ target, rows: list.rows, baseYear, scope: list.scope });
+    const pre = analyzeStandardCandidates({ target, rows: list.rows, baseYear, scope: list.scope, synthetic: Boolean(list.synthetic || d.synthetic) });
     // 실제 API에서도 배제 표준지의 거리를 확인해야 '가까운 표준지가 배제된 이유'가 표시된다.
     // 라이브 단건 지적 호출 상한(대상 포함 11필지)을 지키고, 미조회는 전체 최근접으로 단정하지 않는다.
     const eligiblePnus = [...pre.candidates.map((c) => c.row.pnu),
@@ -317,7 +319,7 @@ export function createConsultationSession({ adapter, onChange = () => {} }) {
     const origin = loc.ok ? loc.centroids[d.parcel.pnu] : null;
     const distances = {};
     if (origin) Object.entries(loc.centroids).forEach(([pnu, c]) => { if (pnu !== d.parcel.pnu) distances[pnu] = distanceMeters(origin, c, loc.crs); });
-    const final = analyzeStandardCandidates({ target, rows: list.rows, baseYear, distances, scope: list.scope });
+    const final = analyzeStandardCandidates({ target, rows: list.rows, baseYear, distances, scope: list.scope, synthetic: Boolean(list.synthetic || d.synthetic) });
     d.analysis.standard = { ...final, source: list.source, fetched_at: list.fetched_at, synthetic: Boolean(list.synthetic),
       field_names: list.field_names || null, truncated: Boolean(list.truncated), located_count: Object.keys(distances).length };
     d.analysis.opinion = buildConsultOpinion(d);
@@ -353,6 +355,9 @@ export function createConsultationSession({ adapter, onChange = () => {} }) {
 
 const SECRET_KEY = /(api[_-]?key|service[_-]?key|servicekey|secret|token|authorization|password|^key$)/i;
 const SECRET_VALUE = /([?&](key|serviceKey|apiKey)=)[^&\s"]+/gi;
+
+// 저장·복사 출력의 자유입력에도 같은 규칙을 적용한다(상담 4요소 근거 칸에 붙여 넣은 URL의 키 등).
+export function scrubSecrets(value) { return scrub(value); }
 
 function scrub(value) {
   if (Array.isArray(value)) return value.map(scrub);

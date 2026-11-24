@@ -217,6 +217,48 @@ export function compareFactors(target, std, distanceM) {
   return out;
 }
 
+// 비교표준지 검토요건 4개 축 — 공법상 제한·실제 이용상황·주위환경·거리.
+// 각 축에서 '공적자료로 확인된 것'과 '확인되지 않은 것'을 분리한다. 이 단계에서 '요건 충족'으로 판정하는 축은 없다.
+export const REVIEW_REQUIREMENT_STATUS = Object.freeze({
+  RECORD_MATCH: '공적자료 기재 일치 · 실제 미확인',
+  RECORD_DIFF: '공적자료 기재 상이 · 확인 필요',
+  RECORD_PARTIAL: '일부 공적자료만 · 실제 미확인',
+  NOT_VERIFIED: '미확인',
+});
+export function standardReviewRequirements(target, std, distanceM, coverage = null, synthetic = false) {
+  const t = target || {}; const s = std || {};
+  const src = synthetic ? '합성자료' : '공적자료';
+  const zoningKnown = has(t.zoning) && has(s.zoning);
+  const secondaryDiff = norm(t.zoning_secondary) !== norm(s.zoning_secondary) && (has(t.zoning_secondary) || has(s.zoning_secondary));
+  const useKnown = has(t.land_use) && has(s.land_use);
+  return [
+    { key: 'public_restriction', label: '공법상 제한',
+      status: !zoningKnown ? 'NOT_VERIFIED' : t.zoning !== s.zoning || secondaryDiff ? 'RECORD_DIFF' : 'RECORD_MATCH',
+      confirmed: [`${src} 용도지역: 대상 ${t.zoning || '미확보'} · 표준지 ${s.zoning || '미확보'}`,
+        ...(has(t.zoning_secondary) || has(s.zoning_secondary) ? [`용도지구·구역 기재: 대상 ${t.zoning_secondary || '없음/미확보'} · 표준지 ${s.zoning_secondary || '없음/미확보'}`] : [])],
+      unverified: ['개별 행위제한·도시계획시설·지구단위계획 등 실제 공법상 제한과 적용 기준일'],
+      needs: ['토지이용계획확인서(대상·표준지)', '도시관리계획 결정도서'] },
+    { key: 'actual_use', label: '실제 이용상황',
+      status: useKnown ? 'RECORD_PARTIAL' : 'NOT_VERIFIED',
+      confirmed: [`공시지가 산정용 이용상황 표기: 대상 ${t.land_use || '미확보'} · 표준지 ${s.land_use || '미확보'}`],
+      unverified: ['대상·표준지의 현실적 이용상황(표기와 다를 수 있음)'],
+      needs: ['촬영시점이 확인되는 현장·항공사진', '건축물대장 등 독립 기록', '감정평가서 현황 기재'] },
+    { key: 'surroundings', label: '주위환경',
+      status: has(s.surroundings) ? 'RECORD_PARTIAL' : 'NOT_VERIFIED',
+      confirmed: has(s.surroundings) ? [`표준지 주위환경 기재: ${s.surroundings}`] : [],
+      unverified: ['대상토지 주위환경(주택지대·상가지대·농경지대 등)', '대상·표준지 주위환경의 유사성'],
+      needs: ['지도·항공사진', '현장 확인 기록'] },
+    { key: 'distance', label: '거리(인근성)',
+      status: Number.isFinite(distanceM) ? 'RECORD_PARTIAL' : 'NOT_VERIFIED',
+      confirmed: [
+        ...(Number.isFinite(distanceM) ? [`대상↔표준지 직선거리 ${fmtM(distanceM)}(${src} 필지 중심점 기준)`] : []),
+        ...(coverage && coverage.total_count ? [`직선거리 확인 ${coverage.located_count}/${coverage.total_count}건`] : []),
+      ],
+      unverified: ['실제 통행거리·같은 수급권 여부', '조회 범위 밖(인접 법정동 등) 표준지와의 비교'],
+      needs: ['지도상 통행경로 확인', '감정평가서 비교표준지 선정사유'] },
+  ];
+}
+
 function similarityScore(target, std) {
   const checks = [
     ['지목 동일', has(target.land_category) && target.land_category === std.land_category],
@@ -230,11 +272,12 @@ function similarityScore(target, std) {
 }
 
 // rows: 표준지 원응답 행 배열. distances: { pnu: 미터|null } (없으면 거리 미산출)
-export function analyzeStandardCandidates({ target, rows, baseYear, distances = {}, maxCandidates = 3, scope = null }) {
+export function analyzeStandardCandidates({ target, rows, baseYear, distances = {}, maxCandidates = 3, scope = null, synthetic = false }) {
   const notes = [
     '가장 가까운 표준지를 적정 비교표준지로 확정하지 않음 — 후보는 검토 보조',
     `조회 범위는 ${scope?.label || '같은 법정동'}뿐 — 인접 법정동·주위환경이 유사한 다른 지역 표준지는 포함되지 않았을 수 있음`,
     '보정률·격차율·보상금은 산정하지 않음',
+    '후보 순서는 공적자료 유사도·거리 정렬일 뿐 최종 적정성 순위가 아님 — 감정평가서·현장자료 없이 형상·도로조건만으로 우열을 판단하지 않음',
   ];
   const t = target || {};
   if (!has(t.zoning) || !has(t.land_use)) {
@@ -290,6 +333,10 @@ export function analyzeStandardCandidates({ target, rows, baseYear, distances = 
       e.distance_m != null ? `거리 ${fmtM(e.distance_m)}(위치가 확인된 표준지 중 ${distRank.get(e.row.pnu)}번째로 가까움)` : '거리 미산출',
     ],
     factors: compareFactors(t, e.row, e.distance_m),
+    review_requirements: standardReviewRequirements(t, e.row, e.distance_m, distanceCoverage, synthetic),
+    // 순위는 자료 유사도·거리 정렬 순서다. 최종 비교표준지 적정성 판단이 아니다.
+    rank_basis: 'SIMILARITY_ORDER_NOT_ADEQUACY',
+    adequacy: 'NOT_JUDGED',
   }));
   const excluded = [
     ...evaluated.filter((e) => !e.eligible).map((e) => ({ row: e.row, distance_m: e.distance_m, reasons: e.reasons })),
