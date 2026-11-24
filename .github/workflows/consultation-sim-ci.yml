@@ -6,6 +6,9 @@ on:
       - 'browser/consultation-sim/**'
       - 'scripts/build_consultation_sim.js'
       - 'scripts/build_consultation_sim_demo.js'
+      - 'scripts/build_notice_field.js'
+      - 'scripts/notice_index/**'
+      - 'tests/test_vworld_result_code.py'
       - 'scripts/serve_product_v2.js'
       - 'scripts/public_data_bridge.*'
       - 'tests/consultation-sim/**'
@@ -38,7 +41,7 @@ jobs:
       - name: Deterministic core (synthetic data only)
         run: npm run consult:test
       - name: VWorld revision rule (Python provider opt-in, Release v1 default unchanged)
-        run: python -m unittest tests.test_vworld_revisions -v
+        run: python -m unittest tests.test_vworld_revisions tests.test_vworld_result_code -v
       - name: Public demo bundle safety checks (synthetic only, no bridge, no network)
         run: |
           node scripts/build_consultation_sim_demo.js --host=claude-artifact

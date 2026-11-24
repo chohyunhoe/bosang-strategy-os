@@ -1,0 +1,15 @@
+{
+ "schema": "bso-notice-index/1",
+ "notice": { "id": "synthetic-0001", "title": "가상 산업단지 계획 고시(합성)", "notice_no": "가상 고시 제0000-1호", "notice_date": "2000-01-01", "authority": "가상부", "project": "가상 산업단지(합성)", "operator": "가상공사", "pages": [1, 2] },
+ "location": { "sido": "가상도", "sigungu": "연습시", "eupmyeon": "숲내읍" },
+ "generated_at": "2000-01-01T00:00:00.000Z",
+ "generator": "synthetic fixture",
+ "rows": [
+  { "serial": 1, "eupmyeon": "숲내읍", "ri": "바위리", "mountain": false, "bun": 12, "ji": 3, "lot_label": "12-3", "jimok_code": "답", "jimok": "답", "ledger_area_m2": 1000, "incorporated_area_m2": 1000, "pdf_page": 1, "ri_source": "CELL" },
+  { "serial": 2, "eupmyeon": "숲내읍", "ri": "새솔리", "mountain": false, "bun": 12, "ji": 3, "lot_label": "12-3", "jimok_code": "전", "jimok": "전", "ledger_area_m2": 500, "incorporated_area_m2": 200, "pdf_page": 1, "ri_source": "CELL" },
+  { "serial": 3, "eupmyeon": "숲내읍", "ri": "새솔리", "mountain": true, "bun": 7, "ji": 0, "lot_label": "산7", "jimok_code": "임", "jimok": "임야", "ledger_area_m2": 3000, "incorporated_area_m2": 3000, "pdf_page": 1, "ri_source": "CELL" },
+  { "serial": 4, "eupmyeon": "숲내읍", "ri": "새솔리", "mountain": false, "bun": 40, "ji": 0, "lot_label": "40", "jimok_code": "대", "jimok": "대", "ledger_area_m2": 300, "incorporated_area_m2": 300, "pdf_page": 2, "ri_source": "CARRIED" },
+  { "serial": 5, "eupmyeon": "숲내읍", "ri": "냇가리", "mountain": false, "bun": 40, "ji": 1, "lot_label": "40-1", "jimok_code": "구", "jimok": "구거", "ledger_area_m2": 120, "incorporated_area_m2": 120, "pdf_page": 2, "ri_source": "CELL" },
+  { "serial": 6, "eupmyeon": "숲내읍", "ri": "냇가리", "mountain": false, "bun": 40, "ji": 1, "lot_label": "40-1", "jimok_code": "도", "jimok": "도로", "ledger_area_m2": 80, "incorporated_area_m2": 80, "pdf_page": 2, "ri_source": "CELL" }
+ ]
+}

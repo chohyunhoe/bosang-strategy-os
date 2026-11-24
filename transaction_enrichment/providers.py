@@ -20,6 +20,12 @@ VWORLD_LAND_CHARACTERISTICS_ENDPOINT = "https://api.vworld.kr/ned/data/getLandCh
 _SUCCESS_CODES = {"", "0", "00", "000", "SUCCESS"}
 
 
+def _vworld_result_message(result_code: str) -> str:
+    """VWorld 결과코드(예: INCORRECT_KEY)만 메시지에 남긴다. 키·URL 등 다른 값은 넣지 않는다."""
+    code = re.sub(r"[^A-Z0-9_]", "", str(result_code or "").upper())[:40] or "UNKNOWN"
+    return f"VWorld returned a non-success result code (resultCode={code})"
+
+
 class ProviderError(RuntimeError):
     def __init__(self, code: str, message: str):
         self.code = code
@@ -135,13 +141,16 @@ def parse_vworld_land_characteristics(
             return None
         if isinstance(response, Mapping):
             result_code = str(_first(response, "resultCode", "resultCd", "errorCode") or "")
+            error = response.get("error")
+            if not result_code and isinstance(error, Mapping):
+                result_code = str(error.get("code") or "")
             if result_code.upper() not in _SUCCESS_CODES:
-                raise ProviderError("VWORLD_API_ERROR", "VWorld returned a non-success result code")
+                raise ProviderError("VWORLD_API_ERROR", _vworld_result_message(result_code))
         raise ProviderError("VWORLD_SCHEMA_CHANGED", "VWorld land-characteristics root was not found")
 
     result_code = str(_first(root, "resultCode", "resultCd", "errorCode") or "")
     if result_code.upper() not in _SUCCESS_CODES:
-        raise ProviderError("VWORLD_API_ERROR", "VWorld returned a non-success result code")
+        raise ProviderError("VWORLD_API_ERROR", _vworld_result_message(result_code))
 
     items = _as_list(root.get("field")) + _as_list(root.get("fields"))
     total_count = _to_int(root.get("totalCount"))
