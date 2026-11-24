@@ -7,7 +7,7 @@ import { renderMap } from './map-view.js';
 import { validateManualPack, searchManualPack, suggestManualReferences, EVIDENCE_STATE, EVIDENCE_STATE_LABEL, EVIDENCE_INPUT_OPTIONS } from './core/manual-pack.js';
 import { emptyIntake, evaluateIntake, GOAL_OPTIONS, STAGE_OPTIONS, AUTHORITY_OPTIONS, INTAKE_STATUS_LABEL } from './core/consult-intake.js';
 import { buildConsultReport } from './core/consult-report.js';
-import { outputSignature, isOutputCurrent } from './core/output-binding.js';
+import { outputSignature, isOutputCurrent, outputAttemptToken, isAttemptCurrent } from './core/output-binding.js';
 import { createConsultRecord, syncRecord, recordForOutput, recordHasInput, canContinueFrom, continueFrom, startNewConsultation } from './core/consult-record.js';
 import { REVIEW_REQUIREMENT_STATUS } from './core/standard-land-engine.js';
 
@@ -34,6 +34,8 @@ const ui = {
   tab: 'map', editing: null, saveOpen: false, saveSig: null, adapterStatus: null, probe: null, probing: false,
   // 생성 출력물(검토서·과업·저장 결과)은 만들 때의 상태 서명과 함께 보관하고, 서명이 달라지면 표시하지 않는다.
   output: null, outputNotice: '', packToken: 0,
+  // 무효화 세대·복사 시도 번호: 비동기 출력 작업이 끝났을 때 시작 시점과 같은 상태인지 확인하는 데 쓴다.
+  outputEpoch: 0, copyAttempt: 0, saveAttempt: 0,
   // 상담 4요소·증빙 확보 표시는 '상담 기록'에 묶어 이 화면 메모리에만 둔다(명시 저장 시에만 JSON에 포함).
   // 기록은 조회(draft_id)·데이터 모드·PNU·기준연도에 결속되며 다른 조회로 자동 이월되지 않는다.
   record: createConsultRecord(null), previousRecord: null, recordNotice: '',
@@ -49,7 +51,7 @@ function buildAdapter() {
       : createSyntheticAdapter({ scenario: ui.scenario, standardDelayMs: Math.min(5000, Number(params.get('std_delay')) || 0) });
   ui.probe = null;
   session = createConsultationSession({ adapter, onChange: render });
-  ui.editing = null; ui.saveOpen = false; ui.saveSig = null; ui.output = null; ui.outputNotice = ''; ui.adapterStatus = null;
+  ui.editing = null; ui.saveOpen = false; ui.saveSig = null; ui.output = null; ui.outputNotice = ''; ui.outputEpoch += 1; ui.adapterStatus = null;
   lastMapHtml = ''; lastLandHtml = ''; lastAnalysisHtml = ''; lastEvidenceHtml = '';
   $('[data-region-hints]').innerHTML = adapter.regionHints().map((name) => `<option value="${esc(name)}"></option>`).join('');
   adapter.status().then((status) => { ui.adapterStatus = status; render(); });
@@ -325,9 +327,15 @@ function currentOutputSig() {
   return outputSignature({ draft: d, record: ui.record, pack: { token: ui.packToken, connected: Boolean(privateManualPack) },
     reportText: d ? currentReport(d)?.text || '' : '' });
 }
-function setOutput(kind, html, sig = currentOutputSig()) { ui.output = { kind, html, sig }; ui.outputNotice = ''; }
+// 출력물 저장은 '만들 때의 서명'을 반드시 받아, 지금 상태의 서명·세대와 같을 때만 허용한다(과거 내용에 현재 서명을 붙이지 않음).
+function setOutput(kind, html, sig, epoch = ui.outputEpoch) {
+  if (typeof sig !== 'string' || sig === 'NO_DRAFT' || sig !== currentOutputSig() || epoch !== ui.outputEpoch) return false;
+  ui.output = { kind, html, sig }; ui.outputNotice = ''; return true;
+}
+function currentAttempt(kind) { return { sig: currentOutputSig(), epoch: ui.outputEpoch, attempt: kind === 'save' ? ui.saveAttempt : ui.copyAttempt }; }
 // 상태가 바뀌는 동작(새 상담·이어 쓰기·입력·증빙·수정값·지식팩·조회·모드)에서 즉시 호출. render의 서명 검사가 2차 방어.
 function invalidateOutputs(reason) {
+  ui.outputEpoch += 1; // 진행 중인 비동기 복사·저장 결과도 무효(출력물이 없어도 증가)
   if (!ui.output && !ui.saveOpen) return;
   ui.output = null; ui.saveOpen = false; ui.saveSig = null;
   ui.outputNotice = reason || '조회 결과·입력·상담·지식팩 상태가 바뀌어 이전 출력물(검토서·과업·저장 결과)을 지웠습니다. 필요하면 다시 생성하세요.';
@@ -344,7 +352,7 @@ function outputReport() {
   if (!outputReady(session.state)) return null;
   const report = currentReport(d);
   if (!report || !report.binding_ok || !recordForOutput(ui.record, d)) {
-    setOutput('error', '<p class="error small" data-record-mismatch>상담 기록이 현재 조회(필지·기준연도·데이터 모드)와 맞지 않아 출력하지 않았습니다. 다시 조회하세요.</p>');
+    setOutput('error', '<p class="error small" data-record-mismatch>상담 기록이 현재 조회(필지·기준연도·데이터 모드)와 맞지 않아 출력하지 않았습니다. 다시 조회하세요.</p>', currentOutputSig());
     render();
     return null;
   }
@@ -498,11 +506,14 @@ function renderSavePanel(state) {
     result.payload.consult_record = scrubSecrets({ schema: rec.schema, record_id: rec.record_id, binding: { ...rec.binding },
       intake: { ...rec.intake }, evidence_inputs: { ...rec.evidence },
       gate_states: report.gates.map((g) => ({ code: g.code, state: g.state })), legal_deadline_computed: false, manual_excerpt_persisted: false });
-    deliverSaved(result.payload, currentOutputSig());
+    ui.saveAttempt += 1;
+    deliverSaved(result.payload, outputAttemptToken(currentAttempt('save')));
   });
 }
 
-async function deliverSaved(payload, sig) {
+async function deliverSaved(payload, token) {
+  const sig = token.sig;
+  const stillCurrent = () => isAttemptCurrent(token, currentAttempt('save'));
   const filename = `bso-consultation-draft-${payload.draft_id}.json`;
   const data = JSON.stringify(payload, null, 2);
   const jsonBox = `<textarea readonly data-saved-json rows="8">${esc(data)}</textarea>`;
@@ -511,12 +522,12 @@ async function deliverSaved(payload, sig) {
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob); a.download = filename;
     document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-    setOutput('save', `<p class="muted small" data-save-result="download">세션에 저장하고 JSON을 내려받았습니다.</p>`, sig);
+    if (stillCurrent()) setOutput('save', `<p class="muted small" data-save-result="download">세션에 저장하고 JSON을 내려받았습니다.</p>`, sig, token.epoch);
     render();
     return;
   }
   // claude.ai 아티팩트 뷰어: 직접 다운로드가 막혀 있어 downloads 기능(사용자 확인)으로만 저장. 실패 시 JSON 텍스트 제공.
-  setOutput('save', '<p class="muted small" data-save-result="pending">세션에 저장했습니다. 파일 저장 확인창을 여는 중…</p>' + jsonBox, sig);
+  if (stillCurrent()) setOutput('save', '<p class="muted small" data-save-result="pending">세션에 저장했습니다. 파일 저장 확인창을 여는 중…</p>' + jsonBox, sig, token.epoch);
   render();
   let note = '이 화면에서는 파일 내려받기를 쓸 수 없습니다. 아래 JSON을 길게 눌러 복사해 보관하세요.';
   let state = 'text-only';
@@ -530,7 +541,9 @@ async function deliverSaved(payload, sig) {
     if (error && error.code === 'declined') { note = '파일 저장을 취소했습니다. 세션 저장은 유지되며 아래 JSON으로도 보관할 수 있습니다.'; state = 'declined'; }
   }
   // 기다리는 동안 상태가 바뀌었으면(서명 불일치) 저장 JSON 텍스트를 다시 띄우지 않는다.
-  if (ui.output?.kind === 'save' && ui.output.sig === sig) setOutput('save', `<p class="muted small" data-save-result="${state}">${esc(note)}</p>${jsonBox}`, sig);
+  // 저장 확인을 기다리는 동안 상담·입력·지식팩이 바뀌었으면 저장 JSON 텍스트를 다시 띄우지 않는다.
+  if (stillCurrent()) setOutput('save', `<p class="muted small" data-save-result="${state}">${esc(note)}</p>${jsonBox}`, sig, token.epoch);
+  else ui.outputNotice = '파일 저장을 기다리는 동안 상담 상태가 바뀌어 저장 결과를 화면에 표시하지 않았습니다. 저장 파일은 바뀌기 전 상태입니다.';
   render();
 }
 
@@ -573,7 +586,7 @@ function render() {
 
 $('[data-query-form]').addEventListener('submit', (event) => {
   event.preventDefault();
-  ui.editing = null; ui.output = null; ui.outputNotice = ''; ui.saveOpen = false; ui.saveSig = null;
+  ui.editing = null; ui.output = null; ui.outputNotice = ''; ui.saveOpen = false; ui.saveSig = null; ui.outputEpoch += 1;
   session.lookup({ context: $('[data-context]').value, lotText: $('[data-lot]').value, baseYear: Number($('[data-year]').value) });
 });
 $('[data-mode-select]').addEventListener('change', (e) => { ui.mode = e.target.value; buildAdapter(); });
@@ -585,18 +598,30 @@ $('[data-copy]').addEventListener('click', async () => {
   const report = outputReport();
   if (!report) return;
   const text = report.text;
+  // 복사 시작 시점 토큰(서명·무효화 세대·시도 번호)을 고정한다.
+  ui.copyAttempt += 1;
+  const token = outputAttemptToken(currentAttempt('copy'));
   let copied = false;
   try { await navigator.clipboard.writeText(text); copied = true; } catch (_error) { copied = false; }
-  setOutput('summary', `<p class="muted small">${copied ? '클립보드에 복사했습니다.' : '자동 복사가 막혀 있습니다. 아래 내용을 직접 복사하세요.'}</p><textarea readonly data-summary rows="10">${esc(text)}</textarea>`);
+  // await 동안 새 상담·다른 필지·입력 수정·지식팩 변경·다른 복사가 있었으면 이전 검토서를 화면에 절대 다시 올리지 않는다.
+  if (!isAttemptCurrent(token, currentAttempt('copy')) || !recordForOutput(ui.record, session.state.draft)) {
+    ui.outputNotice = copied
+      ? '복사 처리 중 상담 상태가 바뀌어 이전 검토서를 화면에 표시하지 않았습니다. 클립보드에는 바뀌기 전 내용이 이미 들어갔을 수 있습니다(웹 화면에서 회수 불가). 붙여 넣기 전에 다시 복사하세요.'
+      : '복사 처리 중 상담 상태가 바뀌어 이전 검토서를 표시하지 않았습니다. 필요하면 다시 복사하세요.';
+    render();
+    return;
+  }
+  setOutput('summary', `<p class="muted small">${copied ? '클립보드에 복사했습니다.' : '자동 복사가 막혀 있습니다. 아래 내용을 직접 복사하세요.'}</p><textarea readonly data-summary rows="10">${esc(text)}</textarea>`, token.sig, token.epoch);
   render();
 });
 $('[data-proposal]').addEventListener('click', () => {
   const report = outputReport();
   if (!report) return;
+  const proposalSig = currentOutputSig();
   setOutput('proposal', `<div class="callout" data-proposal-panel><b>정밀검토 과업 제안(초안)</b> — 영업지원용 안내이며 자동 계약·청구·결제는 발생하지 않습니다.
     <ul data-proposal-tasks>${report.tasks.map((t) => `<li data-task-status="${esc(t.status)}">${chip(t.status === 'READY' ? 'OFFICIAL_OK' : 'FIELD_CHECK', t.status === 'READY' ? '자료 대조 착수 가능' : '선행자료 필요')} ${esc(t.title)}${t.code ? ` (${esc(t.code)})` : ''}${t.prerequisites.length ? `<div class="note">선행: ${esc(t.prerequisites.join(', '))}</div>` : ''}</li>`).join('') || '<li>현재 자료로 제안할 과업 없음</li>'}</ul>
     <b class="small">확보자료</b><ul class="materials" data-proposal-materials>${report.materials.map((m) => `<li>${esc(m)}</li>`).join('')}</ul>
-    <p class="muted small">범위·비용은 담당자가 별도 협의합니다. 쟁점 성립·보상액은 전문가 검토 전 판단하지 않습니다.</p></div>`);
+    <p class="muted small">범위·비용은 담당자가 별도 협의합니다. 쟁점 성립·보상액은 전문가 검토 전 판단하지 않습니다.</p></div>`, proposalSig);
   render();
 });
 

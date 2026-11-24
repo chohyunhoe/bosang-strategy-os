@@ -73,3 +73,18 @@ test('지식팩 교체·해제: 식별값이 바뀌면 이전 발췌 출력물 �
   assert.equal(isOutputCurrent(out, sigOf(d, record, pack, 2)), false, '같은 내용 팩이라도 재선택이면 새 식별값');
   assert.doesNotMatch(buildConsultReport({ draft: d, record, pack: null }).text, /PACK_SECRET_SENTINEL/);
 });
+
+test('비동기 출력 토큰: 서명·무효화 세대·시도 번호 중 하나라도 바뀌면 결과 폐기', async () => {
+  const { outputAttemptToken, isAttemptCurrent } = await import('../../browser/consultation-sim/core/output-binding.js');
+  const d = await draftOf('123-4');
+  const { record } = syncRecord({ draft: d });
+  const sig = sigOf(d, record);
+  const token = outputAttemptToken({ sig, epoch: 3, attempt: 1 });
+  assert.ok(Object.isFrozen(token));
+  assert.equal(isAttemptCurrent(token, { sig, epoch: 3, attempt: 1 }), true);
+  assert.equal(isAttemptCurrent(token, { sig, epoch: 4, attempt: 1 }), false, '입력을 바꿨다 되돌려 서명이 같아도 세대가 다르면 폐기');
+  assert.equal(isAttemptCurrent(token, { sig, epoch: 3, attempt: 2 }), false, '뒤에 시작한 복사가 있으면 앞선 결과 폐기');
+  assert.equal(isAttemptCurrent(token, { sig: sigOf(d, startNewConsultation(d)), epoch: 3, attempt: 1 }), false, '새 상담');
+  assert.equal(isAttemptCurrent(outputAttemptToken({ sig: 'NO_DRAFT', epoch: 0, attempt: 0 }), { sig: 'NO_DRAFT', epoch: 0, attempt: 0 }), false);
+  assert.equal(isAttemptCurrent(null, { sig, epoch: 3, attempt: 1 }), false);
+});

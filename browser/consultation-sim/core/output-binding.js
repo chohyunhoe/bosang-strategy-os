@@ -32,3 +32,16 @@ export function outputSignature({ draft = null, record = null, pack = { token: 0
 export function isOutputCurrent(output, signature) {
   return Boolean(output && typeof output.sig === 'string' && output.sig === signature && signature !== 'NO_DRAFT');
 }
+
+// ── 비동기 출력 작업(클립보드 복사·파일 저장) 경합 방지 ────────────────────────────────
+// 작업 시작 시점의 토큰을 보존하고, await 이후 현재 값과 하나라도 다르면 결과를 화면에 올리지 않는다.
+// - sig: 결속 서명(상담·조회·입력·지식팩·검토서 내용)
+// - epoch: 무효화 세대. 상태 변경·새 상담·조회·지식팩 선택마다 증가 — 입력을 바꿨다 되돌려 서명이 같아져도 이전 작업은 무효.
+// - attempt: 같은 종류의 작업 번호. 더 늦게 시작한 작업이 있으면 먼저 시작한 작업 결과는 버린다.
+export function outputAttemptToken({ sig, epoch, attempt }) {
+  return Object.freeze({ sig, epoch, attempt });
+}
+export function isAttemptCurrent(token, current) {
+  return Boolean(token && current && token.sig !== 'NO_DRAFT'
+    && token.sig === current.sig && token.epoch === current.epoch && token.attempt === current.attempt);
+}
