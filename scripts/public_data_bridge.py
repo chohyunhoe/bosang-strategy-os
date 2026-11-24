@@ -19,7 +19,7 @@ from public_data.work_ops import (
     build_field_candidate_response,
     build_rtms_response,
 )
-from transaction_enrichment.providers import ProviderError, VWorldLandCharacteristicsProvider
+from transaction_enrichment.providers import ProviderError, VWorldCadastralParcelProvider, VWorldLandCharacteristicsProvider
 
 
 LOT_TAIL = re.compile(r"(?P<mountain>산\s*)?(?P<bun>\d{1,4})(?:-(?P<ji>\d{1,4}))?(?:번지)?\s*$")
@@ -200,6 +200,23 @@ def vworld_land(payload: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+def pnu_parcel(payload: dict[str, Any]) -> dict[str, Any]:
+    """PNU 직접입력 검증: 연속지적도에 그 PNU 필지가 있는지와 지번주소만 돌려준다(도형·소유 정보 없음)."""
+    pnu = str(payload.get("pnu") or "").strip()
+    if len(pnu) != 19 or not pnu.isdigit():
+        return {"ok": False, "error_code": "PNU_INVALID", "parcel": None}
+    provider = VWorldCadastralParcelProvider()
+    if not provider.configured:
+        return {"ok": False, "error_code": "VWORLD_API_KEY_MISSING", "parcel": None}
+    try:
+        parcel = provider.get_by_pnu(pnu)
+    except ProviderError as exc:
+        return {"ok": False, "error_code": exc.code, "error_message": str(exc), "parcel": None}
+    if parcel is None:
+        return {"ok": True, "status": "NOT_FOUND", "parcel": None, "review_required": True}
+    return {"ok": True, "status": "FOUND_REVIEW_REQUIRED", "parcel": parcel, "review_required": True}
+
+
 def main() -> int:
     load_env_file()
     try:
@@ -217,6 +234,8 @@ def main() -> int:
             result = resolve_pnu(payload)
         elif operation == "vworld_land":
             result = vworld_land(payload)
+        elif operation == "pnu_parcel":
+            result = pnu_parcel(payload)
         elif operation == "field_candidates":
             result = build_field_candidate_response(payload)
         elif operation == "early_signals":

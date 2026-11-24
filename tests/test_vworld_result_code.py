@@ -1,8 +1,10 @@
 """VWorld 실패 결과코드 전달 — 오류 코드(VWORLD_API_ERROR)는 그대로, 메시지에 결과코드만 정화해 싣는다(합성 응답)."""
 from __future__ import annotations
 
+import os
 import sys
 import unittest
+from unittest import mock
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -35,6 +37,53 @@ class ResultCodeTests(unittest.TestCase):
         self.assertRegex(msg, r"resultCode=[A-Z0-9_]+\)$")
         self.assertNotIn("<", msg)
         self.assertNotIn("=abc", msg.split("resultCode")[0])
+
+
+class RefererAuthTests(unittest.TestCase):
+    """VWorld 서버 호출: 등록 서비스 URL은 Referer 헤더로 보내고 domain 파라미터는 보내지 않는다(2026-11-24 실측 INCORRECT_KEY 원인)."""
+
+    def _capture(self, **env):
+        seen = {}
+
+        class FakeResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+            def read(self):
+                return b'{"landCharacteristicss":{"resultCode":"","field":[]}}'
+
+        def fake_urlopen(request, timeout):
+            seen["url"] = request.full_url
+            seen["referer"] = request.get_header("Referer")
+            return FakeResponse()
+
+        with mock.patch.dict("os.environ", env, clear=False), mock.patch.object(tp.urllib.request, "urlopen", fake_urlopen):
+            for name in ("VWORLD_DOMAIN", "VWORLD_API_DOMAIN"):
+                if name not in env:
+                    os.environ.pop(name, None)
+            provider = tp.VWorldLandCharacteristicsProvider(api_key="SYNTHETIC-KEY-0000")
+            provider.get_by_pnu(PNU, standard_year=2025)  # 빈 field(자료 없음) — 관심사는 요청 형태
+        return seen
+
+    def test_referer_from_vworld_domain_and_no_domain_param(self):
+        seen = self._capture(VWORLD_DOMAIN="https://registered.example")
+        self.assertEqual(seen["referer"], "https://registered.example")
+        self.assertNotIn("domain=", seen["url"])
+
+    def test_falls_back_to_vworld_api_domain(self):
+        seen = self._capture(VWORLD_API_DOMAIN="https://registered-api.example")
+        self.assertEqual(seen["referer"], "https://registered-api.example")
+
+    def test_custom_transport_keeps_two_arg_contract(self):
+        calls = []
+        provider = tp.VWorldLandCharacteristicsProvider(api_key="SYNTHETIC-KEY-0000", domain="https://x.example",
+                                                         transport=lambda url, timeout: calls.append(url) or {"landCharacteristicss": {"resultCode": "", "field": []}})
+        provider.get_by_pnu(PNU, standard_year=2025)
+        self.assertEqual(len(calls), 1)
+        self.assertNotIn("domain=", calls[0])
 
 
 if __name__ == "__main__":

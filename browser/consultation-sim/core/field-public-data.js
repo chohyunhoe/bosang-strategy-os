@@ -44,37 +44,60 @@ export const errorText = (code, message) => {
   return rc ? `${base} · VWorld 결과코드 ${rc}${RESULT_TEXT[rc] ? ` — ${RESULT_TEXT[rc]}` : ''}` : base;
 };
 
-// 조회 대상: 고시 색인 행(row, 법정리 확정) 또는 색인 밖 직접 조회 대상(target: {address, context}).
+// 조회 단계: RESOLUTION_ONLY(주소/PNU 확인만 성공) · LIVE_DATA(토지특성·공시지가 실제 응답)
+export const PD_STAGE = Object.freeze({ NONE: 'NONE', RESOLUTION_ONLY: 'RESOLUTION_ONLY', LIVE_DATA: 'LIVE_DATA' });
+
+// 조회 대상: 고시 색인 행(row, 법정리 확정) 또는 색인 밖 직접 조회 대상(target: 주소 또는 PNU).
+// 매 조회마다 공적 API를 새로 호출하며, 필지 존재를 연속지적도로 확인한 뒤에만 토지특성·공시지가를 조회한다.
 // 결과의 각 값은 출처·기준연도·조회시각·상태를 함께 가진다.
 export async function queryPublicData({ fetchImpl, location: loc, index, row = null, target = null, years = [2026, 2025], now = () => new Date() }) {
   const at = () => now().toISOString();
-  if (!bridgeAllowed(loc)) return { status: PD_STATUS.OFFLINE, reason: '오프라인 — 공적자료 미조회', values: [] };
-  let address; let context;
-  if (row) {
-    const l = index.location;
-    address = [l.sido, l.sigungu, row.eupmyeon || l.eupmyeon, row.ri, row.lot_label].filter(Boolean).join(' ');
-    context = [l.sido, l.sigungu, row.eupmyeon || l.eupmyeon].filter(Boolean).join(' ');
-  } else if (target?.address) {
-    address = target.address; context = target.context || '';
+  if (!bridgeAllowed(loc)) return { status: PD_STATUS.OFFLINE, stage: PD_STAGE.NONE, reason: '오프라인 — 공적자료 미조회', values: [] };
+  const fail = (extra) => ({ status: PD_STATUS.FAILED, stage: PD_STAGE.NONE, fetched_at: at(), values: [], ...extra });
+  let pnu; let legalDong = null; let address = null; let parcel = null; const notes = [];
+  if (target?.scope === 'PNU') {
+    // PNU 직접입력: 연속지적도에서 공식 확인되기 전에는 토지특성·공시지가를 부르지 않는다.
+    const chk = await call(fetchImpl, '/pnu_parcel', { pnu: target.pnu });
+    if (!chk.ok) return fail({ step: 'pnu_parcel', pnu: target.pnu, code: chk.error_code, result_code: resultCodeOf(chk.error_message), reason: `PNU 공식 확인 실패 — ${errorText(chk.error_code, chk.error_message)}` });
+    if (!chk.parcel) return fail({ step: 'pnu_parcel', pnu: target.pnu, code: 'PNU_NOT_FOUND', reason: '이 PNU의 필지가 연속지적도에 없습니다(분할·합병·말소·오기 가능). 토지특성·공시지가를 조회하지 않습니다.' });
+    pnu = target.pnu; parcel = chk.parcel; address = parcel.address;
+    const lotPart = String(parcel.jibun || '').split(' ')[0];
+    legalDong = parcel.address && lotPart && parcel.address.endsWith(` ${lotPart}`) ? parcel.address.slice(0, -(lotPart.length + 1)) : null;
   } else {
-    return { status: PD_STATUS.NOT_QUERIED, reason: '조회 대상 없음', values: [] };
+    let context;
+    if (row) {
+      const l = index.location;
+      address = [l.sido, l.sigungu, row.eupmyeon || l.eupmyeon, row.ri, row.lot_label].filter(Boolean).join(' ');
+      context = [l.sido, l.sigungu, row.eupmyeon || l.eupmyeon].filter(Boolean).join(' ');
+    } else if (target?.address) {
+      address = target.address; context = target.context || '';
+    } else {
+      return { status: PD_STATUS.NOT_QUERIED, stage: PD_STAGE.NONE, reason: '조회 대상 없음', values: [] };
+    }
+    const resolved = await call(fetchImpl, '/resolve_pnu', { parcel_address: address, address_context: context });
+    if (!resolved.ok || !resolved.candidate?.pnu) {
+      return fail({ step: 'resolve_pnu', address, code: resolved.error_code, reason: errorText(resolved.error_code, resolved.error_message) });
+    }
+    pnu = resolved.candidate.pnu; legalDong = resolved.candidate.legal_dong_name || null;
+    // 주소로 만든 PNU도 연속지적도에서 존재를 교차확인한다. 없으면 조회를 멈춘다(지적 확인 실패는 경고만).
+    const chk = await call(fetchImpl, '/pnu_parcel', { pnu });
+    if (chk.ok && !chk.parcel) {
+      return fail({ step: 'pnu_parcel', stage: PD_STAGE.RESOLUTION_ONLY, pnu, legal_dong_name: legalDong, address, code: 'PNU_NOT_FOUND',
+        reason: '주소로 만든 PNU의 필지가 연속지적도에 없습니다(분할·합병·지번변경·오기 가능). 토지특성·공시지가를 조회하지 않습니다.' });
+    }
+    if (chk.ok) parcel = chk.parcel; else notes.push(`연속지적도 교차확인 실패(${chk.error_code || '응답 없음'}) — 필지 존재 미확인`);
   }
-  const resolved = await call(fetchImpl, '/resolve_pnu', { parcel_address: address, address_context: context });
-  if (!resolved.ok || !resolved.candidate?.pnu) {
-    return { status: PD_STATUS.FAILED, step: 'resolve_pnu', code: resolved.error_code, reason: errorText(resolved.error_code, resolved.error_message), address, fetched_at: at(), values: [] };
-  }
-  const pnu = resolved.candidate.pnu;
-  const legalDong = resolved.candidate.legal_dong_name || null;
   const attempts = [];
+  const base = { pnu, legal_dong_name: legalDong, parcel_address: parcel?.address || null, parcel_checked: Boolean(parcel), pnu_review_required: true, address, notes };
   for (const year of years) {
     const res = await call(fetchImpl, '/vworld_land', { pnu, standard_year: year, dedupe_revisions: true });
     attempts.push({ year, ok: Boolean(res.ok), code: res.error_code || res.status || null, result_code: resultCodeOf(res.error_message), message: res.error_message || null, fetched_at: at() });
     if (res.ok && res.record) {
-      const r = res.record; const src = 'VWorld 토지특성(로컬 브리지 경유)';
+      const r = res.record; const src = 'VWorld 국가중점데이터 토지특성(로컬 브리지 경유)';
       const v = (key, label, value, extra = {}) => ({ key, label, value: value ?? null, source: src, base_year: year, fetched_at: at(), status: value == null ? PD_STATUS.NO_DATA : PD_STATUS.OK, ...extra });
       const jimokMismatch = r.land_category && row?.jimok && r.land_category !== row.jimok;
       return {
-        status: PD_STATUS.OK, pnu, legal_dong_name: legalDong, pnu_review_required: true, address, attempts,
+        status: PD_STATUS.OK, stage: PD_STAGE.LIVE_DATA, ...base, attempts,
         values: [
           v('land_category', '지목(현재 공부)', r.land_category, jimokMismatch ? { mismatch: `고시 기재 지목(${row.jimok})과 다름 — 지목변경·오기 확인` } : {}),
           v('zoning', '용도지역', r.zoning), v('land_use', '이용상황(공시지가 산정용)', r.land_use), v('road_access', '도로접면', r.road_access),
@@ -83,9 +106,8 @@ export async function queryPublicData({ fetchImpl, location: loc, index, row = n
         ],
       };
     }
-    if (res.ok && !res.record) continue;
   }
   const last = attempts[attempts.length - 1];
-  return { status: attempts.every((a) => a.ok) ? PD_STATUS.NO_DATA : PD_STATUS.FAILED, step: 'vworld_land', pnu, legal_dong_name: legalDong, pnu_review_required: true, address, attempts,
+  return { status: attempts.every((a) => a.ok) ? PD_STATUS.NO_DATA : PD_STATUS.FAILED, stage: PD_STAGE.RESOLUTION_ONLY, step: 'vworld_land', ...base, attempts,
     code: last?.code, result_code: last?.result_code || null, reason: attempts.every((a) => a.ok) ? '조회 연도에 토지특성 자료 없음' : errorText(last?.code, last?.message), values: [] };
 }

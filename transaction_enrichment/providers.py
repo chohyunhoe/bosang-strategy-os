@@ -241,13 +241,19 @@ class PublicDataLandCharacteristicsProvider(LandCharacteristicsProvider):
 HttpTransport = Callable[[str, float], Mapping[str, Any]]
 
 
-def default_json_transport(url: str, timeout: float) -> Mapping[str, Any]:
-    request = urllib.request.Request(url, headers={"User-Agent": "bosang-strategy-os/transaction-enrichment"})
+def default_json_transport(url: str, timeout: float, *, referer: str | None = None) -> Mapping[str, Any]:
+    headers = {"User-Agent": "bosang-strategy-os/transaction-enrichment"}
+    if referer:
+        headers["Referer"] = referer
+    request = urllib.request.Request(url, headers=headers)
     with urllib.request.urlopen(request, timeout=timeout) as response:
         payload = json.loads(response.read().decode("utf-8"))
     if not isinstance(payload, Mapping):
         raise ValueError("JSON root must be an object")
     return payload
+
+
+_REAL_JSON_TRANSPORT = default_json_transport
 
 
 class VWorldLandCharacteristicsProvider(LandCharacteristicsProvider):
@@ -265,10 +271,21 @@ class VWorldLandCharacteristicsProvider(LandCharacteristicsProvider):
         transport: HttpTransport | None = None,
     ):
         self._api_key = _runtime_secret(api_key, self.ENV_NAME)
-        self._domain = domain if domain is not None else os.getenv("VWORLD_DOMAIN", "")
+        # VWorld 서버 호출 인증은 키에 등록한 서비스 URL을 HTTP Referer로 보낼 때 통과한다.
+        # 'domain' 쿼리 파라미터만 보내면 2D 데이터·국가중점(토지특성) API가 INCORRECT_KEY를 돌려준다(2026-11-24 실측).
+        self._domain = domain if domain is not None else (os.getenv("VWORLD_DOMAIN") or os.getenv("VWORLD_API_DOMAIN") or "")
         self._default_year = default_year or (date.today().year - 1)
         self._timeout = timeout
-        self._transport = transport or default_json_transport
+        if transport is not None:
+            self._transport = transport
+        else:
+            referer = self._domain.strip() or None
+
+            def _vworld_transport(url: str, t: float) -> Mapping[str, Any]:
+                fn = default_json_transport  # 모듈 전역(테스트에서 교체 가능)
+                return fn(url, t, referer=referer) if fn is _REAL_JSON_TRANSPORT else fn(url, t)
+
+            self._transport = _vworld_transport
 
     def __repr__(self) -> str:
         return (
@@ -289,8 +306,7 @@ class VWorldLandCharacteristicsProvider(LandCharacteristicsProvider):
             "numOfRows": "10",
             "pageNo": "1",
         }
-        if self._domain:
-            params["domain"] = self._domain
+        # 등록 서비스 URL은 Referer 헤더로만 보낸다. 토지특성 API는 domain 파라미터가 있으면 Referer가 맞아도 거부한다.
         return f"{VWORLD_LAND_CHARACTERISTICS_ENDPOINT}?{urllib.parse.urlencode(params)}"
 
     def get_by_pnu(
@@ -321,3 +337,68 @@ class VWorldLandCharacteristicsProvider(LandCharacteristicsProvider):
             raise ProviderError("VWORLD_RESPONSE_ERROR", f"VWorld response could not be parsed safely: {safe}") from None
         except Exception:
             raise ProviderError("VWORLD_INTERNAL_ERROR", "An unexpected internal error occurred during VWorld lookup") from None
+
+
+VWORLD_DATA_ENDPOINT = "https://api.vworld.kr/req/data"
+
+
+class VWorldCadastralParcelProvider:
+    """연속지적도(LP_PA_CBND_BUBUN)에서 PNU 필지 존재·지번주소를 확인한다(도형 미요청).
+
+    PNU 직접입력의 공식 검증에 쓴다. 인증은 VWorldLandCharacteristicsProvider와 같이 등록 서비스 URL을 Referer로 보낸다.
+    """
+
+    def __init__(self, *, api_key: str | None = None, domain: str | None = None, timeout: float = 10.0, transport: HttpTransport | None = None):
+        self._api_key = _runtime_secret(api_key, VWorldLandCharacteristicsProvider.ENV_NAME)
+        self._domain = domain if domain is not None else (os.getenv("VWORLD_DOMAIN") or os.getenv("VWORLD_API_DOMAIN") or "")
+        self._timeout = timeout
+        if transport is not None:
+            self._transport = transport
+        else:
+            referer = self._domain.strip() or None
+
+            def _vworld_transport(url: str, t: float) -> Mapping[str, Any]:
+                fn = default_json_transport
+                return fn(url, t, referer=referer) if fn is _REAL_JSON_TRANSPORT else fn(url, t)
+
+            self._transport = _vworld_transport
+
+    def __repr__(self) -> str:
+        return f"VWorldCadastralParcelProvider(api_key='[REDACTED]', domain={self._domain!r})"
+
+    @property
+    def configured(self) -> bool:
+        return bool(self._api_key)
+
+    def get_by_pnu(self, pnu: str) -> dict[str, Any] | None:
+        if not self.configured:
+            raise ProviderError("VWORLD_API_KEY_MISSING", "VWORLD_API_KEY is not configured")
+        if not re.fullmatch(r"\d{19}", pnu):
+            raise ProviderError("PNU_INVALID", "PNU must be exactly 19 digits")
+        params = {"service": "data", "request": "GetFeature", "data": "LP_PA_CBND_BUBUN", "attrFilter": f"pnu:=:{pnu}",
+                  "geometry": "false", "size": "10", "format": "json", "key": self._api_key or ""}
+        try:
+            payload = self._transport(f"{VWORLD_DATA_ENDPOINT}?{urllib.parse.urlencode(params)}", self._timeout)
+        except (TimeoutError, urllib.error.URLError, urllib.error.HTTPError, ssl.SSLError, ConnectionError, http.client.RemoteDisconnected) as exc:
+            safe = redact_secrets(exc, (self._api_key or "",))
+            raise ProviderError("VWORLD_TRANSPORT_ERROR", f"VWorld request failed safely: {safe}") from None
+        except (ValueError, TypeError, json.JSONDecodeError):
+            raise ProviderError("VWORLD_RESPONSE_ERROR", "VWorld cadastral response could not be parsed") from None
+        response = payload.get("response") if isinstance(payload, Mapping) else None
+        if not isinstance(response, Mapping):
+            raise ProviderError("VWORLD_SCHEMA_CHANGED", "VWorld data response root was not found")
+        status = str(response.get("status") or "").upper()
+        if status == "NOT_FOUND":
+            return None
+        if status != "OK":
+            error = response.get("error") if isinstance(response.get("error"), Mapping) else {}
+            raise ProviderError("VWORLD_API_ERROR", _vworld_result_message(str(error.get("code") or status)))
+        features = (((response.get("result") or {}).get("featureCollection") or {}).get("features")) or []
+        exact = [f.get("properties") or {} for f in features if str((f.get("properties") or {}).get("pnu")) == pnu]
+        if len(exact) != 1:
+            if not exact:
+                return None
+            raise ProviderError("VWORLD_MULTIPLE_EXACT_MATCHES", "VWorld cadastral returned multiple exact PNU rows")
+        p = exact[0]
+        return {"pnu": pnu, "address": str(p.get("addr") or "") or None, "jibun": str(p.get("jibun") or "") or None,
+                "price": _to_int(p.get("jiga")), "price_base": f"{p.get('gosi_year') or ''}-{p.get('gosi_month') or ''}".strip("-") or None}

@@ -88,7 +88,7 @@ export function searchNoticeIndex(index, text) {
   const { normalized, ris, locTokens } = splitQuery(text, index);
   const parsed = parseLotInput(normalized);
   if (!parsed.ok) return { status: SEARCH_STATUS.INPUT_INVALID, code: parsed.code, message: '지번 형식을 해석하지 못했습니다. 예: 320-1 / 궁평리 320-1 / 산 12-3', matches: [] };
-  if (parsed.kind === 'PNU') return { status: SEARCH_STATUS.PNU_NOT_SUPPORTED, message: 'PNU 직접 입력은 고시 색인 검색에서 쓰지 않습니다. 리 이름과 지번으로 입력하세요.', matches: [] };
+  if (parsed.kind === 'PNU') return { status: SEARCH_STATUS.PNU_NOT_SUPPORTED, message: 'PNU는 고시 색인(지번 기록)에서 찾지 않습니다. 고시 편입 여부를 보려면 리 이름과 지번으로 입력하세요. PNU로는 전국 공적자료 조회만 할 수 있습니다.', matches: [] };
   const names = parsed.names;
   const riTokens = names.filter((t) => /(리|동|가)$/.test(t) && !locTokens.has(t));
   const others = names.filter((t) => !riTokens.includes(t));

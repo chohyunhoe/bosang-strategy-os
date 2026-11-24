@@ -41,4 +41,6 @@ button:disabled{opacity:.45;cursor:not-allowed}
 .small{font-size:12px}.muted{color:var(--muted)}.error{color:var(--bad)}.warn-note{background:var(--warn-bg);color:#5c3d00;border-radius:8px;padding:6px 9px;margin:6px 0;font-size:12.5px}
 .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px}
 .f-foot ul{margin:14px 0 0;padding-left:18px;font-size:12px;color:var(--muted)}
-@media print{.f-search,.f-actions,.f-loader,.f-badges,button{display:none!important}body{background:#fff}}
+/* 인쇄·PDF: 공적자료(이용조건 확인 전)와 조작 요소 제외 */
+.f-print-only{display:none}
+@media print{.f-search,.f-actions,.f-loader,.f-badges,button,[data-f-result],[data-f-pd],[data-f-pd-h2]{display:none!important}.f-print-only{display:block!important}body{background:#fff}}

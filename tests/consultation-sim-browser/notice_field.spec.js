@@ -134,7 +134,8 @@ test('색인 없이 전국 주소: 법정동 확정 입력만 조회 · 결과 �
     calls.push([op, req && req.parcel_address]);
     const body = op === 'status' ? { ok: true, vworld_configured: true, public_data_configured: true }
       : op === 'resolve_pnu' ? { ok: true, candidate: { pnu: '9800000000100120003', legal_dong_name: '가상특별시 누리구 새솔동' } }
-        : { ok: true, record: { land_category: '대', zoning: '가상지역', individual_official_price: '1000', price_year: '2026' } };
+        : op === 'pnu_parcel' ? { ok: true, parcel: { pnu: '9800000000100120003', address: '가상특별시 누리구 새솔동 12-3', jibun: '12-3 대' } }
+          : { ok: true, record: { land_category: '대', zoning: '가상지역', individual_official_price: '1000', price_year: '2026' } };
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
   await page.goto('/field.html');
@@ -150,4 +151,70 @@ test('색인 없이 전국 주소: 법정동 확정 입력만 조회 · 결과 �
   await expect(page.locator('[data-f-pd-state="OK"]')).toContainText('가상특별시 누리구 새솔동');
   await expect(page.locator('[data-f-pd-key="price"]')).toContainText('기준 2026');
   expect(calls.filter(([op]) => op === 'resolve_pnu')).toEqual([['resolve_pnu', '가상특별시 누리구 새솔동 12-3']]);
+});
+
+// ── GPT QA(PR #35 48ad080) 결함 회귀 ───────────────────────────────────────────
+function mockBridge(page, { parcel = true, price = 123456789 } = {}) {
+  const calls = [];
+  return page.route('**/__public_data_bridge/**', async (route) => {
+    const op = new URL(route.request().url()).pathname.split('/').pop();
+    const req = route.request().postData() ? JSON.parse(route.request().postData()) : {};
+    calls.push(op);
+    const body = op === 'status' ? { ok: true, vworld_configured: true, public_data_configured: true }
+      : op === 'resolve_pnu' ? { ok: true, candidate: { pnu: '9800000000100120003', legal_dong_name: '가상특별시 누리구 새솔동' } }
+        : op === 'pnu_parcel' ? (parcel ? { ok: true, parcel: { pnu: req.pnu, address: '가상특별시 누리구 새솔동 12-3', jibun: '12-3 대' } } : { ok: true, status: 'NOT_FOUND', parcel: null })
+          : { ok: true, record: { land_category: '대', zoning: '가상지역', individual_official_price: price, price_year: 2026 } };
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+  }).then(() => calls);
+}
+
+test('PNU 19자리 단독입력(색인 없음): 검증 전 카드 → 지적 확인 → 실데이터 표시', async ({ page }) => {
+  const calls = await mockBridge(page);
+  await page.goto('/field.html');
+  await search(page, '9800000000100120003');
+  await page.locator('[data-f-direct-open]').click();
+  await expect(page.locator('[data-f-direct-pnu]')).toContainText('검증 전');
+  await page.locator('[data-f-pd-go]').click();
+  await expect(page.locator('[data-f-pd-stage="LIVE_DATA"]')).toBeVisible();
+  await expect(page.locator('[data-f-pd-parcel]')).toContainText('가상특별시 누리구 새솔동 12-3');
+  expect(calls.filter((c) => c !== 'status')).toEqual(['pnu_parcel', 'vworld_land']);
+});
+
+test('PNU가 지적에 없으면 토지특성 호출 없음 · 색인이 있어도 PNU는 직접 조회로', async ({ page }) => {
+  const calls = await mockBridge(page, { parcel: false });
+  await open(page);
+  await search(page, '9800000000100120003');
+  await expect(page.locator('[data-f-status="PNU_NOT_SUPPORTED"]')).toBeVisible();
+  await page.locator('[data-f-direct-open]').click();
+  await page.locator('[data-f-pd-go]').click();
+  await expect(page.locator('[data-f-pd-state="FAILED"]')).toHaveAttribute('data-f-pd-code', 'PNU_NOT_FOUND');
+  expect(calls).not.toContain('vworld_land');
+});
+
+test('불완전 주소(도+리)는 직접 조회 버튼 없음', async ({ page }) => {
+  await page.goto('/field.html');
+  await search(page, '충청북도 궁평리 320-1');
+  await expect(page.locator('[data-f-direct-reason]')).toContainText('시·군·구');
+  await expect(page.locator('[data-f-direct-open]')).toHaveCount(0);
+});
+
+test('인쇄·PDF: 공적자료 영역 제외(미디어 print + beforeprint) · 카드 본문은 남김', async ({ page }) => {
+  await mockBridge(page);
+  await page.goto('/field.html');
+  await search(page, '가상특별시 누리구 새솔동 12-3');
+  await page.locator('[data-f-direct-open]').click();
+  await page.locator('[data-f-pd-go]').click();
+  await expect(page.locator('[data-f-pd-key="price"]')).toContainText('123,456,789');
+  await page.emulateMedia({ media: 'print' });
+  await expect(page.locator('[data-f-pd]')).toBeHidden();
+  await expect(page.locator('[data-f-pd-h2]')).toBeHidden();
+  await expect(page.locator('[data-f-print-note]')).toBeVisible();
+  await expect(page.locator('[data-f-direct-address]')).toBeVisible();
+  const visibleText = await page.evaluate(() => document.body.innerText);
+  expect(visibleText).not.toContain('123,456,789');
+  await page.evaluate(() => window.dispatchEvent(new Event('beforeprint')));
+  expect(await page.locator('[data-f-pd]').innerHTML()).toBe('');
+  await page.emulateMedia({ media: 'screen' });
+  await page.evaluate(() => window.dispatchEvent(new Event('afterprint')));
+  await expect(page.locator('[data-f-pd-key="price"]')).toContainText('123,456,789');
 });

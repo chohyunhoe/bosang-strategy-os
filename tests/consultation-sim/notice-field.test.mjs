@@ -129,10 +129,12 @@ test('공적자료: 오프라인·비루프백에서는 브리지를 부르지 �
 });
 
 const loop = { protocol: 'http:', hostname: '127.0.0.1' };
+const PARCEL_OK = (b) => ({ ok: true, status: 'FOUND_REVIEW_REQUIRED', parcel: { pnu: b.pnu, address: '가상도 연습시 숲내읍 바위리 12-3', jibun: '12-3 답' } });
 const fakeBridge = (handlers) => async (url, init) => {
   const op = url.split('/').pop();
   const body = init?.body ? JSON.parse(init.body) : null;
-  return { json: async () => handlers[op](body) };
+  const h = handlers[op] || (op === 'pnu_parcel' ? PARCEL_OK : null);
+  return { json: async () => h(body) };
 };
 
 test('공적자료: VWorld INCORRECT_KEY는 결과코드와 함께 실패로 표시, 값 채우지 않음', async () => {
@@ -262,4 +264,63 @@ test('색인 밖 카드: 편입 여부 미확인 명시 · 고시 값·공적자
   assert.match(card.text, /미편입 판정 아님/);
   assert.doesNotMatch(card.text, /PNU|편입면적\(고시 기재\)/);
   assert.equal(buildDirectCard({ target: { ok: false } }), null);
+});
+
+
+// ── GPT QA(PR #35 48ad080) 결함 회귀: PNU 직접입력 · 불완전 주소 · (인쇄는 E2E) ──────────────
+test('불완전 주소 차단: 도+리, 특별시·광역시+동은 거부 · 시군구/세종/제주 특수 사례 허용', () => {
+  for (const q of ['충청북도 궁평리 320-1', '서울특별시 역삼동 12-3', '부산광역시 우동 1', '경기도 12-3', '청주시 320-1']) {
+    assert.equal(directLookupTarget(null, q).ok, false, q);
+  }
+  for (const [q, ctx] of [['세종특별자치시 어진동 1', '세종특별자치시'], ['부산광역시 해운대구 우동 1', '부산광역시 해운대구'], ['제주특별자치도 제주시 연동 1', '제주특별자치도 제주시'],
+    ['충청북도 청주시 흥덕구 오송읍 궁평리 320-1', '충청북도 청주시 흥덕구 오송읍'], ['서울특별시 종로구 종로1가 1', '서울특별시 종로구']]) {
+    const t = directLookupTarget(null, q);
+    assert.equal(t.ok, true, q); assert.equal(t.scope, 'NATIONWIDE'); assert.equal(t.context, ctx, q);
+  }
+});
+
+test('PNU 직접입력: 구조 검증 후 검증 전 대상 · 잘못된 구조는 거부', () => {
+  const t = directLookupTarget(null, '4311325027103200001');
+  assert.deepEqual([t.ok, t.scope, t.pnu, t.pnu_verified, t.address], [true, 'PNU', '4311325027103200001', false, null]);
+  assert.equal(directLookupTarget(null, '0011325027103200001').ok, false); // 시도코드 00
+  assert.equal(directLookupTarget(null, '4311325027303200001').ok, false); // 대장구분 3
+  assert.equal(directLookupTarget(load(), '4311325027103200001').scope, 'PNU'); // 색인이 있어도 PNU는 직접 조회 대상
+  assert.equal(searchNoticeIndex(load(), '4311325027103200001').status, SEARCH_STATUS.PNU_NOT_SUPPORTED);
+});
+
+test('PNU 조회: 연속지적도에 없으면 토지특성·공시지가를 부르지 않는다', async () => {
+  let land = 0;
+  const fetchImpl = fakeBridge({ pnu_parcel: () => ({ ok: true, status: 'NOT_FOUND', parcel: null }), vworld_land: () => { land += 1; return {}; } });
+  const r = await queryPublicData({ fetchImpl, location: loop, index: null, target: directLookupTarget(null, '9800000000100120003') });
+  assert.equal(r.status, PD_STATUS.FAILED); assert.equal(r.code, 'PNU_NOT_FOUND'); assert.equal(land, 0);
+  const err = await queryPublicData({ fetchImpl: fakeBridge({ pnu_parcel: () => ({ ok: false, error_code: 'VWORLD_API_ERROR', error_message: 'x (resultCode=INCORRECT_KEY)' }), vworld_land: () => { land += 1; return {}; } }),
+    location: loop, index: null, target: directLookupTarget(null, '9800000000100120003') });
+  assert.equal(err.step, 'pnu_parcel'); assert.equal(err.result_code, 'INCORRECT_KEY'); assert.equal(land, 0);
+});
+
+test('PNU 조회: 지적 확인 후 실데이터 · 법정동은 지적 주소에서 · 단계 LIVE_DATA', async () => {
+  const calls = [];
+  const fetchImpl = fakeBridge({
+    pnu_parcel: (b) => { calls.push('pnu_parcel'); return PARCEL_OK(b); },
+    vworld_land: (b) => { calls.push(`vworld_land:${b.pnu}`); return { ok: true, record: { land_category: '답', individual_official_price: 5000, price_year: 2026 } }; },
+  });
+  const r = await queryPublicData({ fetchImpl, location: loop, index: null, target: directLookupTarget(null, '9800000000100120003') });
+  assert.deepEqual(calls, ['pnu_parcel', 'vworld_land:9800000000100120003']);
+  assert.equal(r.stage, 'LIVE_DATA'); assert.equal(r.legal_dong_name, '가상도 연습시 숲내읍 바위리'); assert.equal(r.parcel_address, '가상도 연습시 숲내읍 바위리 12-3');
+});
+
+test('주소 조회: 해석된 PNU가 지적에 없으면 RESOLUTION_ONLY로 멈춤 · 토지특성 실패도 RESOLUTION_ONLY', async () => {
+  let land = 0;
+  const notFound = await queryPublicData({ fetchImpl: fakeBridge({ resolve_pnu: () => ({ ok: true, candidate: { pnu: '9800000000100120003' } }), pnu_parcel: () => ({ ok: true, parcel: null }), vworld_land: () => { land += 1; return {}; } }),
+    location: loop, index: load(), row: load().rows[0] });
+  assert.equal(notFound.stage, 'RESOLUTION_ONLY'); assert.equal(notFound.code, 'PNU_NOT_FOUND'); assert.equal(land, 0);
+  const keyFail = await queryPublicData({ fetchImpl: fakeBridge({ resolve_pnu: () => ({ ok: true, candidate: { pnu: '9800000000100120003' } }), vworld_land: () => ({ ok: false, error_code: 'VWORLD_API_ERROR', error_message: 'x (resultCode=INCORRECT_KEY)' }) }),
+    location: loop, index: load(), row: load().rows[0] });
+  assert.equal(keyFail.stage, 'RESOLUTION_ONLY');
+});
+
+test('PNU 카드: 검증 전 표시 · 공적자료 값 없음', () => {
+  const card = buildDirectCard({ profile: profileForIndex(null), target: directLookupTarget(null, '4311325027103200001') });
+  assert.match(card.text, /입력 PNU: 4311325027103200001 \(상담자 입력 · 검증 전/);
+  assert.equal(card.address, null);
 });

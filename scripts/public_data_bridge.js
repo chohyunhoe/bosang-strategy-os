@@ -13,6 +13,7 @@ const POST_OPERATIONS = new Map([
   [`${PREFIX}/legal_dong`, 'legal_dong'],
   [`${PREFIX}/resolve_pnu`, 'resolve_pnu'],
   [`${PREFIX}/vworld_land`, 'vworld_land'],
+  [`${PREFIX}/pnu_parcel`, 'pnu_parcel'],
   [`${PREFIX}/field_candidates`, 'field_candidates'],
   [`${PREFIX}/early_signals`, 'early_signals'],
   [`${PREFIX}/rtms`, 'rtms'],

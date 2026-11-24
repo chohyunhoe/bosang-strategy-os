@@ -4,7 +4,7 @@ import { validateNoticeIndex, searchNoticeIndex, SEARCH_STATUS, noticeFacts } fr
 import { issuesFor } from './core/field-issues.js';
 import { buildFieldCard, buildDirectCard } from './core/field-card.js';
 import { directLookupTarget } from './core/field-direct.js';
-import { bridgeStatus, queryPublicData, PD_STATUS } from './core/field-public-data.js';
+import { bridgeStatus, queryPublicData, PD_STATUS, PD_STAGE } from './core/field-public-data.js';
 import { profileForIndex } from './profiles/index.js';
 
 const $ = (s, r = document) => r.querySelector(s);
@@ -60,7 +60,7 @@ function renderResult() {
   const offer = st.directOffer;
   const direct = !offer ? '' : offer.ok
     ? (st.direct ? '' : `<p class="small">고시 색인 밖 필지로 상담카드를 열 수 있습니다(편입 여부 미확인). 공적자료는 법정동이 하나로 확인될 때만 조회합니다.</p>
-      <button type="button" class="secondary" data-f-direct-open>색인 밖 필지로 상담 · ${esc(offer.address)}</button>`)
+      <button type="button" class="secondary" data-f-direct-open>색인 밖 필지로 상담 · ${esc(offer.scope === 'PNU' ? `PNU ${offer.pnu}(검증 전)` : offer.address)}</button>`)
     : `<p class="small muted" data-f-direct-reason>${esc(offer.reason)}</p>`;
   box.innerHTML = `<div class="f-msg ${s.status === SEARCH_STATUS.INPUT_INVALID ? 'bad' : ''}" data-f-status="${esc(s.status)}"><p><b>${esc(s.message)}</b></p>${direct}</div>`;
   $('[data-f-direct-open]', box)?.addEventListener('click', () => openDirect(offer));
@@ -87,17 +87,20 @@ function renderPublicData() {
   }
   if (pd.status !== PD_STATUS.OK) {
     box.innerHTML = `<div data-f-pd-state="${esc(pd.status)}" data-f-pd-code="${esc(pd.code || '')}"><p class="small"><span class="chip bad">${pd.status === PD_STATUS.NO_DATA ? '자료 없음' : '조회 실패'}</span> ${esc(pd.reason)} · 합성·추정 값으로 채우지 않습니다.</p>
-      ${pd.pnu ? `<p class="small">PNU 후보 <span class="mono">${esc(pd.pnu)}</span>${pd.legal_dong_name ? ` · 법정동 ${esc(pd.legal_dong_name)}` : ''} <span class="chip warn">검토 필요</span></p>` : ''}
+      ${pd.stage === PD_STAGE.RESOLUTION_ONLY ? '<p class="small" data-f-pd-stage="RESOLUTION_ONLY"><span class="chip warn">RESOLUTION_ONLY</span> 주소·PNU 확인만 성공 · 토지특성·공시지가 미조회</p>' : ''}
+      ${pd.pnu ? `<p class="small">PNU <span class="mono">${esc(pd.pnu)}</span>${pd.legal_dong_name ? ` · 법정동 ${esc(pd.legal_dong_name)}` : ''} <span class="chip warn">검토 필요</span></p>` : ''}
+      ${pd.parcel_address ? `<p class="small" data-f-pd-parcel>연속지적도 확인: ${esc(pd.parcel_address)}</p>` : ''}
       ${(pd.attempts || []).map((a) => `<div class="small muted" data-f-pd-attempt="${a.year}">${a.year}년: ${a.ok ? '응답' : '실패'} ${esc(a.code || '')}${a.result_code ? ` (${esc(a.result_code)})` : ''} · ${esc(fmtTime(a.fetched_at))}</div>`).join('')}
       <button type="button" class="ghost" data-f-pd-go>다시 조회</button></div>`;
     $('[data-f-pd-go]', box).addEventListener('click', runPublicData);
     return;
   }
-  box.innerHTML = `<div data-f-pd-state="OK"><p class="small">PNU 후보 <span class="mono">${esc(pd.pnu)}</span>${pd.legal_dong_name ? ` · 법정동 ${esc(pd.legal_dong_name)}` : ''} <span class="chip warn">검토 필요</span></p>
+  box.innerHTML = `<div data-f-pd-state="OK" data-f-pd-stage="LIVE_DATA"><p class="small"><span class="chip ok">실조회 응답</span> PNU <span class="mono">${esc(pd.pnu)}</span>${pd.legal_dong_name ? ` · 법정동 ${esc(pd.legal_dong_name)}` : ''} <span class="chip warn">검토 필요</span></p>
+    ${pd.parcel_address ? `<p class="small" data-f-pd-parcel>연속지적도 확인: ${esc(pd.parcel_address)}</p>` : ''}${(pd.notes || []).map((n) => `<p class="small warn-note">${esc(n)}</p>`).join('')}
     ${pd.values.map((v) => `<div class="f-pd-row" data-f-pd-key="${esc(v.key)}"><b>${esc(v.label)}</b> ${v.value == null ? '<span class="chip">값 없음</span>' : esc(typeof v.value === 'number' ? fmt(v.value) : v.value)}
       ${v.mismatch ? `<span class="chip bad" data-f-pd-mismatch>불일치</span> <span class="small">${esc(v.mismatch)}</span>` : ''}
       <div class="src">${esc(v.source)} · 기준 ${esc(v.base_year)} · ${esc(fmtTime(v.fetched_at))}</div></div>`).join('')}
-    <p class="warn-note">공적자료 값은 이용조건 확인 전이라 화면 열람만 합니다. 카드 복사·저장에는 넣지 않습니다.</p></div>`;
+    <p class="warn-note">공적자료 값은 이용조건 확인 전이라 화면 열람만 합니다. 카드 복사·저장·인쇄에는 넣지 않습니다.</p></div>`;
 }
 
 async function runPublicData() {
@@ -136,7 +139,7 @@ function renderCard() {
 function renderDirectFacts() {
   const card = buildDirectCard({ profile: st.profile, target: st.direct, selectedIssueIds: [...st.issues], memo: st.memo });
   $('[data-f-facts]').innerHTML = `<div class="f-head" data-f-direct="${esc(st.direct.scope)}">${esc(st.direct.leaf)} ${esc(st.direct.lot_label)} <span class="chip bad">고시 색인 밖 · 편입 여부 미확인</span></div>
-    <dl class="f-kv"><dt>입력 주소</dt><dd data-f-direct-address>${esc(card.address)}</dd><dt>고시 기재값</dt><dd>없음 — 미편입 판정 아님</dd></dl>
+    <dl class="f-kv">${st.direct.scope === 'PNU' ? `<dt>입력 PNU</dt><dd data-f-direct-pnu class="mono">${esc(st.direct.pnu)} <span class="chip warn">검증 전</span></dd>` : `<dt>입력 주소</dt><dd data-f-direct-address>${esc(card.address)}</dd>`}<dt>고시 기재값</dt><dd>없음 — 미편입 판정 아님</dd></dl>
     <p class="small muted">법정동은 공적자료 조회 때 행정안전부 법정동코드로 다시 확인하며, 후보가 여럿이면 조회하지 않습니다.</p>`;
   $('[data-f-unverified]').innerHTML = card.unverified.map((u) => `<li>${esc(u)}</li>`).join('');
   return card;
@@ -173,7 +176,7 @@ async function copyCard() {
 }
 function saveCard() {
   const text = currentCardText(); if (!text) return;
-  const r = st.row || { ri: st.direct.leaf, lot_label: st.direct.lot_label };
+  const r = st.row || (st.direct.scope === 'PNU' ? { ri: 'PNU', lot_label: st.direct.pnu } : { ri: st.direct.leaf, lot_label: st.direct.lot_label });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' }));
   a.download = `상담카드_${r.ri}_${r.lot_label}_${new Date().toISOString().slice(0, 10)}.txt`;
@@ -189,7 +192,7 @@ function init() {
     st.search = st.index ? searchNoticeIndex(st.index, q)
       : (q.trim() ? { status: SEARCH_STATUS.NOT_IN_INDEX, message: '고시 색인이 없습니다. 전체 주소로 전국 공적자료만 조회할 수 있습니다(편입 여부 미확인).', matches: [] } : { status: SEARCH_STATUS.EMPTY, matches: [] });
     if (st.search.status === SEARCH_STATUS.UNIQUE) { st.row = st.search.matches[0]; }
-    else if ([SEARCH_STATUS.NOT_IN_INDEX, SEARCH_STATUS.OUTSIDE_NOTICE_AREA].includes(st.search.status)) st.directOffer = directLookupTarget(st.index, q);
+    else if ([SEARCH_STATUS.NOT_IN_INDEX, SEARCH_STATUS.OUTSIDE_NOTICE_AREA, SEARCH_STATUS.PNU_NOT_SUPPORTED].includes(st.search.status)) st.directOffer = directLookupTarget(st.index, q);
     render();
   });
   $('[data-f-new]').addEventListener('click', newConsultation);
@@ -197,6 +200,9 @@ function init() {
   $('[data-f-copy]').addEventListener('click', copyCard);
   $('[data-f-save]').addEventListener('click', saveCard);
   $('[data-f-print]').addEventListener('click', () => window.print());
+  // 인쇄·PDF 저장(버튼·브라우저 메뉴·window.print 모두): 공적자료 영역은 CSS로 숨기고, 인쇄 직전 DOM에서도 비운다.
+  window.addEventListener('beforeprint', () => { document.body.dataset.printing = '1'; const box = $('[data-f-pd]'); if (box) box.innerHTML = ''; });
+  window.addEventListener('afterprint', () => { delete document.body.dataset.printing; render(); });
   $('[data-f-index-file]').addEventListener('change', async (e) => {
     const file = e.target.files?.[0]; if (!file) return;
     try { setIndex(JSON.parse(await file.text()), '이 기기 파일'); } catch (_err) { showIndexError('JSON을 읽지 못했습니다.'); }
