@@ -105,7 +105,9 @@ npm run notice:field:serve
 - 제공: 현장 상담 HTML 1개 + 허용 연산(`status`·`resolve_pnu`·`pnu_parcel`·`vworld_land`·`parcel_map`) + 영상 프록시(`/__field/aerial`). 그 밖(`rtms`·`building`·Product v2 등)은 404.
 - 키는 이 PC 프로세스에만. 영상은 서버가 Referer와 함께 받아 PNG만 넘긴다(응답 형식·크기 6MB 검사). 응답에 키 없음(실측).
 - 영상 좌표는 한국 범위·줌 12~18만. 요청 본문 8KB, IP별 분당 120(연산)/60(영상). `no-store`·`nosniff`·`no-referrer`·CSP(`connect-src 'self'`).
-- 기본 127.0.0.1. `--lan`이면 접근 토큰 필수(`/?t=<토큰>` 1회 → HttpOnly·SameSite=Strict 쿠키). 토큰 파일 `local-data/field-server/access-token.txt`(gitignore).
+- 항상 127.0.0.1에만 바인딩(평문 HTTP LAN 모드 제거). 다른 기기는 Tailscale **Serve**(tailnet 전용 HTTPS)로만. Funnel 금지.
+- `--require-token`: 앱 자체 접근 토큰(이중 인증). 토큰 교환(`/?t=`)은 Serve를 거친 HTTPS 요청에서만, 쿠키 `Secure; HttpOnly; SameSite=Strict`. 토큰 파일 `local-data/field-server/access-token.txt`(gitignore).
+- `--allowed-login <tailnet 로그인>`: Serve가 붙이는 `Tailscale-User-Login`이 목록에 없으면 403(루프백 프록시 요청에서만 신뢰).
 
 ```powershell
 npm run notice:field:build -- --index local-data/notice-index/osong3-molit-2025-456.json
@@ -117,7 +119,13 @@ node scripts/field_server.js --page dist/notice-field/molit-2025-456-field.html
 |---|---|---|
 | PC 브라우저(127.0.0.1) | **동작**(위 실호출) | 없음 |
 | Fold8 오프라인 단일 HTML | 동작(고시 카드만, 공적자료·지도 없음) | 없음 |
-| Fold8 → 같은 Wi-Fi의 PC(`--lan`) | 서버·토큰 구현·루프백 시험 완료. **실기기 미시험** | 0.0.0.0 바인딩 시 Windows 방화벽 허용 팝업 → 사용자 승인 필요. 공용·현장 Wi-Fi에서는 비권장 |
-| Fold8 → Tailscale Serve(비공개 HTTPS, tailnet 기기만) | 설계만. PC·Fold8에 Tailscale 미설치 | 설치·계정 연결 승인. `tailscale serve 4190`(127.0.0.1 서버를 tailnet에만). **Funnel(인터넷 공개)은 쓰지 않음** |
+| Fold8 → Tailscale Serve(비공개 HTTPS, tailnet 접근 정책 허용 기기·사용자만) | PC·Fold8 설치·로그인 완료(사용자). 서버는 토큰+로그인 허용목록으로 실행 | tailnet에서 Serve·HTTPS 인증서 사용 허용(관리 콘솔, 사용자). 인증서 발급 시 머신 이름·tailnet 이름이 공개 CT 로그에 기록됨. **Funnel(인터넷 공개)은 쓰지 않음** |
 
 Fold8 실기기에서 실제 지번 → 지도·토지정보·상담카드가 확인되기 전에는 현장 실사용 완료로 보지 않는다.
+
+```powershell
+node scripts/field_server.js --page dist/notice-field/molit-2025-456-field.html --require-token --allowed-login <tailnet 로그인>
+& "C:\Program Files\Tailscale	ailscale.exe" serve --bg --https=443 http://127.0.0.1:4190
+# 끄기
+& "C:\Program Files\Tailscale	ailscale.exe" serve --https=443 off
+```

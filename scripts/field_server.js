@@ -2,10 +2,14 @@
 // BSO 현장 상담 전용 최소 서버 — Fold8·PC가 같은 화면을 쓰되 API 키는 이 PC 프로세스 밖으로 나가지 않는다.
 // - 제공: 현장 상담 HTML 1개 + 허용 목록 연산(status·resolve_pnu·pnu_parcel·vworld_land·parcel_map) + 항공영상 프록시(/__field/aerial).
 // - 제공 안 함: Product v2·Release v1·다른 데이터 브리지(rtms·building 등)·파일 목록·정적 디렉터리.
-// - 기본은 127.0.0.1 전용. --lan이면 같은 네트워크 기기(Fold8)가 접속할 수 있고, 이때는 접근 토큰 쿠키가 필수.
-//   (공개 터널·포트포워딩·방화벽 변경은 하지 않는다. 사외 접속은 승인 후 Tailscale Serve(비공개) 같은 별도 경로로.)
+// - 항상 루프백(127.0.0.1)에만 바인딩한다. 평문 HTTP LAN 바인딩은 없다(GPT 보안검수 2026-11-24).
+//   Fold8 등 다른 기기는 Tailscale Serve(tailnet 전용 HTTPS → 127.0.0.1 프록시)로만 접속. Funnel(인터넷 공개)·포트포워딩·방화벽 변경 없음.
+// - --require-token: 앱 자체 접근 토큰(이중 인증). 토큰 교환(/?t=)은 Serve를 거친 HTTPS 요청에서만 허용하고
+//   쿠키는 Secure·HttpOnly·SameSite=Strict. (로컬 시험용 --allow-http-token은 루프백 직접 HTTP에서만.)
+// - --allowed-login <tailnet 로그인>(반복 가능): Serve가 붙이는 Tailscale-User-Login 헤더가 목록에 없으면 403.
+//   이 헤더는 루프백 프록시(Serve)를 거친 요청에서만 신뢰한다.
 // - 응답: no-store·nosniff·no-referrer·CSP. 오류 메시지는 코드만. 키는 Referer와 함께 서버에서만 VWorld로 보낸다.
-// 사용: node scripts/field_server.js --page dist/notice-field/field-empty.html [--port 4190] [--lan] [--env <.env 경로>]
+// 사용: node scripts/field_server.js --page <html> [--port 4190] [--require-token] [--allowed-login a@b] [--env <.env 경로>]
 const http = require('node:http');
 const https = require('node:https');
 const fs = require('node:fs');
@@ -15,7 +19,10 @@ const { runWorker } = require('./public_data_bridge.js');
 
 const root = path.resolve(__dirname, '..');
 const arg = (name, fallback = null) => { const i = process.argv.indexOf(`--${name}`); return i > 0 ? process.argv[i + 1] : fallback; };
-const LAN = process.argv.includes('--lan');
+const REQUIRE_TOKEN = process.argv.includes('--require-token');
+const ALLOW_HTTP_TOKEN = process.argv.includes('--allow-http-token');
+const ALLOWED_LOGINS = process.argv.flatMap((a, i) => (a === '--allowed-login' && process.argv[i + 1] ? [process.argv[i + 1].toLowerCase()] : []));
+if (process.argv.includes('--lan')) { console.error('--lan(평문 HTTP LAN 바인딩)은 제거되었습니다. Tailscale Serve로 접속하세요.'); process.exit(2); }
 const PORT = Number(arg('port', process.env.BSO_FIELD_PORT || 4190));
 const PAGE = path.resolve(arg('page', path.join(root, 'dist', 'notice-field', 'field-empty.html')));
 
@@ -52,10 +59,10 @@ function sendJson(res, status, payload) {
   res.end(redact(JSON.stringify(payload)));
 }
 
-// ── 접근 토큰(LAN 모드) ──────────────────────────────────────────────────────
+// ── 접근 토큰(--require-token) ─────────────────────────────────────────────
 const tokenFile = path.join(root, 'local-data', 'field-server', 'access-token.txt');
 function accessToken() {
-  if (!LAN) return null;
+  if (!REQUIRE_TOKEN) return null;
   fs.mkdirSync(path.dirname(tokenFile), { recursive: true });
   if (!fs.existsSync(tokenFile)) fs.writeFileSync(tokenFile, crypto.randomBytes(24).toString('base64url'), { mode: 0o600 });
   return fs.readFileSync(tokenFile, 'utf8').trim();
@@ -121,12 +128,24 @@ function servePage(res) {
   return undefined;
 }
 
+// 루프백에서 온 요청만 프록시(Tailscale Serve) 헤더를 신뢰한다(서버가 루프백에만 바인딩되므로 모든 요청이 해당).
+const isLoopbackPeer = (req) => ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress);
+const viaHttpsProxy = (req) => isLoopbackPeer(req) && String(req.headers['x-forwarded-proto'] || '').toLowerCase() === 'https';
+const tailnetLogin = (req) => (isLoopbackPeer(req) ? String(req.headers['tailscale-user-login'] || '').toLowerCase() || null : null);
+
 async function route(req, res) {
   const url = new URL(req.url, 'http://field.local');
-  if (LAN) {
+  if (ALLOWED_LOGINS.length) {
+    const login = tailnetLogin(req);
+    if (!login || !ALLOWED_LOGINS.includes(login)) return sendJson(res, 403, { ok: false, error_code: 'FIELD_TAILNET_LOGIN_NOT_ALLOWED' });
+  }
+  if (REQUIRE_TOKEN) {
     const t = url.searchParams.get('t');
-    if (url.pathname === '/' && t && safeEqual(t, TOKEN)) {
-      res.writeHead(303, securityHeaders({ Location: '/', 'Set-Cookie': `bso_field=${TOKEN}; HttpOnly; SameSite=Strict; Path=/; Max-Age=43200` }));
+    if (url.pathname === '/' && t) {
+      const https = viaHttpsProxy(req);
+      if (!https && !ALLOW_HTTP_TOKEN) return sendJson(res, 403, { ok: false, error_code: 'FIELD_TOKEN_EXCHANGE_HTTPS_ONLY' });
+      if (!safeEqual(t, TOKEN)) return sendJson(res, 401, { ok: false, error_code: 'FIELD_ACCESS_TOKEN_REQUIRED' });
+      res.writeHead(303, securityHeaders({ Location: '/', 'Set-Cookie': `bso_field=${TOKEN}; HttpOnly; SameSite=Strict; Path=/; Max-Age=43200${https ? '; Secure' : ''}` }));
       return res.end();
     }
     if (!safeEqual(cookieToken(req), TOKEN)) return sendJson(res, 401, { ok: false, error_code: 'FIELD_ACCESS_TOKEN_REQUIRED' });
@@ -157,13 +176,13 @@ async function route(req, res) {
 
 function start() {
   const loaded = loadEnv(arg('env', path.join(root, '.env')));
-  // --bind로 주소를 고정할 수 있다(테스트: --lan --bind 127.0.0.1 → 토큰 검사만 켜고 외부 노출 없음).
-  const host = arg('bind', LAN ? '0.0.0.0' : '127.0.0.1');
+  const host = '127.0.0.1'; // 루프백 고정. 다른 기기는 Tailscale Serve로만.
   const server = http.createServer((req, res) => { route(req, res).catch(() => { if (!res.headersSent) sendJson(res, 500, { ok: false, error_code: 'FIELD_SERVER_INTERNAL' }); }); });
   server.listen(PORT, host, () => {
-    console.log(`BSO field server: http://${LAN ? '<이 PC의 LAN 주소>' : '127.0.0.1'}:${PORT}/  (page: ${path.relative(root, PAGE)})`);
+    console.log(`BSO field server: http://127.0.0.1:${PORT}/  (page: ${path.relative(root, PAGE)})`);
     console.log(`env vars loaded: ${loaded.length ? loaded.join(', ') : '(none, using process env)'} · values not printed`);
-    if (LAN) console.log(`LAN mode: access token required. Open http://<LAN 주소>:${PORT}/?t=<token> once on Fold8. Token file: ${path.relative(root, tokenFile)}`);
+    if (REQUIRE_TOKEN) console.log(`access token required (exchange over HTTPS only${ALLOW_HTTP_TOKEN ? '; local HTTP exchange allowed for testing' : ''}). Token file: ${path.relative(root, tokenFile)}`);
+    if (ALLOWED_LOGINS.length) console.log(`tailnet login allowlist: ${ALLOWED_LOGINS.length} account(s)`);
   });
   return server;
 }

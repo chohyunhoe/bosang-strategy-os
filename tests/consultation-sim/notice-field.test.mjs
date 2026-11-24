@@ -404,13 +404,30 @@ test('전용 최소 서버: 허용 연산만 · 영상 좌표 검증 · 보안 �
     assert.equal((await fetch(`${base}/__public_data_bridge/pnu_parcel`, { method: 'POST', body: 'x'.repeat(9000) })).status, 413);
     assert.equal((await fetch(`${base}/dist/notice-field/field-empty.html`)).status, 404);
   } finally { s1.kill(); }
-  const s2 = await startServer(4198, ['--lan', '--bind', '127.0.0.1']);
+  // --require-token: 루프백·Serve 뒤에서도 앱 토큰 필수, 토큰 교환은 HTTPS 프록시(Serve) 요청에서만, 쿠키 Secure
+  const s2 = await startServer(4198, ['--require-token']);
   try {
-    assert.equal((await fetch('http://127.0.0.1:4198/')).status, 401);
-    assert.equal((await fetch('http://127.0.0.1:4198/?t=wrong', { redirect: 'manual' })).status, 401);
+    const B = 'http://127.0.0.1:4198';
     const token = fs.readFileSync(path.join(root, 'local-data', 'field-server', 'access-token.txt'), 'utf8').trim();
-    const r = await fetch(`http://127.0.0.1:4198/?t=${token}`, { redirect: 'manual' });
-    assert.equal(r.status, 303); assert.match(r.headers.get('set-cookie'), /HttpOnly; SameSite=Strict/);
-    assert.equal((await fetch('http://127.0.0.1:4198/', { headers: { cookie: `bso_field=${token}` } })).status, 200);
+    assert.equal((await fetch(`${B}/`)).status, 401);
+    assert.equal((await fetch(`${B}/__public_data_bridge/status`)).status, 401);
+    const plain = await fetch(`${B}/?t=${token}`, { redirect: 'manual' });
+    assert.equal(plain.status, 403); assert.equal((await plain.json()).error_code, 'FIELD_TOKEN_EXCHANGE_HTTPS_ONLY');
+    assert.equal((await fetch(`${B}/?t=wrong`, { redirect: 'manual', headers: { 'x-forwarded-proto': 'https' } })).status, 401);
+    const ok = await fetch(`${B}/?t=${token}`, { redirect: 'manual', headers: { 'x-forwarded-proto': 'https' } });
+    assert.equal(ok.status, 303); assert.match(ok.headers.get('set-cookie'), /HttpOnly; SameSite=Strict; Path=\/; Max-Age=43200; Secure/);
+    assert.equal((await fetch(`${B}/`, { headers: { cookie: `bso_field=${token}` } })).status, 200);
   } finally { s2.kill(); }
+  // --allowed-login: Serve가 붙이는 Tailscale-User-Login이 목록에 없으면 403
+  const s3 = await startServer(4199, ['--allowed-login', 'allowed@example.test']);
+  try {
+    const B = 'http://127.0.0.1:4199';
+    assert.equal((await fetch(`${B}/`)).status, 403);
+    assert.equal((await fetch(`${B}/`, { headers: { 'tailscale-user-login': 'other@example.test' } })).status, 403);
+    assert.equal((await fetch(`${B}/`, { headers: { 'tailscale-user-login': 'Allowed@Example.test' } })).status, 200);
+  } finally { s3.kill(); }
+  // 평문 HTTP LAN 바인딩 제거
+  const { spawnSync } = await import('node:child_process');
+  const lan = spawnSync(process.execPath, [path.join(root, 'scripts', 'field_server.js'), '--lan'], { encoding: 'utf8' });
+  assert.equal(lan.status, 2);
 });
