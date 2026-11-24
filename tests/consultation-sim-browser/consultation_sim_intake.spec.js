@@ -26,6 +26,15 @@ test('상담 4요소 미입력은 미확정, 지식팩 없으면 증빙 게이�
   await expect(card).toContainText('검토 순서 · 적정성 순위 아님');
   for (const k of ['public_restriction', 'actual_use', 'surroundings', 'distance']) await expect(card.locator(`[data-req="${k}"]`)).toBeVisible();
   await expect(card.locator('[data-req="actual_use"]')).toContainText('미확인');
+  // 요건 상태 배지는 내용 폭만 차지하고(늘어나지 않음) 항목 이름이 남은 폭을 쓴다
+  const row = page.locator('[data-gate="T-12"] [data-requirement="t12_dated_photos"]');
+  const chipW = await row.locator('.chip').evaluate((el) => el.getBoundingClientRect().width);
+  const labelW = await row.locator('.req-label').evaluate((el) => el.getBoundingClientRect().width);
+  expect(chipW).toBeLessThan(110);
+  expect(labelW).toBeGreaterThan(chipW);
+  // 날짜 칸 안내
+  await expect(page.locator('[data-intake] label:has([data-intake-field="trigger_date"]) .hint')).toContainText('문서에 적힌 날짜');
+  await expect(page.locator('[data-intake] label:has([data-intake-field="stated_deadline"]) .hint')).toContainText('문서에 적힌 기한만');
   // 화면 가로 넘침 없음(Fold 커버 412 포함)
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(1);

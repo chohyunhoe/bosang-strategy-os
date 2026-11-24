@@ -178,7 +178,9 @@ table.fields td.ops{white-space:nowrap}
 .gate-src{background:#f7f8f9;border-radius:6px;padding:4px 6px;margin-top:4px;overflow-wrap:anywhere}
 .reqs{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:4px;font-size:12px}
 .reqs li{display:flex;flex-wrap:wrap;gap:4px 6px;align-items:center;border-top:1px dotted #eef0f2;padding-top:3px}
-.reqs li span{flex:1 1 160px;min-width:0}
+/* 항목 이름만 늘린다. 상태 배지(.chip)는 내용 폭 유지 */
+.reqs li .req-label{flex:1 1 160px;min-width:0}
+.reqs li .chip{flex:0 0 auto}
 .reqs select{padding:3px 6px;border:1px solid #c7ccd2;border-radius:6px;background:#fff;font-size:12px}
 .reqs.trigger li{background:var(--warn-bg);border-radius:6px;padding:3px 6px}
 .req-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 8px;margin:6px 0}
@@ -189,3 +191,5 @@ table.fields td.ops{white-space:nowrap}
 @media print{.intake-grid,[data-intake-reset],.reqs select{display:none!important}}
 .record-bar{background:#f7f8f9;border-radius:6px;padding:4px 6px;margin:6px 0;overflow-wrap:anywhere}
 .record-actions{display:flex;flex-wrap:wrap;gap:4px 10px;margin-top:2px}
+.intake-grid .hint{font-weight:400;color:var(--muted);font-size:11px;line-height:1.3}
+.intake-grid label{justify-content:flex-end}

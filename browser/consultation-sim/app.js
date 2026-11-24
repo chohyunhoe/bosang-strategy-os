@@ -368,16 +368,16 @@ function renderIntake() {
     box.dataset.built = '1';
     box.innerHTML = `<details class="intake-box" data-intake-box open><summary><b>상담 4요소</b> <span class="muted small" data-intake-count></span></summary>
       <div class="record-bar small" data-record-bar></div>
-      <p class="muted small">입력하지 않은 요소는 '미확정'으로 표시합니다. 기한은 통지서·재결서 등 문서에 적힌 날짜만 옮겨 적으며 BSO는 법정기한을 계산하지 않습니다. 이 화면 메모리에만 보관됩니다.</p>
+      <p class="muted small" id="intake-date-hint">입력하지 않은 요소는 '미확정'으로 표시합니다. 기한은 통지서·재결서 등 문서에 적힌 날짜만 옮겨 적으며 BSO는 법정기한을 계산하지 않습니다. 이 화면 메모리에만 보관됩니다.</p>
       <div class="intake-grid">
         <label>고객의 목표 <select data-intake-field="goal">${optionsHtml(GOAL_OPTIONS, '')}</select></label>
         <label>목표 메모 <input data-intake-field="goal_note" placeholder="예: 협의금액 수락 여부 판단"></label>
         <label>현재 절차 단계 <select data-intake-field="stage">${optionsHtml(STAGE_OPTIONS, '')}</select></label>
         <label>단계 근거 문서 <input data-intake-field="stage_basis" placeholder="예: 협의요청서(사업시행자)"></label>
         <label>기산 사유 <input data-intake-field="trigger_event" placeholder="예: 재결서 정본 수령"></label>
-        <label>기산일 <input type="date" data-intake-field="trigger_date"></label>
+        <label>기산일 <span class="hint">문서에 적힌 날짜</span><input type="date" data-intake-field="trigger_date" aria-describedby="intake-date-hint"></label>
         <label>기산일 근거 <input data-intake-field="trigger_source" placeholder="예: 송달 봉투 소인·수령증"></label>
-        <label>문서 기재 기한 <input type="date" data-intake-field="stated_deadline"></label>
+        <label>문서 기재 기한 <span class="hint">문서에 적힌 기한만</span><input type="date" data-intake-field="stated_deadline" aria-describedby="intake-date-hint"></label>
         <label>기한 근거 문서 <input data-intake-field="deadline_source" placeholder="예: 협의요청서 기재 협의기간"></label>
         <label>판단·결정 권한자 <select data-intake-field="authority">${optionsHtml(AUTHORITY_OPTIONS, '')}</select></label>
         <label>권한자 메모 <input data-intake-field="authority_note" placeholder="예: ○○도 지방토지수용위원회"></label>
@@ -429,7 +429,7 @@ function requirementRow(r) {
   const control = r.auto
     ? `<span class="muted small">자동: ${esc(r.basis)}</span>`
     : `<select data-evidence-input="${esc(r.id)}" aria-label="${esc(r.label)} 확보 상태">${optionsHtml(EVIDENCE_INPUT_OPTIONS, r.input || '')}</select>`;
-  return `<li data-requirement="${esc(r.id)}" data-requirement-state="${esc(r.state)}">${chip(REQ_CHIP[r.state], EVIDENCE_STATE_LABEL[r.state])} <span>${esc(r.label)}</span> ${control}</li>`;
+  return `<li data-requirement="${esc(r.id)}" data-requirement-state="${esc(r.state)}">${chip(REQ_CHIP[r.state], EVIDENCE_STATE_LABEL[r.state])} <span class="req-label">${esc(r.label)}</span> ${control}</li>`;
 }
 function renderEvidence(state) {
   const box = $('[data-evidence]');
