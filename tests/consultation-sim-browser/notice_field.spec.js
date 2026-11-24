@@ -446,7 +446,7 @@ const STD_OK = {
     [SC]: { status: 'NOT_FOUND' },
     [SD]: { status: 'EXACT_ONE', centroid: [127.02, 36.0005], geometry: sqAt(127.02, 36.0004), distance_m: 1800 },
   },
-  limits: { not_located_by_limit: 0 }, name_resolution: { unresolved: [] }, source: 'VWorld(합성 응답)',
+  limits: { not_located_by_limit: 0 }, name_resolution: { unresolved: [] }, source: 'VWorld(합성 응답)', request_count: { total: 9 },
 };
 async function mockStandard(page, std = STD_OK) {
   const aerial = []; const calls = [];
@@ -486,6 +486,11 @@ test('표준지 지도: 대상 빨간 경계 · 주변 표준지 회색 · 후�
   // 사업으로 바뀐 현재 용도지역(제1종일반주거지역)이 아니라 사업 영향 배제 기준(농림지역)으로 검토
   await expect(page.locator('[data-f-std-review-zoning="PROJECT_EXCLUDED"]')).toContainText('사업 영향 배제 기준 용도지역 후보 농림지역(현재 제1종일반주거지역 아님)');
   await expect(page.locator('[data-f-std-scope]')).toContainText('법정동 2곳(바위리·냇가리)');
+  await expect(page.locator('[data-f-std-scope]')).toContainText('VWorld 호출 9회');
+  await expect(page.locator('[data-f-std-basis-date]')).toContainText('표준지 공시연도 2026년');
+  await expect(page.locator('[data-f-std-basis-date]')).toContainText('감정평가 기준시점 미확인');
+  await page.locator('[data-f-zoning-vdate]').fill('2026-12-15');
+  await expect(page.locator('[data-f-std-basis-date]')).toContainText('감정평가 기준시점 2026-12-15');
   await expect(page.locator('[data-f-map-target]')).toHaveCount(1);
   const cand = page.locator(`[data-f-std-pin="${SA}"]`);
   await expect(cand).toHaveAttribute('data-f-std-kind', 'CANDIDATE'); await expect(cand).toHaveText('1');

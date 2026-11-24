@@ -106,6 +106,8 @@ class StandardLandSearchTest(unittest.TestCase):
         assert loc[c]["status"] == "NOT_FOUND" and "centroid" not in loc[c]
         assert loc[d]["status"] == "FAILED" and "centroid" not in loc[d]
         assert r["search"]["radius_m"] == 1000
+        rc = r["request_count"]
+        assert rc["boundary"] == 2 and rc["standard"] == 3 and rc["land_characteristics"] == 3 and rc["cadastral"] == 1 + 4 and rc["total"] == sum(v for k, v in rc.items() if k != "total")
 
 
     def test_invalid_inputs_and_target_not_exact(self):

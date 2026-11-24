@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import math
+import threading
 import re
 import ssl
 import http.client
@@ -95,6 +96,12 @@ class StandardLandSearch:
     def __init__(self, *, geometry: VWorldCadastralGeometryProvider | None = None, land: VWorldLandCharacteristicsProvider | None = None):
         self.geometry = geometry or VWorldCadastralGeometryProvider()
         self.land = land or VWorldLandCharacteristicsProvider()
+        self._lock = threading.Lock()
+        self.calls: dict[str, int] = {"boundary": 0, "standard": 0, "land_characteristics": 0, "cadastral": 0}
+
+    def count(self, kind: str) -> None:
+        with self._lock:
+            self.calls[kind] = self.calls.get(kind, 0) + 1
 
     @property
     def configured(self) -> bool:
@@ -112,6 +119,7 @@ class StandardLandSearch:
 
     def legal_dongs(self, bbox: list[float], own_ld: str) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
         box = f"BOX({bbox[0]},{bbox[1]},{bbox[2]},{bbox[3]})"
+        self.count("boundary"); self.count("boundary")
         ri = self.geometry._data({"data": "LT_C_ADRI_INFO", "geomFilter": box, "size": "100", "geometry": "false"})
         emd = self.geometry._data({"data": "LT_C_ADEMD_INFO", "geomFilter": box, "size": "100", "geometry": "false"})
         found: dict[str, str] = {}
@@ -137,6 +145,7 @@ class StandardLandSearch:
         total = None
         for page in range(1, MAX_PAGES + 1):
             params = {"key": self.land._api_key or "", "ldCode": ld_code, "stdrYear": str(year), "format": "json", "numOfRows": "100", "pageNo": str(page)}
+            self.count("standard")
             page_rows, root = _rows_of(self._json(f"{STANDARD_ENDPOINT}?{urllib.parse.urlencode(params)}"))
             rows.extend(page_rows)
             try:
@@ -178,6 +187,7 @@ class StandardLandSearch:
                 continue
             lookups += 1
             try:
+                self.count("land_characteristics")
                 lc_rows, _root = _rows_of(self._json(self.land._request_url(pnu, year)))
             except ProviderError:
                 continue
@@ -193,6 +203,7 @@ class StandardLandSearch:
 
     def locate(self, pnu: str, center: tuple[float, float]) -> dict[str, Any]:
         try:
+            self.count("cadastral")
             t = self.geometry.target(pnu)
         except ProviderError as exc:
             return {"status": "FAILED", "code": exc.code}
@@ -222,6 +233,7 @@ def search_standard_lands(payload: Mapping[str, Any], *, searcher: StandardLandS
     if not s.configured:
         return {"ok": False, "error_code": "VWORLD_API_KEY_MISSING"}
     try:
+        s.count("cadastral")
         target = s.geometry.target(pnu)
     except ProviderError as exc:
         return {"ok": False, "error_code": exc.code, "error_message": str(exc)}
@@ -276,5 +288,6 @@ def search_standard_lands(payload: Mapping[str, Any], *, searcher: StandardLandS
         "name_resolution": {"lookups": names["lookups"], "unresolved": names["unresolved"], "conflicts": names["conflicts"],
                             "source": "같은 연도 VWorld 토지특성 응답의 코드↔명칭 쌍"},
         "limits": {"max_legal_dongs": MAX_LEGAL_DONGS, "max_locate": MAX_LOCATE, "not_located_by_limit": len(skipped)},
+        "request_count": {**s.calls, "total": sum(s.calls.values())},
         "source": "VWorld 국가중점데이터 표준지공시지가(getReferLandPriceAttr) · 연속지적도(LP_PA_CBND_BUBUN) · 리/읍면동 경계(LT_C_ADRI_INFO/LT_C_ADEMD_INFO)",
     }

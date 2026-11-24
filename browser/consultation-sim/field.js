@@ -138,7 +138,7 @@ function renderMap() {
   // 같은 화면 상태면 다시 그리지 않는다(영상 재요청 방지). 영상 수신 상태는 칩만 바꾼다.
   const sr = m.status === 'EXACT_ONE' ? stdReview() : null;
   m.std = sr && sr.markers ? { markers: sr.markers, selected: st.std.selected, showStandards: st.std.showStandards, showCandidates: st.std.showCandidates } : null;
-  const key = JSON.stringify([st.epoch, m.status, m.pnu, m.view?.zoom, m.view?.center, m.showTarget, m.showNeighbors, st.std?.status, st.std?.selected, st.std?.showStandards, st.std?.showCandidates, stdReviewKey]);
+  const key = JSON.stringify([st.epoch, m.status, m.pnu, m.view?.zoom, m.view?.center, m.showTarget, m.showNeighbors, st.std?.status, st.std?.selected, st.std?.showStandards, st.std?.showCandidates, stdReviewKey, st.std ? st.zoningConfirm.valuation_date : '']);
   if (key === lastMapKey) return;
   lastMapKey = key;
   box.innerHTML = renderFieldMap(m) + (m.status === 'EXACT_ONE' ? renderStdPanel(sr) : '');
@@ -236,7 +236,8 @@ function renderStdPanel(sr) {
     SCHEMA_UNMAPPED: '<span class="chip bad">필드 해석 불가 — 판정 보류</span>', INSUFFICIENT_TARGET: '<span class="chip bad">대상 용도지역·이용상황 미확보 — 판정 보류</span>' }[sr.status] || '';
   return `${head}<div data-f-std-state="${esc(sr.status)}">
     <p class="small">${statusChip} <span data-f-std-review-zoning="${esc(sr.review.basis)}">후보 검토 용도지역: <b>${esc(sr.review.label)}</b></span></p>
-    <p class="small muted" data-f-std-scope>조회 범위: ${esc(sr.scope.label)} · 표준지 ${sr.meta.total_rows}행 · 위치 확인 ${sr.meta.located}곳(반경 안 ${sr.meta.in_radius}행) · 조회 ${esc(new Date(s.fetched_at).toLocaleString('ko-KR', { hour12: false }))}</p>
+    <p class="small muted" data-f-std-scope>조회 범위: ${esc(sr.scope.label)} · 표준지 ${sr.meta.total_rows}행 · 위치 확인 ${sr.meta.located}곳(반경 안 ${sr.meta.in_radius}행) · 조회 ${esc(new Date(s.fetched_at).toLocaleString('ko-KR', { hour12: false }))}${sr.meta.request_count != null ? ` · VWorld 호출 ${sr.meta.request_count}회` : ''}</p>
+    <p class="small" data-f-std-basis-date>표준지 공시연도 <b>${esc(sr.meta.year)}년</b>(${esc(sr.meta.year)}-01-01 공시 기준) · ${esc(currentZoning()?.valuation_date_label || '감정평가 기준시점 미확인')} — 적용할 표준지 공시연도는 기준시점에 따라 달라지므로 별도 확인(전문가 검토)</p>
     ${sel ? `<div class="f-std-detail" data-f-std-detail="${esc(sel.pnu)}"><b>${sel.kind === 'CANDIDATE' ? `${STD_LABEL.CANDIDATE} ${sel.rank}` : esc(sel.status_label)}</b> <span class="chip warn">${esc(STD_LABEL.NOT_SELECTED)}</span>
       <dl class="small"><dt>지번</dt><dd data-f-std-d="lot">${esc(sel.label)}</dd><dt>PNU</dt><dd data-f-std-d="pnu">${esc(sel.pnu)}</dd>
       <dt>공시지가</dt><dd data-f-std-d="price">${esc(won(sel.price))}</dd><dt>공시연도</dt><dd data-f-std-d="year">${esc(sel.year || '미상')}년</dd>
@@ -397,7 +398,7 @@ function renderZoning() {
     const sel = $('[data-f-zoning-relation]', wrap); const doc = $('[data-f-zoning-doc]', wrap); const by = $('[data-f-zoning-by]', wrap); const vdate = $('[data-f-zoning-vdate]', wrap);
     if (sel) { sel.value = st.zoningConfirm.relation; doc.value = st.zoningConfirm.basis_doc; by.value = st.zoningConfirm.by; }
     if (vdate) vdate.value = st.zoningConfirm.valuation_date;
-    const sync = () => { st.zoningConfirm = { relation: sel ? sel.value : '', basis_doc: doc ? doc.value : '', by: by ? by.value : '', valuation_date: vdate ? vdate.value : '' }; $('[data-f-out]').textContent = ''; renderZoningResult(); };
+    const sync = () => { st.zoningConfirm = { relation: sel ? sel.value : '', basis_doc: doc ? doc.value : '', by: by ? by.value : '', valuation_date: vdate ? vdate.value : '' }; $('[data-f-out]').textContent = ''; renderZoningResult(); if (st.std) renderMap(); };
     [sel, doc, by, vdate].forEach((el) => el?.addEventListener(el.tagName === 'SELECT' || el.type === 'date' ? 'change' : 'input', sync));
   }
   renderZoningResult();

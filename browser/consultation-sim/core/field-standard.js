@@ -96,7 +96,7 @@ export function buildStandardReview({ response, target = {}, zoning = null }) {
     status: analysis.status, review, analysis, markers, list, notes, scope,
     target_centroid: response.target?.centroid || null,
     meta: { year: s.year, radius_m: radius, total_rows: rows.length, located: markers.length, in_radius: inRange.length,
-      legal_dongs: s.legal_dongs || [], source: response.source || null },
+      legal_dongs: s.legal_dongs || [], source: response.source || null, request_count: response.request_count?.total ?? null },
     use_group: useGroup(target.land_use),
   };
 }
