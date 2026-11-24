@@ -22,6 +22,16 @@ export const OSONG3 = Object.freeze({
     // GPT 독립 검산(2026-11-24): 일련번호 1~2,933, 편입면적 합계 = 사업계획 고시 면적
     expected: Object.freeze({ rows: 2933, incorporated_area_m2: 4119584.0 }),
   }),
+  // 고시 원문의 용도지역 결정(변경) 사유 — 보상평가 용도지역 검토 근거(필지별 변경도면 대조는 별도)
+  zoning_decisions: Object.freeze([
+    Object.freeze({
+      from: '농림지역', to: '제1종일반주거지역', area_m2: 217424,
+      reason: '오송 제3생명과학 국가산업단지 개발사업에 따른 변경',
+      source: '국토교통부 고시 제2025-456호(2025-08-28) 도시·군관리계획 용도지역 결정(변경) 사유서',
+      verified: 'GPT 원문 확인(2026-11-24, Google Drive 고시 원문) — 사업 관련 변경 사유 명시',
+      parcel_level: '필지별 변경도면 대조 전',
+    }),
+  ]),
   issue_ids: ['stage', 'obstacle', 'land_use', 'farming', 'business', 'residence', 'remainder', 'resident_appraiser'],
   extra_issues: Object.freeze([
     { id: 'flood', label: '수해 피해 중첩',

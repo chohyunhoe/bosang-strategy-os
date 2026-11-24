@@ -343,3 +343,27 @@ test('용도지역: 사업 색인 밖 전국 필지는 사업 고시를 연결�
   await expect(page.locator('[data-f-zoning-project]')).toContainText('연결된 사업 고시 없음');
   await expect(page.locator('[data-f-zoning-status]')).toHaveAttribute('data-f-zoning-status', 'CHANGE_UNCONFIRMED');
 });
+
+test('용도지역: 사업 고시 사유서와 같은 변경이면 "농림지역(평가 기준 후보)" · 근거·기준시점 분리 · 카드 기록', async ({ page }) => {
+  await mockZoning(page);
+  const idx = JSON.parse(fs.readFileSync(FIXTURE, 'utf8'));
+  idx.notice = { ...idx.notice, id: 'molit-2025-456', notice_no: '국토교통부 고시 제2025-456호', notice_date: '2025-08-28' }; // 오송3 프로필 연결(합성 행)
+  await page.goto('/field.html');
+  await page.locator('[data-f-index-file]').setInputFiles({ name: 'osong-profile-synthetic.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(idx)) });
+  await search(page, '바위리 12-3');
+  await page.locator('[data-f-pd-go]').click();
+  await expect(page.locator('[data-f-zoning-status]')).toHaveAttribute('data-f-zoning-status', 'NOTICE_PROJECT_REASON');
+  await expect(page.locator('[data-f-zoning-basis]')).toContainText('농림지역(평가 기준 후보)');
+  await expect(page.locator('[data-f-zoning-basis]')).toContainText('전문가 검증 전');
+  await expect(page.locator('[data-f-zoning-evidence]')).toContainText('217,424㎡');
+  await expect(page.locator('[data-f-zoning-evidence]')).toContainText('필지별 변경도면 대조 전');
+  await expect(page.locator('[data-f-zoning-query]')).toContainText('조회 기준연도 2026');
+  await expect(page.locator('[data-f-zoning-valuation]')).toContainText('감정평가 기준시점 미확인');
+  await page.locator('[data-f-zoning-vdate]').fill('2026-12-15');
+  await expect(page.locator('[data-f-zoning-valuation]')).toContainText('2026-12-15');
+  const [download] = await Promise.all([page.waitForEvent('download'), page.locator('[data-f-save]').click()]);
+  const text = fs.readFileSync(await download.path(), 'utf8');
+  expect(text).toContain('농림지역(평가 기준 후보)');
+  expect(text).toContain('감정평가 기준시점 2026-12-15');
+  expect(text).not.toContain('제1종일반주거지역');
+});

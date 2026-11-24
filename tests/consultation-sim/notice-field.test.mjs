@@ -462,7 +462,8 @@ test('용도지역: 상담자가 근거와 함께 사업 관련 표시 → 변�
   const z = zb.evaluateZoningBasis({ history: HIST, project: PROJ, confirmation: { relation: 'PROJECT_RELATED', basis_doc: '고시 ○쪽 결정조서', by: '상담A' } });
   assert.deepEqual([z.status, z.basis_zoning, z.basis_reason, z.verification], ['PROJECT_RELATED', '농림지역', 'ENFORCEMENT_RULE_23_2', 'COUNSELOR_MARKED_UNVERIFIED_BY_EXPERT']);
   const u = zb.evaluateZoningBasis({ history: HIST, project: PROJ, confirmation: { relation: 'UNRELATED', basis_doc: '시 도시관리계획 결정 고시(별건)' } });
-  assert.deepEqual([u.status, u.basis_zoning, u.basis_reason], ['UNRELATED', '제1종일반주거지역', 'VALUATION_DATE_PRINCIPLE']);
+  assert.deepEqual([u.status, u.basis_zoning, u.basis_reason], ['UNRELATED', null, 'VALUATION_DATE_PRINCIPLE']);
+  assert.match(u.basis_label, /감정평가 기준시점의 용도지역\(기준시점 미확인\) · 현재 조회값 제1종일반주거지역은 참고/);
 });
 
 test('용도지역: 변경 없음·자료 없음·사업 미지정은 확인 필요(자동 기준 없음)', () => {
@@ -493,4 +494,45 @@ test('공적자료: 모든 조회 연도의 용도지역 이력을 모은다', a
   const r = await queryPublicData({ fetchImpl, location: loop, index: load(), row: load().rows[0] });
   assert.deepEqual(r.zoning_history.map((h) => [h.year, h.zoning]), [[2026, '제1종일반주거지역'], [2025, '농림지역']]);
   assert.equal(r.values.find((v) => v.key === 'zoning').value, '제1종일반주거지역');
+});
+
+
+// ── 고시 사유서 근거(오송3 2025-456: 농림지역→제1종일반주거지역 217,424㎡, 사업 관련) · 기준시점 분리 ─────────
+const OSONG_DECISIONS = getProfile('osong3').zoning_decisions;
+const PROJ_N = { ...PROJ, zoning_decisions: OSONG_DECISIONS };
+
+test('고시 사유서와 같은 변경이면 변경 전 용도지역을 평가 기준 후보로(필지별 도면 대조 전·전문가 검증 전)', () => {
+  assert.deepEqual([OSONG_DECISIONS[0].from, OSONG_DECISIONS[0].to, OSONG_DECISIONS[0].area_m2], ['농림지역', '제1종일반주거지역', 217424]);
+  const z = zb.evaluateZoningBasis({ history: HIST, project: PROJ_N });
+  assert.equal(z.status, 'NOTICE_PROJECT_REASON');
+  assert.equal(z.basis_label, '농림지역(평가 기준 후보)');
+  assert.equal(z.verification, 'NOTICE_REASON_CONFIRMED_PARCEL_MAP_PENDING_UNVERIFIED_BY_EXPERT');
+  assert.match(z.notes.join(), /217,424㎡ · 오송 제3생명과학 국가산업단지 개발사업에 따른 변경.*필지별 변경도면 대조 전/);
+  assert.match(z.evidence.source, /도시·군관리계획 용도지역 결정\(변경\) 사유서/);
+});
+
+test('고시 결정과 다른 변경·사업 미연결은 근거로 쓰지 않음 · 사업 무관 표시가 고시와 상충하면 반영 안 함', () => {
+  const other = zb.evaluateZoningBasis({ history: [{ year: 2025, zoning: '자연녹지지역' }, { year: 2026, zoning: '제1종일반주거지역' }], project: PROJ_N });
+  assert.equal(other.status, 'CHANGE_UNCONFIRMED'); assert.equal(other.evidence, null);
+  assert.equal(zb.evaluateZoningBasis({ history: HIST, project: null }).status, 'CHANGE_UNCONFIRMED');
+  const conflict = zb.evaluateZoningBasis({ history: HIST, project: PROJ_N, confirmation: { relation: 'UNRELATED', basis_doc: '별건 결정' } });
+  assert.equal(conflict.status, 'NOTICE_PROJECT_REASON'); assert.match(conflict.notes.join(), /상충합니다 — 반영하지 않고 전문가 확인 필요/);
+});
+
+test('조회 기준연도와 감정평가 기준시점 분리', () => {
+  const z = zb.evaluateZoningBasis({ history: HIST, project: PROJ_N });
+  assert.equal(z.query_basis.label, '조회 기준연도 2026(토지특성 기준일 2026-01-01)');
+  assert.equal(z.valuation_date, null); assert.match(z.valuation_date_label, /감정평가 기준시점 미확인 — 조회 기준연도와 별개/);
+  const d = zb.evaluateZoningBasis({ history: HIST, project: PROJ_N, valuationDate: '2026-12-15' });
+  assert.match(d.valuation_date_label, /감정평가 기준시점 2026-12-15\(상담자 입력 · 문서 확인 필요\)/);
+});
+
+test('카드: 고시 근거 후보는 고시 기재값으로 기록, API 용도지역 값은 여전히 미기록', () => {
+  const idx = load();
+  const z = zb.evaluateZoningBasis({ history: HIST, project: PROJ_N });
+  const text = buildFieldCard({ profile: profileForIndex(idx), index: idx, row: idx.rows[0], zoning: z }).text;
+  assert.match(text, /평가 기준 후보: 농림지역\(평가 기준 후보\) — 근거: 국토교통부 고시 제2025-456호/);
+  assert.match(text, /필지별 변경도면 대조 전 · 전문가 검증 전/);
+  assert.match(text, /조회 기준연도 2026\(토지특성 기준일 2026-01-01\) \/ 감정평가 기준시점 미확인/);
+  assert.doesNotMatch(text, /제1종일반주거지역/);
 });
