@@ -402,3 +402,79 @@ class VWorldCadastralParcelProvider:
         p = exact[0]
         return {"pnu": pnu, "address": str(p.get("addr") or "") or None, "jibun": str(p.get("jibun") or "") or None,
                 "price": _to_int(p.get("jiga")), "price_base": f"{p.get('gosi_year') or ''}-{p.get('gosi_month') or ''}".strip("-") or None}
+
+
+def _vworld_features(payload: Any) -> list[dict[str, Any]]:
+    response = payload.get("response") if isinstance(payload, Mapping) else None
+    if not isinstance(response, Mapping):
+        raise ProviderError("VWORLD_SCHEMA_CHANGED", "VWorld data response root was not found")
+    status = str(response.get("status") or "").upper()
+    if status == "NOT_FOUND":
+        return []
+    if status != "OK":
+        error = response.get("error") if isinstance(response.get("error"), Mapping) else {}
+        raise ProviderError("VWORLD_API_ERROR", _vworld_result_message(str(error.get("code") or status)))
+    return list((((response.get("result") or {}).get("featureCollection") or {}).get("features")) or [])
+
+
+def _clean_geometry(geometry: Any) -> dict[str, Any] | None:
+    """Polygon/MultiPolygon만, 숫자 좌표만 남긴다(구멍 포함)."""
+    if not isinstance(geometry, Mapping) or geometry.get("type") not in ("Polygon", "MultiPolygon"):
+        return None
+    polys = geometry["coordinates"] if geometry["type"] == "MultiPolygon" else [geometry["coordinates"]]
+    out = []
+    for poly in polys or []:
+        rings = []
+        for ring in poly or []:
+            pts = [[float(p[0]), float(p[1])] for p in ring if isinstance(p, (list, tuple)) and len(p) >= 2]
+            if len(pts) >= 3:
+                rings.append(pts)
+        if rings:
+            out.append(rings)
+    return {"type": "MultiPolygon", "coordinates": out} if out else None
+
+
+class VWorldCadastralGeometryProvider(VWorldCadastralParcelProvider):
+    """연속지적도 경계(EPSG:4326). 대상 필지는 같은 PNU exact-one일 때만 돌려준다."""
+
+    def _data(self, extra: dict[str, str]) -> list[dict[str, Any]]:
+        if not self.configured:
+            raise ProviderError("VWORLD_API_KEY_MISSING", "VWORLD_API_KEY is not configured")
+        params = {"service": "data", "request": "GetFeature", "data": "LP_PA_CBND_BUBUN", "geometry": "true", "attribute": "true",
+                  "crs": "EPSG:4326", "format": "json", "key": self._api_key or "", **extra}
+        try:
+            payload = self._transport(f"{VWORLD_DATA_ENDPOINT}?{urllib.parse.urlencode(params)}", self._timeout)
+        except (TimeoutError, urllib.error.URLError, urllib.error.HTTPError, ssl.SSLError, ConnectionError, http.client.RemoteDisconnected) as exc:
+            safe = redact_secrets(exc, (self._api_key or "",))
+            raise ProviderError("VWORLD_TRANSPORT_ERROR", f"VWorld request failed safely: {safe}") from None
+        except (ValueError, TypeError, json.JSONDecodeError):
+            raise ProviderError("VWORLD_RESPONSE_ERROR", "VWorld cadastral response could not be parsed") from None
+        return _vworld_features(payload)
+
+    def target(self, pnu: str) -> dict[str, Any]:
+        if not re.fullmatch(r"\d{19}", pnu):
+            raise ProviderError("PNU_INVALID", "PNU must be exactly 19 digits")
+        feats = self._data({"attrFilter": f"pnu:=:{pnu}", "size": "10"})
+        exact = [f for f in feats if str((f.get("properties") or {}).get("pnu")) == pnu]
+        if not exact:
+            return {"status": "NOT_FOUND", "pnu": pnu, "geometry": None}
+        if len(exact) > 1:
+            return {"status": "NOT_UNIQUE", "pnu": pnu, "geometry": None, "count": len(exact)}
+        geometry = _clean_geometry(exact[0].get("geometry"))
+        if geometry is None:
+            return {"status": "GEOMETRY_INVALID", "pnu": pnu, "geometry": None}
+        props = exact[0].get("properties") or {}
+        return {"status": "EXACT_ONE", "pnu": pnu, "jibun": str(props.get("jibun") or "") or None, "geometry": geometry, "crs": "EPSG:4326"}
+
+    def neighbors(self, bbox: list[float], exclude_pnu: str) -> list[dict[str, Any]]:
+        min_lon, min_lat, max_lon, max_lat = (float(v) for v in bbox)
+        if not (124 <= min_lon < max_lon <= 132 and 33 <= min_lat < max_lat <= 39.5) or max_lon - min_lon > 0.01 or max_lat - min_lat > 0.01:
+            raise ProviderError("BBOX_INVALID", "bbox must be inside Korea and at most 0.01 degrees")
+        feats = self._data({"geomFilter": f"BOX({min_lon},{min_lat},{max_lon},{max_lat})", "size": "100"})
+        out = []
+        for f in feats:
+            pnu = str((f.get("properties") or {}).get("pnu") or "")
+            g = _clean_geometry(f.get("geometry"))
+            if pnu and pnu != exclude_pnu and g:
+                out.append({"pnu": pnu, "jibun": str((f.get("properties") or {}).get("jibun") or "") or None, "geometry": g})
+        return out

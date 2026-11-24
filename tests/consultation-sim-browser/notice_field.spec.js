@@ -177,7 +177,7 @@ test('PNU 19자리 단독입력(색인 없음): 검증 전 카드 → 지적 확
   await page.locator('[data-f-pd-go]').click();
   await expect(page.locator('[data-f-pd-stage="LIVE_DATA"]')).toBeVisible();
   await expect(page.locator('[data-f-pd-parcel]')).toContainText('가상특별시 누리구 새솔동 12-3');
-  expect(calls.filter((c) => c !== 'status')).toEqual(['pnu_parcel', 'vworld_land']);
+  expect(calls.filter((c) => c !== 'status')).toEqual(['pnu_parcel', 'vworld_land', 'parcel_map']);
 });
 
 test('PNU가 지적에 없으면 토지특성 호출 없음 · 색인이 있어도 PNU는 직접 조회로', async ({ page }) => {
@@ -217,4 +217,74 @@ test('인쇄·PDF: 공적자료 영역 제외(미디어 print + beforeprint) · 
   await page.emulateMedia({ media: 'screen' });
   await page.evaluate(() => window.dispatchEvent(new Event('afterprint')));
   await expect(page.locator('[data-f-pd-key="price"]')).toContainText('123,456,789');
+});
+
+// ── 지도(항공영상+지적경계) · 기타 자유입력 ───────────────────────────────────────
+const PNG_1PX = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
+const SQ = { type: 'MultiPolygon', coordinates: [[[[127.0, 36.0], [127.001, 36.0], [127.001, 36.001], [127.0, 36.001], [127.0, 36.0]]]] };
+async function mockMap(page, { target = { status: 'EXACT_ONE', pnu: '9800000000100120003', geometry: SQ, jibun: '12-3 대' } } = {}) {
+  const aerial = [];
+  await page.route('**/__field/aerial**', (route) => { aerial.push(new URL(route.request().url()).searchParams.get('zoom')); return route.fulfill({ status: 200, contentType: 'image/png', body: PNG_1PX }); });
+  await page.route('**/__public_data_bridge/**', async (route) => {
+    const op = new URL(route.request().url()).pathname.split('/').pop();
+    const body = op === 'status' ? { ok: true, vworld_configured: true, public_data_configured: true }
+      : op === 'resolve_pnu' ? { ok: true, candidate: { pnu: '9800000000100120003', legal_dong_name: '가상특별시 누리구 새솔동' } }
+        : op === 'pnu_parcel' ? { ok: true, parcel: { pnu: '9800000000100120003', address: '가상특별시 누리구 새솔동 12-3', jibun: '12-3 대' } }
+          : op === 'parcel_map' ? { ok: true, target, neighbors: [{ pnu: '9800000000100130000', jibun: '13 대', geometry: SQ }] }
+            : { ok: true, record: { land_category: '대', individual_official_price: 777777, price_year: 2026 } };
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+  });
+  return aerial;
+}
+
+test('지도: 같은 PNU exact-one 경계+항공영상 · 확대/축소 · 경계 토글 · 인쇄 제외', async ({ page }) => {
+  const aerial = await mockMap(page);
+  await page.goto('/field.html');
+  await search(page, '가상특별시 누리구 새솔동 12-3');
+  await page.locator('[data-f-direct-open]').click();
+  await page.locator('[data-f-pd-go]').click();
+  const map = page.locator('.f-map');
+  await expect(map).toHaveAttribute('data-f-map-pnu', '9800000000100120003');
+  await expect(page.locator('[data-f-map-aerial="OK"]')).toBeVisible();
+  await expect(page.locator('[data-f-map-target]')).toHaveCount(1);
+  await expect(page.locator('.f-cad')).toHaveCount(1);
+  const z0 = Number(await map.getAttribute('data-f-map-zoom'));
+  await page.locator('[data-f-map-step="-1"]').click();
+  await expect(page.locator('.f-map')).toHaveAttribute('data-f-map-zoom', String(z0 - 1));
+  expect(aerial.slice(-1)[0]).toBe(String(z0 - 1));
+  await page.locator('[data-f-map-toggle="target"]').uncheck();
+  await expect(page.locator('[data-f-map-target]')).toHaveCount(0);
+  await page.locator('[data-f-map-toggle="neighbors"]').uncheck();
+  await expect(page.locator('.f-cad')).toHaveCount(0);
+  await page.emulateMedia({ media: 'print' });
+  await expect(page.locator('[data-f-map-panel]')).toBeHidden();
+  await page.emulateMedia({ media: 'screen' });
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(0);
+});
+
+test('지도: 응답이 다른 PNU·복수면 경계·영상 없이 사유만 · 상담카드는 유지', async ({ page }) => {
+  const aerial = await mockMap(page, { target: { status: 'NOT_UNIQUE', pnu: '9800000000100120003' } });
+  await page.goto('/field.html');
+  await search(page, '가상특별시 누리구 새솔동 12-3');
+  await page.locator('[data-f-direct-open]').click();
+  await page.locator('[data-f-pd-go]').click();
+  await expect(page.locator('[data-f-map-state="NOT_UNIQUE"]')).toContainText('합성·추정 경계로 대체하지 않습니다');
+  await expect(page.locator('[data-f-map-img]')).toHaveCount(0);
+  expect(aerial).toHaveLength(0);
+  await expect(page.locator('[data-f-direct="NATIONWIDE"]')).toBeVisible();
+});
+
+test('기타 자유입력: 체크 시 입력란 · 저장 카드에 반영 · 새 상담에서 초기화', async ({ page }) => {
+  await open(page);
+  await search(page, '바위리 12-3');
+  await expect(page.locator('[data-f-other]')).toBeHidden();
+  await page.locator('[data-f-issue="other"]').check();
+  await page.locator('[data-f-other]').fill('진입로 공사 소음(합성)');
+  const [download] = await Promise.all([page.waitForEvent('download'), page.locator('[data-f-save]').click()]);
+  expect(fs.readFileSync(await download.path(), 'utf8')).toContain('- 기타: 진입로 공사 소음(합성)');
+  await page.locator('[data-f-new]').click();
+  await search(page, '바위리 12-3');
+  await expect(page.locator('[data-f-issue="other"]')).not.toBeChecked();
+  await expect(page.locator('[data-f-other]')).toHaveValue('');
 });

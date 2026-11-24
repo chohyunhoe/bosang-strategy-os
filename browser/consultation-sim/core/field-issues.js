@@ -33,9 +33,20 @@ export const FIELD_ISSUES = Object.freeze([
     question: '소유자 추천 감정평가업자 선정 절차(동의서 제출 등)에 참여하셨나요?',
     documents: ['추천 동의서 사본', '보상계획 공고의 추천 안내 부분'],
     next: ['추천 절차 진행 상황과 마감일을 원문으로 확인'] },
+  { id: 'other', label: '기타', free_text: true,
+    question: '위 항목에 없는 쟁점을 자유롭게 적어 주세요(실명·전화번호 제외).',
+    documents: [],
+    next: ['기타 쟁점은 관련 원문·자료 확인 후 전문가 검토'] },
 ]);
 
+// '기타'(자유입력)는 사업 프로필과 관계없이 항상 마지막에 둔다.
 export function issuesFor(profile) {
-  const base = FIELD_ISSUES.filter((it) => !profile?.issue_ids || profile.issue_ids.includes(it.id));
-  return [...base, ...(profile?.extra_issues || [])];
+  const base = FIELD_ISSUES.filter((it) => it.id !== 'other' && (!profile?.issue_ids || profile.issue_ids.includes(it.id)));
+  return [...base, ...(profile?.extra_issues || []), FIELD_ISSUES.find((it) => it.id === 'other')];
+}
+
+export function issueLabel(it, otherText) {
+  if (!it.free_text) return it.label;
+  const t = String(otherText || '').trim();
+  return `${it.label}: ${t || '(내용 미입력)'}`;
 }

@@ -47,6 +47,7 @@
     "notice:import": "node scripts/notice_index/import_notice_pdf.mjs",
     "notice:field:build": "node scripts/build_notice_field.js",
     "notice:field:serve": "node scripts/serve_product_v2.js dist/notice-field 4180",
+    "notice:field:server": "node scripts/field_server.js --page dist/notice-field/field-empty.html",
     "consult:e2e": "playwright test -c playwright.consultation-sim.config.js",
     "consult:gate": "npm run consult:test && npm run consult:e2e",
     "consult:demo:build": "node scripts/build_consultation_sim_demo.js"

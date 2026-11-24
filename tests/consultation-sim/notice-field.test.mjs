@@ -324,3 +324,93 @@ test('PNU 카드: 검증 전 표시 · 공적자료 값 없음', () => {
   assert.match(card.text, /입력 PNU: 4311325027103200001 \(상담자 입력 · 검증 전/);
   assert.equal(card.address, null);
 });
+
+// ── 지도(항공영상+지적경계) · 기타 자유입력 · 전용 최소 서버 ─────────────────────────────
+const fm = await import('../../browser/consultation-sim/core/field-map.js');
+const { queryParcelMap } = await import('../../browser/consultation-sim/core/field-public-data.js');
+const { issuesFor } = await import('../../browser/consultation-sim/core/field-issues.js');
+const SQ = { type: 'MultiPolygon', coordinates: [
+  [[[127.0, 36.0], [127.001, 36.0], [127.001, 36.001], [127.0, 36.001], [127.0, 36.0]], [[127.0004, 36.0004], [127.0006, 36.0004], [127.0006, 36.0006], [127.0004, 36.0004]]],
+  [[[127.002, 36.0], [127.0025, 36.0], [127.0025, 36.0005], [127.002, 36.0]]],
+] };
+
+test('지도 정합: 영상 중심=화면 중심, 줌 상한 18, 다각형·구멍 모두 경로화, 영상 주소에 키 없음', () => {
+  const v = fm.fitView(SQ);
+  assert.ok(v.zoom <= 18 && v.zoom >= 12);
+  const [cx, cy] = fm.project(v, v.centerLonLat);
+  assert.ok(Math.abs(cx - 512) < 1e-6 && Math.abs(cy - 384) < 1e-6);
+  const d = fm.svgPath(v, SQ);
+  assert.equal((d.match(/M/g) || []).length, 3); // 외곽 2 + 구멍 1
+  assert.equal(fm.withZoom(v, 25).zoom, 18); assert.equal(fm.withZoom(v, 3).zoom, 12);
+  const url = fm.aerialUrl(v);
+  assert.match(url, /^\/__field\/aerial\?lon=127\.\d+&lat=36\.\d+&zoom=\d+$/);
+  // 동·서 방향: 동쪽 경도가 화면 오른쪽, 북쪽 위도가 화면 위쪽
+  const [x1, y1] = fm.project(v, [127.0, 36.0]); const [x2, y2] = fm.project(v, [127.001, 36.001]);
+  assert.ok(x2 > x1 && y2 < y1);
+});
+
+test('지도 렌더: exact-one만 영상·경계, 그 외는 합성 대체 없이 사유', () => {
+  const v = fm.fitView(SQ);
+  const html = fm.renderFieldMap({ status: 'EXACT_ONE', pnu: '9800000000100120003', target: { geometry: SQ, jibun: '12-3 답' }, neighbors: [], view: v, showTarget: true, showNeighbors: true, aerial: 'LOADING' });
+  assert.match(html, /data-f-map-pnu="9800000000100120003"/); assert.match(html, /<img[^>]+\/__field\/aerial/); assert.match(html, /촬영일 미확인/); assert.match(html, /사업 편입선이 아닙니다/);
+  const fail = fm.renderFieldMap({ status: 'NOT_UNIQUE', reason: '같은 PNU 경계가 2개 이상' });
+  assert.doesNotMatch(fail, /<img|<svg/); assert.match(fail, /합성·추정 경계로 대체하지 않습니다/);
+});
+
+test('지도 조회: 응답 PNU 불일치·복수·없음은 확정하지 않음', async () => {
+  const mk = (target) => fakeBridge({ parcel_map: () => ({ ok: true, target, neighbors: [] }) });
+  assert.equal((await queryParcelMap({ fetchImpl: mk({ status: 'EXACT_ONE', pnu: '9800000000100129999', geometry: SQ }), location: loop, pnu: '9800000000100120003' })).status, 'MISMATCH');
+  assert.equal((await queryParcelMap({ fetchImpl: mk({ status: 'NOT_UNIQUE', pnu: '9800000000100120003' }), location: loop, pnu: '9800000000100120003' })).status, 'NOT_UNIQUE');
+  const ok = await queryParcelMap({ fetchImpl: mk({ status: 'EXACT_ONE', pnu: '9800000000100120003', geometry: SQ, jibun: '1 대' }), location: loop, pnu: '9800000000100120003' });
+  assert.equal(ok.status, 'EXACT_ONE');
+  assert.equal((await queryParcelMap({ fetchImpl: mk({}), location: { protocol: 'file:', hostname: '' }, pnu: '1' })).status, 'OFFLINE');
+});
+
+test('전용 서버 표지 페이지만 비루프백 브리지 허용', () => {
+  const doc = { querySelector: (s) => (s === 'meta[name="bso-field-bridge"]' ? { getAttribute: () => 'private' } : null) };
+  assert.equal(bridgeAllowed({ protocol: 'https:', hostname: 'pc.tailnet.ts.net' }, doc), true);
+  assert.equal(bridgeAllowed({ protocol: 'https:', hostname: 'pc.tailnet.ts.net' }, { querySelector: () => null }), false);
+  assert.equal(bridgeAllowed({ protocol: 'file:', hostname: '' }, doc), false);
+});
+
+test('기타 자유입력: 항상 마지막 쟁점 · 카드에 내용 반영 · 빈 내용 표시', () => {
+  for (const profile of [getProfile('osong3'), profileForIndex(null)]) assert.equal(issuesFor(profile).at(-1).id, 'other');
+  const idx = load();
+  const card = buildFieldCard({ profile: profileForIndex(idx), index: idx, row: idx.rows[0], selectedIssueIds: ['other'], otherText: '진입로 공사 소음(합성)' });
+  assert.match(card.text, /- 기타: 진입로 공사 소음\(합성\)/);
+  const empty = buildDirectCard({ profile: profileForIndex(null), target: directLookupTarget(null, '9800000000100120003'), selectedIssueIds: ['other'] });
+  assert.match(empty.text, /- 기타: \(내용 미입력\)/);
+});
+
+test('전용 최소 서버: 허용 연산만 · 영상 좌표 검증 · 보안 헤더 · LAN 토큰', async () => {
+  const { spawn } = await import('node:child_process');
+  const page = path.join(root, 'dist', 'notice-field-test', 'synthetic-field.html');
+  const startServer = (port, extra = []) => new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [path.join(root, 'scripts', 'field_server.js'), '--page', page, '--port', String(port), '--env', path.join(root, 'no-such.env'), ...extra],
+      { env: { ...process.env, VWORLD_API_KEY: '', VWORLD_DOMAIN: '' }, stdio: ['ignore', 'pipe', 'pipe'] });
+    child.stdout.on('data', (b) => { if (String(b).includes('BSO field server')) resolve(child); });
+    child.on('error', reject); setTimeout(() => reject(new Error('server start timeout')), 8000);
+  });
+  const s1 = await startServer(4197);
+  try {
+    const base = 'http://127.0.0.1:4197';
+    const pageRes = await fetch(`${base}/`);
+    assert.equal(pageRes.status, 200); assert.match(await pageRes.text(), /bso-field-bridge" content="private"/);
+    assert.equal(pageRes.headers.get('cache-control'), 'no-store'); assert.match(pageRes.headers.get('content-security-policy'), /connect-src 'self'/);
+    for (const op of ['rtms', 'building', 'field_candidates', 'legal_dong']) assert.equal((await fetch(`${base}/__public_data_bridge/${op}`, { method: 'POST', body: '{}' })).status, 404, op);
+    assert.equal((await fetch(`${base}/__field/aerial?lon=0&lat=0&zoom=18`)).status, 400);
+    assert.equal((await fetch(`${base}/__field/aerial?lon=127&lat=36&zoom=19`)).status, 400);
+    assert.equal((await fetch(`${base}/__field/aerial?lon=127&lat=36&zoom=18`)).status, 503); // 키 없음
+    assert.equal((await fetch(`${base}/__public_data_bridge/pnu_parcel`, { method: 'POST', body: 'x'.repeat(9000) })).status, 413);
+    assert.equal((await fetch(`${base}/dist/notice-field/field-empty.html`)).status, 404);
+  } finally { s1.kill(); }
+  const s2 = await startServer(4198, ['--lan', '--bind', '127.0.0.1']);
+  try {
+    assert.equal((await fetch('http://127.0.0.1:4198/')).status, 401);
+    assert.equal((await fetch('http://127.0.0.1:4198/?t=wrong', { redirect: 'manual' })).status, 401);
+    const token = fs.readFileSync(path.join(root, 'local-data', 'field-server', 'access-token.txt'), 'utf8').trim();
+    const r = await fetch(`http://127.0.0.1:4198/?t=${token}`, { redirect: 'manual' });
+    assert.equal(r.status, 303); assert.match(r.headers.get('set-cookie'), /HttpOnly; SameSite=Strict/);
+    assert.equal((await fetch('http://127.0.0.1:4198/', { headers: { cookie: `bso_field=${token}` } })).status, 200);
+  } finally { s2.kill(); }
+});

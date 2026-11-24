@@ -86,5 +86,35 @@ class RefererAuthTests(unittest.TestCase):
         self.assertNotIn("domain=", calls[0])
 
 
+class CadastralGeometryTests(unittest.TestCase):
+    """연속지적 경계: 같은 PNU exact-one만, MultiPolygon·구멍 보존, 주변 조회 범위 제한(합성 응답)."""
+
+    def _provider(self, features):
+        payload = {"response": {"status": "OK", "result": {"featureCollection": {"features": features}}}}
+        return tp.VWorldCadastralGeometryProvider(api_key="SYNTHETIC-KEY-0000", transport=lambda url, timeout: payload)
+
+    SQ = {"type": "Polygon", "coordinates": [[[127, 36], [127.001, 36], [127.001, 36.001], [127, 36]], [[127.0002, 36.0001], [127.0004, 36.0001], [127.0003, 36.0003], [127.0002, 36.0001]]]}
+
+    def test_exact_one_keeps_holes_as_multipolygon(self):
+        r = self._provider([{"properties": {"pnu": PNU, "jibun": "123-4 대"}, "geometry": self.SQ}]).target(PNU)
+        self.assertEqual(r["status"], "EXACT_ONE")
+        self.assertEqual(r["geometry"]["type"], "MultiPolygon")
+        self.assertEqual(len(r["geometry"]["coordinates"][0]), 2)
+
+    def test_multiple_or_other_pnu_not_confirmed(self):
+        two = [{"properties": {"pnu": PNU}, "geometry": self.SQ}] * 2
+        self.assertEqual(self._provider(two).target(PNU)["status"], "NOT_UNIQUE")
+        other = [{"properties": {"pnu": "9901101000101239999"}, "geometry": self.SQ}]
+        self.assertEqual(self._provider(other).target(PNU)["status"], "NOT_FOUND")
+
+    def test_neighbors_bbox_limited_to_korea_and_size(self):
+        p = self._provider([])
+        with self.assertRaises(tp.ProviderError):
+            p.neighbors([0, 0, 0.001, 0.001], PNU)
+        with self.assertRaises(tp.ProviderError):
+            p.neighbors([127, 36, 127.05, 36.05], PNU)
+        self.assertEqual(p.neighbors([127, 36, 127.005, 36.005], PNU), [])
+
+
 if __name__ == "__main__":
     unittest.main()

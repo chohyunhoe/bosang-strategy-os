@@ -8,8 +8,11 @@ export const PD_STATUS = Object.freeze({
 });
 
 // file:// 로 연 단일 HTML·공개 호스트에서는 브리지를 부르지 않는다.
-export function bridgeAllowed(loc) {
-  return Boolean(loc && /^https?:$/.test(loc.protocol) && ['127.0.0.1', 'localhost', '[::1]'].includes(loc.hostname));
+// 루프백, 또는 현장 전용 최소 서버(scripts/field_server.js)가 표지(meta bso-field-bridge=private)를 넣어 준 페이지만.
+export function bridgeAllowed(loc, doc = globalThis.document) {
+  if (!loc || !/^https?:$/.test(loc.protocol)) return false;
+  if (['127.0.0.1', 'localhost', '[::1]'].includes(loc.hostname)) return true;
+  try { return doc?.querySelector?.('meta[name="bso-field-bridge"]')?.getAttribute('content') === 'private'; } catch (_e) { return false; }
 }
 
 async function call(fetchImpl, path, body) {
@@ -110,4 +113,20 @@ export async function queryPublicData({ fetchImpl, location: loc, index, row = n
   const last = attempts[attempts.length - 1];
   return { status: attempts.every((a) => a.ok) ? PD_STATUS.NO_DATA : PD_STATUS.FAILED, stage: PD_STAGE.RESOLUTION_ONLY, step: 'vworld_land', ...base, attempts,
     code: last?.code, result_code: last?.result_code || null, reason: attempts.every((a) => a.ok) ? '조회 연도에 토지특성 자료 없음' : errorText(last?.code, last?.message), values: [] };
+}
+
+// 지도: 같은 PNU의 연속지적 exact-one 경계 + 주변 지적. 항공영상은 화면에서 /__field/aerial로 따로 받는다.
+export async function queryParcelMap({ fetchImpl, location: loc, pnu, now = () => new Date() }) {
+  if (!bridgeAllowed(loc)) return { status: 'OFFLINE', pnu, reason: '오프라인 — 지도 미조회' };
+  const r = await call(fetchImpl, '/parcel_map', { pnu, neighbors: true });
+  const at = now().toISOString();
+  if (!r.ok) return { status: 'FAILED', pnu, code: r.error_code, reason: errorText(r.error_code, r.error_message), fetched_at: at };
+  const t = r.target || {};
+  if (t.status !== 'EXACT_ONE' || String(t.pnu) !== String(pnu) || !t.geometry) {
+    const why = { NOT_FOUND: '이 PNU의 지적 경계가 없습니다.', NOT_UNIQUE: '같은 PNU 경계가 2개 이상이라 확정하지 않았습니다.', GEOMETRY_INVALID: '경계 좌표가 올바르지 않습니다.' }[t.status] || '요청 PNU와 응답 PNU가 다릅니다.';
+    // EXACT_ONE이라도 응답 PNU가 다르면 불일치로 내린다(다른 필지 경계를 확정으로 그리지 않음).
+    const status = !t.status || t.status === 'EXACT_ONE' ? 'MISMATCH' : t.status;
+    return { status, pnu, reason: status === 'MISMATCH' ? '요청 PNU와 응답 PNU가 다릅니다.' : why, fetched_at: at };
+  }
+  return { status: 'EXACT_ONE', pnu, target: { geometry: t.geometry, jibun: t.jibun || null }, neighbors: Array.isArray(r.neighbors) ? r.neighbors : [], source: r.source, fetched_at: at };
 }

@@ -4,7 +4,8 @@ import { validateNoticeIndex, searchNoticeIndex, SEARCH_STATUS, noticeFacts } fr
 import { issuesFor } from './core/field-issues.js';
 import { buildFieldCard, buildDirectCard } from './core/field-card.js';
 import { directLookupTarget } from './core/field-direct.js';
-import { bridgeStatus, queryPublicData, PD_STATUS, PD_STAGE } from './core/field-public-data.js';
+import { bridgeStatus, queryPublicData, queryParcelMap, PD_STATUS, PD_STAGE } from './core/field-public-data.js';
+import { fitView, withZoom, renderFieldMap } from './core/field-map.js';
 import { profileForIndex } from './profiles/index.js';
 
 const $ = (s, r = document) => r.querySelector(s);
@@ -13,7 +14,7 @@ const fmt = (n) => (typeof n === 'number' ? n.toLocaleString('ko-KR', { maximumF
 const fmtTime = (iso) => (iso ? new Date(iso).toLocaleString('ko-KR', { hour12: false }) : '—');
 
 // row: 고시 색인 행 / direct: 색인 밖 전국 직접 조회 대상. 둘 중 하나만 활성.
-const st = { index: null, profile: profileForIndex(null), check: null, search: null, row: null, direct: null, directOffer: null, issues: new Set(), memo: '', pdBridge: null, pd: null, pdBusy: false, epoch: 0 };
+const st = { index: null, profile: profileForIndex(null), check: null, search: null, row: null, direct: null, directOffer: null, issues: new Set(), memo: '', other: '', map: null, pdBridge: null, pd: null, pdBusy: false, epoch: 0 };
 const active = () => st.row || st.direct;
 
 function setIndex(index, origin) {
@@ -36,14 +37,14 @@ function setIndex(index, origin) {
 function showIndexError(msg) { const e = $('[data-f-index-error]'); e.hidden = false; e.textContent = msg; $('[data-f-loader]').hidden = false; }
 
 function newConsultation() {
-  st.epoch += 1; st.search = null; st.row = null; st.direct = null; st.directOffer = null; st.issues = new Set(); st.memo = ''; st.pd = null; st.pdBusy = false;
+  st.epoch += 1; st.search = null; st.row = null; st.direct = null; st.directOffer = null; st.issues = new Set(); st.memo = ''; st.map = null; st.other = ''; st.pd = null; st.pdBusy = false;
   $('[data-f-q]').value = ''; $('[data-f-memo]').value = ''; $('[data-f-out]').textContent = '';
   render();
   if (!$('[data-f-q]').disabled) $('[data-f-q]').focus();
 }
 
-function openDirect(target) { st.epoch += 1; st.row = null; st.direct = target; st.issues = new Set(); st.memo = ''; st.pd = null; $('[data-f-memo]').value = ''; $('[data-f-out]').textContent = ''; render(); }
-function selectRow(row) { st.epoch += 1; st.direct = null; st.row = row; st.issues = new Set(); st.memo = ''; st.pd = null; $('[data-f-memo]').value = ''; $('[data-f-out]').textContent = ''; render(); }
+function openDirect(target) { st.epoch += 1; st.row = null; st.direct = target; st.issues = new Set(); st.memo = ''; st.map = null; st.other = ''; st.pd = null; $('[data-f-memo]').value = ''; $('[data-f-out]').textContent = ''; render(); }
+function selectRow(row) { st.epoch += 1; st.direct = null; st.row = row; st.issues = new Set(); st.memo = ''; st.map = null; st.other = ''; st.pd = null; $('[data-f-memo]').value = ''; $('[data-f-out]').textContent = ''; render(); }
 
 function renderResult() {
   const box = $('[data-f-result]');
@@ -110,6 +111,40 @@ async function runPublicData() {
   const res = await queryPublicData({ fetchImpl: (...a) => fetch(...a), location, index: st.index, row: st.row, target: st.direct });
   if (epoch !== st.epoch || subject !== active()) return; // 새 상담·다른 필지로 바뀌었으면 늦은 응답 폐기
   st.pd = res; st.pdBusy = false; render();
+  // 지도: PNU가 확인된 경우에만(주소 해석 실패·PNU 지적 미확인이면 지도도 부르지 않음). 같은 PNU로 경계·영상을 맞춘다.
+  if (res.pnu && !['resolve_pnu', 'pnu_parcel'].includes(res.step) && res.code !== 'PNU_NOT_FOUND') loadMap(res.pnu, epoch, subject);
+}
+
+async function loadMap(pnu, epoch, subject) {
+  st.map = { status: 'LOADING', pnu }; renderMap();
+  const res = await queryParcelMap({ fetchImpl: (...a) => fetch(...a), location, pnu, now: () => new Date() });
+  if (epoch !== st.epoch || subject !== active()) return;
+  if (res.status !== 'EXACT_ONE') { st.map = res; renderMap(); return; }
+  const view = fitView(res.target.geometry);
+  st.map = { ...res, view, showTarget: true, showNeighbors: true, aerial: 'LOADING', fetched_at: new Date(res.fetched_at).toLocaleString('ko-KR', { hour12: false }) };
+  renderMap();
+}
+
+let lastMapKey = '';
+function renderMap() {
+  const panel = $('[data-f-map-panel]'); const box = $('[data-f-map]');
+  if (!panel || !box) return;
+  panel.hidden = !active() || !st.map;
+  if (panel.hidden) { box.innerHTML = ''; lastMapKey = ''; return; }
+  const m = st.map;
+  // 같은 화면 상태면 다시 그리지 않는다(영상 재요청 방지). 영상 수신 상태는 칩만 바꾼다.
+  const key = JSON.stringify([st.epoch, m.status, m.pnu, m.view?.zoom, m.showTarget, m.showNeighbors]);
+  if (key === lastMapKey) return;
+  lastMapKey = key;
+  box.innerHTML = renderFieldMap(m);
+  const img = $('[data-f-map-img]', box);
+  if (img) {
+    const mark = (state) => { if (st.map !== m) return; m.aerial = state; const chip = $('[data-f-map-aerial]', box); if (chip) { chip.dataset.fMapAerial = state; chip.className = `chip ${state === 'OK' ? 'ok' : 'bad'}`; chip.textContent = state === 'OK' ? '항공영상 수신' : '항공영상 미수신'; } };
+    img.addEventListener('load', () => mark('OK'));
+    img.addEventListener('error', () => mark('FAILED'));
+  }
+  box.querySelectorAll('[data-f-map-step]').forEach((b) => b.addEventListener('click', () => { m.view = withZoom(m.view, m.view.zoom + Number(b.dataset.fMapStep)); m.aerial = 'LOADING'; renderMap(); }));
+  box.querySelectorAll('[data-f-map-toggle]').forEach((c) => c.addEventListener('change', () => { if (c.dataset.fMapToggle === 'target') m.showTarget = c.checked; else m.showNeighbors = c.checked; renderMap(); }));
 }
 
 function renderCard() {
@@ -117,7 +152,7 @@ function renderCard() {
   main.hidden = !active();
   if (!active()) return;
   if (st.direct) { renderIssuesBox(renderDirectFacts()); return; }
-  const card = buildFieldCard({ profile: st.profile, index: st.index, row: st.row, selectedIssueIds: [...st.issues], memo: st.memo });
+  const card = buildFieldCard({ profile: st.profile, index: st.index, row: st.row, selectedIssueIds: [...st.issues], memo: st.memo, otherText: st.other });
   const r = st.row; const f = noticeFacts(r);
   $('[data-f-facts]').innerHTML = `<div class="f-head" data-f-parcel="${r.serial}">${esc(r.ri)} ${esc(r.lot_label)} <span class="chip warn">원문확인 필요</span></div>
     <dl class="f-kv">
@@ -137,7 +172,7 @@ function renderCard() {
 }
 
 function renderDirectFacts() {
-  const card = buildDirectCard({ profile: st.profile, target: st.direct, selectedIssueIds: [...st.issues], memo: st.memo });
+  const card = buildDirectCard({ profile: st.profile, target: st.direct, selectedIssueIds: [...st.issues], memo: st.memo, otherText: st.other });
   $('[data-f-facts]').innerHTML = `<div class="f-head" data-f-direct="${esc(st.direct.scope)}">${esc(st.direct.leaf)} ${esc(st.direct.lot_label)} <span class="chip bad">고시 색인 밖 · 편입 여부 미확인</span></div>
     <dl class="f-kv">${st.direct.scope === 'PNU' ? `<dt>입력 PNU</dt><dd data-f-direct-pnu class="mono">${esc(st.direct.pnu)} <span class="chip warn">검증 전</span></dd>` : `<dt>입력 주소</dt><dd data-f-direct-address>${esc(card.address)}</dd>`}<dt>고시 기재값</dt><dd>없음 — 미편입 판정 아님</dd></dl>
     <p class="small muted">법정동은 공적자료 조회 때 행정안전부 법정동코드로 다시 확인하며, 후보가 여럿이면 조회하지 않습니다.</p>`;
@@ -149,20 +184,23 @@ function renderIssuesBox(card) {
   const issueBox = $('[data-f-issues]');
   if (issueBox.dataset.for !== `${st.epoch}`) {
     issueBox.dataset.for = `${st.epoch}`;
-    issueBox.innerHTML = issuesFor(st.profile).map((it) => `<label class="f-issue"><input type="checkbox" data-f-issue="${esc(it.id)}"> <b>${esc(it.label)}</b><span class="q">${esc(it.question)}</span></label>`).join('');
+    issueBox.innerHTML = issuesFor(st.profile).map((it) => `<label class="f-issue"><input type="checkbox" data-f-issue="${esc(it.id)}"> <b>${esc(it.label)}</b><span class="q">${esc(it.question)}</span></label>${it.free_text ? `<textarea class="f-other" data-f-other rows="2" maxlength="500" placeholder="기타 쟁점 내용(실명·전화번호 제외)" hidden></textarea>` : ''}`).join('');
     issueBox.querySelectorAll('[data-f-issue]').forEach((cb) => cb.addEventListener('change', () => {
       if (cb.checked) st.issues.add(cb.dataset.fIssue); else st.issues.delete(cb.dataset.fIssue);
       $('[data-f-out]').textContent = ''; render();
     }));
+    $('[data-f-other]', issueBox)?.addEventListener('input', (e) => { st.other = e.target.value; $('[data-f-out]').textContent = ''; });
   }
+  const other = $('[data-f-other]', issueBox);
+  if (other) { other.hidden = !st.issues.has('other'); if (other.value !== st.other) other.value = st.other; }
   $('[data-f-docs]').innerHTML = card.documents.length ? card.documents.map((d) => `<li>${esc(d)}</li>`).join('') : '<li class="muted">쟁점을 고르면 표시됩니다.</li>';
   $('[data-f-next]').innerHTML = card.next.map((d) => `<li>${esc(d)}</li>`).join('');
 }
 
-function render() { renderResult(); renderCard(); renderPublicData(); }
+function render() { renderResult(); renderCard(); renderPublicData(); renderMap(); }
 
-const currentCardText = () => (st.row ? buildFieldCard({ profile: st.profile, index: st.index, row: st.row, selectedIssueIds: [...st.issues], memo: st.memo }).text
-  : st.direct ? buildDirectCard({ profile: st.profile, target: st.direct, selectedIssueIds: [...st.issues], memo: st.memo }).text : '');
+const currentCardText = () => (st.row ? buildFieldCard({ profile: st.profile, index: st.index, row: st.row, selectedIssueIds: [...st.issues], memo: st.memo, otherText: st.other }).text
+  : st.direct ? buildDirectCard({ profile: st.profile, target: st.direct, selectedIssueIds: [...st.issues], memo: st.memo, otherText: st.other }).text : '');
 
 async function copyCard() {
   const text = currentCardText(); if (!text) return;
@@ -187,7 +225,7 @@ function saveCard() {
 function init() {
   $('[data-f-form]').addEventListener('submit', (e) => {
     e.preventDefault();
-    st.epoch += 1; st.row = null; st.direct = null; st.directOffer = null; st.pd = null; st.issues = new Set(); st.memo = ''; $('[data-f-memo]').value = ''; $('[data-f-out]').textContent = '';
+    st.epoch += 1; st.row = null; st.direct = null; st.directOffer = null; st.pd = null; st.issues = new Set(); st.memo = ''; st.map = null; st.other = ''; $('[data-f-memo]').value = ''; $('[data-f-out]').textContent = '';
     const q = $('[data-f-q]').value;
     st.search = st.index ? searchNoticeIndex(st.index, q)
       : (q.trim() ? { status: SEARCH_STATUS.NOT_IN_INDEX, message: '고시 색인이 없습니다. 전체 주소로 전국 공적자료만 조회할 수 있습니다(편입 여부 미확인).', matches: [] } : { status: SEARCH_STATUS.EMPTY, matches: [] });
@@ -201,7 +239,7 @@ function init() {
   $('[data-f-save]').addEventListener('click', saveCard);
   $('[data-f-print]').addEventListener('click', () => window.print());
   // 인쇄·PDF 저장(버튼·브라우저 메뉴·window.print 모두): 공적자료 영역은 CSS로 숨기고, 인쇄 직전 DOM에서도 비운다.
-  window.addEventListener('beforeprint', () => { document.body.dataset.printing = '1'; const box = $('[data-f-pd]'); if (box) box.innerHTML = ''; });
+  window.addEventListener('beforeprint', () => { document.body.dataset.printing = '1'; ['[data-f-pd]', '[data-f-map]'].forEach((sel) => { const box = $(sel); if (box) box.innerHTML = ''; }); lastMapKey = ''; });
   window.addEventListener('afterprint', () => { delete document.body.dataset.printing; render(); });
   $('[data-f-index-file]').addEventListener('change', async (e) => {
     const file = e.target.files?.[0]; if (!file) return;

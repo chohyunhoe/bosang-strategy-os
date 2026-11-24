@@ -78,3 +78,46 @@ npm run notice:field:serve
 - 리 이름 이어받음 28행과 GPT 집계 34행의 집계 기준 차이 확인(리 배정 자체는 위 구간 검사로 영향 없음).
 - Fold8 실기기 확인(이 PR은 884·412 뷰포트 자동 테스트까지).
 - VWorld·고시 재제공 이용조건 확인 — 확인 전 공적자료 값은 출력하지 않는다.
+
+## 지도(항공영상 + 지적경계) · 전용 최소 서버 · Fold8 (2026-11-24 추가)
+
+### VWorld `INCORRECT_KEY` 최종 원인과 수정
+- 원인: 서버 호출 인증은 **키에 등록한 서비스 URL을 HTTP `Referer`로 보낼 때** 통과한다. 기존 provider는 `domain` 쿼리만 보내 2D 데이터·국가중점(토지특성·공시지가)이 `INCORRECT_KEY`. 토지특성은 `domain` 파라미터가 있으면 Referer가 맞아도 거부.
+- 수정: provider가 `VWORLD_DOMAIN`(없으면 `VWORLD_API_DOMAIN`)을 Referer로 보내고 `domain` 파라미터를 뺀다. 키·서비스 체크박스·`.env` 변경 불필요.
+- 공공데이터포털 NSDI(`apis.data.go.kr/1611000/nsdi/...`)는 `returnReasonCode 12`로 대체 경로 아님(변동 없음).
+
+### 지도
+- 같은 PNU로: 연속지적도(`LP_PA_CBND_BUBUN`, `geometry=true`, EPSG:4326) **exact-one** 경계 + 주변 지적, VWorld 정적 영상(`/req/image`, `basemap=PHOTO`, 1024×768).
+- 정합: 경위도 → 웹 메르카토르 픽셀(256·2^zoom), 영상 중심=화면 중심(`vworld-direct-adapter.js`·Release v1과 같은 방식). MultiPolygon 전 부분·구멍(evenodd).
+- 줌 12~18. **VWorld 정적 영상은 줌 19에서 영상 대신 JSON 오류**(실측) → 상한 18.
+- 대상 경계·주변 지적 토글, 확대/축소, 촬영일 미확인 표시, '지적선 ≠ 편입선' 경고.
+- exact-one이 아니거나(복수·없음) 응답 PNU가 다르면 경계·영상을 그리지 않고 사유만. 상담카드는 그대로.
+- 지도·영상·공적자료 값은 화면 열람 전용 — 카드 복사·저장·인쇄에서 제외.
+
+### 실호출 결과(PC, 공개 표본)
+| 지번 | PNU | 토지특성·공시지가 | 경계 | 항공 |
+|---|---|---|---|---|
+| 충북 청주 흥덕 오송읍 궁평리 320-1 (고시 색인) | 4311325027103200001 | 2026 전·제1종일반주거·168,600원 | exact-one + 주변 100 | 수신(z18) |
+| 서울 중구 태평로1가 31 (전국 직접) | 1114010300100310000 | 2026 대·일반상업·65,730,000원 | exact-one + 주변 99 | 수신(z18) |
+| 세종 어진동 560 (전국 직접, 시·군·구 없는 특수) | 3611011000105600000 | 2026 대·중심상업·3,676,000원 | exact-one + 주변 73 | 수신(z17) |
+
+### 전용 최소 서버 `scripts/field_server.js`
+- 제공: 현장 상담 HTML 1개 + 허용 연산(`status`·`resolve_pnu`·`pnu_parcel`·`vworld_land`·`parcel_map`) + 영상 프록시(`/__field/aerial`). 그 밖(`rtms`·`building`·Product v2 등)은 404.
+- 키는 이 PC 프로세스에만. 영상은 서버가 Referer와 함께 받아 PNG만 넘긴다(응답 형식·크기 6MB 검사). 응답에 키 없음(실측).
+- 영상 좌표는 한국 범위·줌 12~18만. 요청 본문 8KB, IP별 분당 120(연산)/60(영상). `no-store`·`nosniff`·`no-referrer`·CSP(`connect-src 'self'`).
+- 기본 127.0.0.1. `--lan`이면 접근 토큰 필수(`/?t=<토큰>` 1회 → HttpOnly·SameSite=Strict 쿠키). 토큰 파일 `local-data/field-server/access-token.txt`(gitignore).
+
+```powershell
+npm run notice:field:build -- --index local-data/notice-index/osong3-molit-2025-456.json
+node scripts/field_server.js --page dist/notice-field/molit-2025-456-field.html
+```
+
+### Fold8 연결 — 현재 상태와 선택지
+| 경로 | 상태 | 필요한 결정 |
+|---|---|---|
+| PC 브라우저(127.0.0.1) | **동작**(위 실호출) | 없음 |
+| Fold8 오프라인 단일 HTML | 동작(고시 카드만, 공적자료·지도 없음) | 없음 |
+| Fold8 → 같은 Wi-Fi의 PC(`--lan`) | 서버·토큰 구현·루프백 시험 완료. **실기기 미시험** | 0.0.0.0 바인딩 시 Windows 방화벽 허용 팝업 → 사용자 승인 필요. 공용·현장 Wi-Fi에서는 비권장 |
+| Fold8 → Tailscale Serve(비공개 HTTPS, tailnet 기기만) | 설계만. PC·Fold8에 Tailscale 미설치 | 설치·계정 연결 승인. `tailscale serve 4190`(127.0.0.1 서버를 tailnet에만). **Funnel(인터넷 공개)은 쓰지 않음** |
+
+Fold8 실기기에서 실제 지번 → 지도·토지정보·상담카드가 확인되기 전에는 현장 실사용 완료로 보지 않는다.

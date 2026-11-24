@@ -8,6 +8,7 @@ on:
       - 'scripts/build_consultation_sim_demo.js'
       - 'scripts/build_notice_field.js'
       - 'scripts/notice_index/**'
+      - 'scripts/field_server.js'
       - 'tests/test_vworld_result_code.py'
       - 'scripts/serve_product_v2.js'
       - 'scripts/public_data_bridge.*'

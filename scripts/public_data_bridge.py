@@ -19,7 +19,7 @@ from public_data.work_ops import (
     build_field_candidate_response,
     build_rtms_response,
 )
-from transaction_enrichment.providers import ProviderError, VWorldCadastralParcelProvider, VWorldLandCharacteristicsProvider
+from transaction_enrichment.providers import ProviderError, VWorldCadastralGeometryProvider, VWorldCadastralParcelProvider, VWorldLandCharacteristicsProvider
 
 
 LOT_TAIL = re.compile(r"(?P<mountain>산\s*)?(?P<bun>\d{1,4})(?:-(?P<ji>\d{1,4}))?(?:번지)?\s*$")
@@ -217,6 +217,32 @@ def pnu_parcel(payload: dict[str, Any]) -> dict[str, Any]:
     return {"ok": True, "status": "FOUND_REVIEW_REQUIRED", "parcel": parcel, "review_required": True}
 
 
+def parcel_map(payload: dict[str, Any]) -> dict[str, Any]:
+    """대상 PNU의 지적경계(exact-one)와 선택적으로 주변 지적경계. 소유 정보 없음."""
+    pnu = str(payload.get("pnu") or "").strip()
+    if len(pnu) != 19 or not pnu.isdigit():
+        return {"ok": False, "error_code": "PNU_INVALID"}
+    provider = VWorldCadastralGeometryProvider()
+    if not provider.configured:
+        return {"ok": False, "error_code": "VWORLD_API_KEY_MISSING"}
+    try:
+        target = provider.target(pnu)
+        neighbors = []
+        bbox = payload.get("neighbors_bbox")
+        if target["status"] == "EXACT_ONE" and payload.get("neighbors") is True and not bbox:
+            # 대상 경계 범위에서 0.002° 여유(최대 0.01°) — 화면 영상 범위와 비슷한 주변만
+            pts = [pt for poly in target["geometry"]["coordinates"] for ring in poly for pt in ring]
+            xs = [pt[0] for pt in pts]; ys = [pt[1] for pt in pts]
+            cx, cy = (min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2
+            hx = min(0.005, (max(xs) - min(xs)) / 2 + 0.002); hy = min(0.005, (max(ys) - min(ys)) / 2 + 0.0016)
+            bbox = [cx - hx, cy - hy, cx + hx, cy + hy]
+        if target["status"] == "EXACT_ONE" and isinstance(bbox, list) and len(bbox) == 4:
+            neighbors = provider.neighbors(bbox, pnu)
+    except ProviderError as exc:
+        return {"ok": False, "error_code": exc.code, "error_message": str(exc)}
+    return {"ok": True, "target": target, "neighbors": neighbors, "source": "VWorld 연속지적도(LP_PA_CBND_BUBUN)", "review_required": True}
+
+
 def main() -> int:
     load_env_file()
     try:
@@ -236,6 +262,8 @@ def main() -> int:
             result = vworld_land(payload)
         elif operation == "pnu_parcel":
             result = pnu_parcel(payload)
+        elif operation == "parcel_map":
+            result = parcel_map(payload)
         elif operation == "field_candidates":
             result = build_field_candidate_response(payload)
         elif operation == "early_signals":
