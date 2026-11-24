@@ -603,7 +603,8 @@ test('오송3 다른 필지(대조 기록 없음)는 필지별 변경도면 대�
   const idx = load();
   const withMap = zb.evaluateZoningBasis({ history: HIST, project: OSONG_PROJ, parcelEvidence: OSONG.parcel_zoning_evidence[GUNGPYEONG] });
   const text = buildFieldCard({ profile: profileForIndex(idx), index: idx, row: idx.rows[0], zoning: withMap }).text;
-  assert.match(text, /변경 유발 고시: 국토교통부 고시 제2025-456호\(2025-08-28\) — 용도지역 결정\(변경\) 포함 · 사업 관련 사유 명시 · 효력 기준일 원문 확인/);
+  assert.match(text, /사업 관련 변경 고시\(효력일 확인 필요\): 국토교통부 고시 제2025-456호\(2025-08-28\) — 용도지역 결정\(변경\) 포함 · 사업 관련 사유 명시 · 효력 기준일 원문 확인 전 · 고시일 2025-08-28 기준 달력 구간 적합\(법적 변경일 확정 아님/);
+  assert.doesNotMatch(text, /변경 유발 고시:|필지별 변경도면 대조 전/);
   assert.match(text, /대조 문서: ① .*\(필지 대조함\) \/ ② 청주시 고시 제2020-236호/);
   assert.match(text, /검증 상태: 제2025-456호 첨부 변경도 제4도엽의 변경 후 용도지역 확인 · 2020-236 기정도면 대조 전 · 전문가 검증 전/);
   assert.doesNotMatch(text, /제1종일반주거지역|6,264,847/);
@@ -631,4 +632,42 @@ test('역추적: 중간 연도 응답이 없으면(예: 수정본 충돌) 연속
   assert.equal(z.basis_label, '농림지역(평가 기준 후보)');
   assert.equal(z.trace.past_basis.label, '2025-01-01 기준(조회 2018~2025년 관찰 · 2024년 미확인 · 조회 시작연도 이전은 미확인)');
   assert.ok(z.trace.unverified.includes('2024년 용도지역(조회 응답 없음·실패)'));
+});
+
+test('GPT QA(7673767) 1: 궁평리 320-1 대조 도면 축척은 1/1,500', () => {
+  const doc = OSONG.parcel_zoning_evidence[GUNGPYEONG][0].document;
+  assert.match(doc, /결정\(변경\)도」\(1\/1,500\) 제4도엽/);
+  assert.doesNotMatch(doc, /1\/500\)/);
+});
+
+test('GPT QA(7673767) 2: 필지 변경도면 대조 상태 문구가 근거·안내문·상태칩·카드에서 일치', () => {
+  const ok = zb.evaluateZoningBasis({ history: HIST, project: OSONG_PROJ, parcelEvidence: OSONG.parcel_zoning_evidence[GUNGPYEONG] });
+  assert.match(ok.evidence.parcel_level, /필지별 변경도면 대조함/);
+  assert.ok(ok.notes.some((n) => /이 필지의 변경 구역 포함 여부: 필지별 변경도면 대조함/.test(n)));
+  assert.ok(!ok.notes.some((n) => /대조 전/.test(n) && /필지별 변경도면/.test(n)));
+  assert.doesNotMatch(zb.ZONING_STATUS_LABEL[ok.status], /대조 전|대조함/);
+  assert.doesNotMatch(zb.zoningCardLines(ok).join(' / '), /필지별 변경도면 대조 전/);
+  const pend = zb.evaluateZoningBasis({ history: HIST, project: OSONG_PROJ, parcelEvidence: [] });
+  assert.equal(pend.evidence.parcel_level, '필지별 변경도면 대조 전');
+  assert.ok(pend.notes.some((n) => /필지별 변경도면 대조 전 — 대조 필요/.test(n)));
+  assert.doesNotMatch(zb.zoningCardLines(pend).join(' / '), /필지별 변경도면 대조함/);
+});
+
+test('GPT QA(7673767) 3: 효력일 미확인이면 고시일 기준 잠정 연결 — 효력일이 확인되면 그때 변경 유발 고시', () => {
+  const prov = zb.evaluateZoningBasis({ history: HIST, project: OSONG_PROJ, parcelEvidence: OSONG.parcel_zoning_evidence[GUNGPYEONG] });
+  assert.equal(prov.trace.trigger.date_basis, zt.DATE_BASIS.NOTICE_DATE_PROVISIONAL);
+  assert.equal(prov.trace.effective_date_confirmed, false);
+  assert.equal(prov.trace.trigger_heading, '사업 관련 변경 고시(효력일 확인 필요)');
+  assert.match(prov.trace.trigger_window_note, /고시일 2025-08-28 기준 달력 구간 적합\(법적 변경일 확정 아님/);
+  assert.ok(prov.trace.unverified.some((u) => /효력 기준일/.test(u)));
+  const events = OSONG.zoning_events.map((e) => ({ ...e, effective_date: '2025-08-28' }));
+  const eff = zb.evaluateZoningBasis({ history: HIST, project: { ...OSONG_PROJ, zoning_events: events }, parcelEvidence: OSONG.parcel_zoning_evidence[GUNGPYEONG] });
+  assert.equal(eff.trace.trigger.date_basis, zt.DATE_BASIS.EFFECTIVE_DATE);
+  assert.equal(eff.trace.trigger_heading, '변경 유발 고시');
+  assert.ok(!eff.trace.unverified.some((u) => /효력 기준일/.test(u)));
+  assert.match(zb.zoningCardLines(eff).join(' / '), /변경 유발 고시: 국토교통부 고시 제2025-456호\(2025-08-28\) .* · 효력 2025-08-28 · 효력일 2025-08-28 기준 변경 구간 안/);
+  // 효력일이 구간 밖이면(고시일은 안이어도) 연결하지 않음
+  const late = OSONG.zoning_events.map((e) => ({ ...e, effective_date: '2026-03-01' }));
+  const out = zb.evaluateZoningBasis({ history: HIST, project: { ...OSONG_PROJ, zoning_events: late } });
+  assert.equal(out.trace.trigger, null); assert.equal(out.status, 'CHANGE_UNCONFIRMED');
 });

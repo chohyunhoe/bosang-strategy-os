@@ -67,17 +67,32 @@ export function zoningChanges(rows) {
   return out;
 }
 
+// 효력일이 원문 확인되지 않으면 고시일로 달력 구간만 맞춰 본다 — 법적 변경일 확정이 아니므로 date_basis로 구별한다.
+export const DATE_BASIS = Object.freeze({ EFFECTIVE_DATE: 'EFFECTIVE_DATE', NOTICE_DATE_PROVISIONAL: 'NOTICE_DATE_PROVISIONAL' });
 const eventDate = (ev) => isoDate(ev.effective_date) || isoDate(ev.notice_date);
+const dateBasis = (ev) => (isoDate(ev.effective_date) ? DATE_BASIS.EFFECTIVE_DATE : DATE_BASIS.NOTICE_DATE_PROVISIONAL);
 
 export function classifyEvent(ev, change) {
-  const date = eventDate(ev);
-  if (!date || !(date > change.window_start && date <= change.window_end)) return { match: EVENT_MATCH.OUT_OF_WINDOW, date };
-  if (ev.zoning_decision === 'NOT_INCLUDED') return { match: EVENT_MATCH.NO_DECISION, date };
-  if (ev.zoning_decision !== 'INCLUDED') return { match: EVENT_MATCH.DECISION_UNVERIFIED, date };
+  const date = eventDate(ev); const date_basis = dateBasis(ev);
+  if (!date || !(date > change.window_start && date <= change.window_end)) return { match: EVENT_MATCH.OUT_OF_WINDOW, date, date_basis };
+  if (ev.zoning_decision === 'NOT_INCLUDED') return { match: EVENT_MATCH.NO_DECISION, date, date_basis };
+  if (ev.zoning_decision !== 'INCLUDED') return { match: EVENT_MATCH.DECISION_UNVERIFIED, date, date_basis };
   const decision = (ev.changes || []).find((d) => clean(d.from) === change.from && clean(d.to) === change.to) || null;
-  if (!decision) return { match: EVENT_MATCH.CHANGE_MISMATCH, date };
-  if (ev.project_related !== true) return { match: EVENT_MATCH.RELATION_UNPROVEN, date, decision };
-  return { match: EVENT_MATCH.TRIGGER, date, decision };
+  if (!decision) return { match: EVENT_MATCH.CHANGE_MISMATCH, date, date_basis };
+  if (ev.project_related !== true) return { match: EVENT_MATCH.RELATION_UNPROVEN, date, date_basis, decision };
+  return { match: EVENT_MATCH.TRIGGER, date, date_basis, decision };
+}
+
+// 화면·카드 표기: 효력일 미확인이면 '변경 유발 고시'로 단정하지 않는다.
+export function triggerHeading(trigger) {
+  if (!trigger) return '변경 유발 고시';
+  return trigger.date_basis === DATE_BASIS.EFFECTIVE_DATE ? '변경 유발 고시' : '사업 관련 변경 고시(효력일 확인 필요)';
+}
+export function triggerWindowNote(trigger) {
+  if (!trigger) return null;
+  return trigger.date_basis === DATE_BASIS.EFFECTIVE_DATE
+    ? `효력일 ${trigger.date} 기준 변경 구간 안`
+    : `고시일 ${trigger.date} 기준 달력 구간 적합(법적 변경일 확정 아님 — 효력일 원문 확인 후 재대조)`;
 }
 
 const eventRef = (ev) => ({ id: ev.id || null, notice_no: ev.notice_no || null, notice_date: isoDate(ev.notice_date), effective_date: isoDate(ev.effective_date),
@@ -190,5 +205,7 @@ export function traceZoningOrigin({ history = [], events = [], priorDesignations
   return {
     rows, segments, changes, trigger, past_basis: pastBasis, restored_zoning: pastBasis?.zoning || null, candidate_events: candidateEvents,
     other_changes: otherChanges, evidence, cross_check: crossCheck, unverified, parcel_map_confirmed: parcelMapConfirmed, verification_label: verificationLabel,
+    effective_date_confirmed: trigger ? trigger.date_basis === DATE_BASIS.EFFECTIVE_DATE : null,
+    trigger_heading: triggerHeading(trigger), trigger_window_note: triggerWindowNote(trigger),
   };
 }

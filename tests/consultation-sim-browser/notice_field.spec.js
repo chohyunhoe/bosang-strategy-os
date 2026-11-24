@@ -380,7 +380,8 @@ test('용도지역 역추적: 이전 연도 추가 조회 → 변경 유발 고�
       : op === 'resolve_pnu' ? { ok: true, candidate: { pnu: PNU, legal_dong_name: '가상도 연습시 숲내읍 바위리' } }
         : op === 'pnu_parcel' ? { ok: true, parcel: { pnu: PNU, address: '가상도 연습시 숲내읍 바위리 12-3', jibun: '12-3 답' } }
           : op === 'parcel_map' ? { ok: true, target: { status: 'NOT_FOUND', pnu: PNU } }
-            : { ok: true, record: zoning ? { land_category: '답', zoning, individual_official_price: 1000, price_year: req.standard_year } : null };
+            : req.standard_year === 2024 ? { ok: false, error_code: 'VWORLD_REVISION_CONFLICT' } // 실조회와 같은 수정본 충돌 — 값 미사용
+              : { ok: true, record: zoning ? { land_category: '답', zoning, individual_official_price: 1000, price_year: req.standard_year } : null };
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
   const idx = JSON.parse(fs.readFileSync(FIXTURE, 'utf8'));
@@ -392,6 +393,13 @@ test('용도지역 역추적: 이전 연도 추가 조회 → 변경 유발 고�
   await expect(page.locator('[data-f-zoning-status]')).toHaveAttribute('data-f-zoning-status', 'NOTICE_PROJECT_REASON');
   await expect(page.locator('[data-f-zoning-trigger]')).toContainText('국토교통부 고시 제2025-456호');
   await expect(page.locator('[data-f-zoning-trigger]')).toContainText('효력 기준일 미확인');
+  // 효력일 미확인 → '변경 유발 고시'로 단정하지 않고 고시일 기준 달력 구간 적합만 표시
+  await expect(page.locator('[data-f-zoning-trigger-h]')).toHaveText('사업 관련 변경 고시(효력일 확인 필요)');
+  await expect(page.locator('[data-f-zoning-trigger-window]')).toHaveText('고시일 2025-08-28 기준 달력 구간 적합(법적 변경일 확정 아님 — 효력일 원문 확인 후 재대조)');
+  // 필지 대조 상태 문구가 근거자료·안내문·상태칩 모두에서 같아야 함(대조함 ↔ 대조 전 혼재 금지)
+  await expect(page.locator('[data-f-zoning-evidence]')).toContainText('필지별 변경도면 대조함');
+  await expect(page.locator('[data-f-zoning-result]')).not.toContainText('필지별 변경도면 대조 전');
+  await expect(page.locator('[data-f-zoning-docs] [data-f-zoning-ev-status="CONFIRMED"]')).toContainText('(1/1,500) 제4도엽');
   await expect(page.locator('[data-f-zoning-verification]')).toHaveText('제2025-456호 첨부 변경도 제4도엽의 변경 후 용도지역 확인 · 2020-236 기정도면 대조 전 · 전문가 검증 전');
   await expect(page.locator('[data-f-zoning-docs] [data-f-zoning-ev-status="CONFIRMED"]')).toContainText('제4도엽');
   await expect(page.locator('[data-f-zoning-docs] [data-f-zoning-ev-grade="3"]')).toContainText('필지 확정 근거 아님');
@@ -402,11 +410,17 @@ test('용도지역 역추적: 이전 연도 추가 조회 → 변경 유발 고�
   expect(years).toEqual([2024, 2023, 2022, 2021, 2020, 2019, 2018]);
   await expect(page.locator('[data-f-zoning-history]')).toContainText('2019 관리지역 → 2020 농림지역');
   await expect(page.locator('[data-f-zoning-basis]')).toContainText('농림지역(평가 기준 후보)'); // 2019 관리지역으로 거슬러 가지 않음
-  await expect(page.locator('[data-f-zoning-past]')).toContainText('2025-01-01 기준(조회 2020~2025년 연속 관찰)');
+  // 2024년 수정본 충돌은 값에서 빼고, 2020~2025년을 연속 관찰로 부르지 않음
+  await expect(page.locator('[data-f-zoning-past]')).toContainText('2025-01-01 기준(조회 2020~2025년 관찰 · 2024년 미확인)');
+  await expect(page.locator('[data-f-zoning-past]')).not.toContainText('연속 관찰');
+  await expect(page.locator('[data-f-zoning-trace-state]')).toContainText('2024년 조회 실패');
+  await expect(page.locator('[data-f-zoning-unverified]')).toContainText('2024년 용도지역(조회 응답 없음·실패)');
   await expect(page.locator('[data-f-zoning-unverified]')).toContainText('2019~2020년 기준 사이 관리지역 → 농림지역 변경의 원인 고시');
   const [download] = await Promise.all([page.waitForEvent('download'), page.locator('[data-f-save]').click()]);
   const text = fs.readFileSync(await download.path(), 'utf8');
-  expect(text).toContain('변경 유발 고시: 국토교통부 고시 제2025-456호(2025-08-28)');
+  expect(text).toContain('사업 관련 변경 고시(효력일 확인 필요): 국토교통부 고시 제2025-456호(2025-08-28)');
+  expect(text).not.toContain('변경 유발 고시:');
+  expect(text).not.toContain('필지별 변경도면 대조 전');
   expect(text).toContain('검증 상태: 제2025-456호 첨부 변경도 제4도엽의 변경 후 용도지역 확인 · 2020-236 기정도면 대조 전 · 전문가 검증 전');
   expect(text).not.toMatch(/제1종일반주거지역|관리지역/);
   await page.locator('[data-f-new]').click();

@@ -27,7 +27,7 @@ export const ZONING_STATUS_LABEL = Object.freeze({
   NO_DATA: '확인 필요(용도지역 자료 없음)',
   NO_CHANGE_OBSERVED: '조회 범위 내 변경 없음 — 그 이전 변경 이력 확인 필요',
   CHANGE_UNCONFIRMED: '확인 필요(용도지역 변경 관찰 · 사업 관련성 미확인)',
-  NOTICE_PROJECT_REASON: '고시 사유서상 사업 관련 변경 — 변경 전 용도지역이 평가 기준 후보(필지별 변경도면 대조 전 · 전문가 검증 전)',
+  NOTICE_PROJECT_REASON: '고시 사유서상 사업 관련 변경 — 변경 전 용도지역이 평가 기준 후보(필지 대조·효력일·전문가 검증 상태는 검증 상태 참조)',
   PROJECT_RELATED: '사업 관련 변경으로 상담자 확인 — 변경 전 용도지역이 검토 기준 후보(전문가 검증 전)',
   UNRELATED: '사업 무관 변경으로 상담자 확인 — 감정평가 기준시점의 용도지역이 원칙(기준시점 미확인 · 전문가 검증 전)',
 });
@@ -115,7 +115,7 @@ export function evaluateZoningBasis({ history = [], project = null, confirmation
   if (rel === 'UNRELATED' && doc && decision) notes.push(`상담자의 '사업 무관' 표시가 고시 사유서(${decision.reason})와 상충합니다 — 반영하지 않고 전문가 확인 필요.`);
   if (rel && !doc) notes.push('사업 관련성 표시는 근거 문서를 함께 적어야 반영됩니다.');
   if (decision) {
-    notes.push(`고시 사유서: ${decision.from} → ${decision.to}${decision.area_m2 ? ` ${Number(decision.area_m2).toLocaleString('ko-KR')}㎡` : ''} · ${decision.reason}. 이 필지가 변경 구역에 포함되는지는 ${decision.parcel_level || '필지별 변경도면 대조 필요'}.`);
+    notes.push(`고시 사유서: ${decision.from} → ${decision.to}${decision.area_m2 ? ` ${Number(decision.area_m2).toLocaleString('ko-KR')}㎡` : ''} · ${decision.reason}. ${base.trace.parcel_map_confirmed ? `이 필지의 변경 구역 포함 여부: ${evidence.parcel_level} — 전문가 검증 전` : `이 필지가 변경 구역에 포함되는지는 ${evidence.parcel_level} — 대조 필요`}.`);
     return { ...base, change, evidence, status: ZONING_STATUS.NOTICE_PROJECT_REASON, basis_zoning: change.before, basis_label: candidate(change.before), basis_reason: 'ENFORCEMENT_RULE_23_2',
       verification: base.trace.parcel_map_confirmed ? 'NOTICE_REASON_AND_PARCEL_MAP_CONFIRMED_UNVERIFIED_BY_EXPERT' : 'NOTICE_REASON_CONFIRMED_PARCEL_MAP_PENDING_UNVERIFIED_BY_EXPERT',
       verification_label: base.trace.verification_label, notes };
@@ -133,7 +133,7 @@ export function zoningCardLines(result) {
   }
   if (result.status === ZONING_STATUS.NOTICE_PROJECT_REASON && result.trace?.trigger) {
     const t = result.trace.trigger;
-    lines.push(`변경 유발 고시: ${t.event.notice_no}(${t.event.notice_date || '고시일 미상'}) — 용도지역 결정(변경) 포함 · 사업 관련 사유 명시${t.event.effective_date ? ` · 효력 ${t.event.effective_date}` : ' · 효력 기준일 원문 확인'}`);
+    lines.push(`${result.trace.trigger_heading}: ${t.event.notice_no}(${t.event.notice_date || '고시일 미상'}) — 용도지역 결정(변경) 포함 · 사업 관련 사유 명시${t.event.effective_date ? ` · 효력 ${t.event.effective_date}` : ' · 효력 기준일 원문 확인 전'} · ${result.trace.trigger_window_note}`);
     if (result.trace.past_basis) lines.push(`변경 전 기준 관찰: ${result.trace.past_basis.as_of} 기준 공적자료(조회 연도별 값은 화면 열람)`);
     lines.push(`대조 문서: ${result.trace.evidence.filter((e) => e.grade !== 4).map((e) => `${['', '①', '②', '③'][e.grade]} ${e.title}(${{ CONFIRMED: '필지 대조함', AGGREGATE_ONLY: '총괄', PENDING: '대조 전', NOT_OBTAINED: '미확보' }[e.status] || e.status})`).join(' / ')}`);
     lines.push(`검증 상태: ${result.verification_label}`);
