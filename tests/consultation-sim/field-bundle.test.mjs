@@ -8,7 +8,7 @@ import { renderBundleMap, MAP } from '../../browser/consultation-sim/core/field-
 const N1 = { notice_no: '가상 고시 제0000-1호', notice_date: '2000-01-01' };
 const N2 = { notice_no: '가상 고시 제0000-2호', notice_date: '2001-05-05' };
 const card = (label, extra = {}) => ({ text: `[상세 ${label}]\n- 미확인 A\n- 미확인 B`, chosen: [], next: ['받은 통지문 원문으로 현재 절차 단계 확인'], unverified: ['A', 'B'], ...extra });
-const row = (n, ledger, inc, notice = N1, extra = {}) => ({ n, label: `바위리 ${n}`, kind: 'ROW', notice, area_basis_date: '1999-12-01', ownership: { basis: 'DOCUMENT', coown: 'SOLE' },
+const row = (n, ledger, inc, notice = N1, extra = {}) => ({ n, label: `바위리 ${n}`, kind: 'ROW', notice, area_basis: { date: '1999-12-01', source: 'PARCEL_TABLE', check: 'CHECKED' }, ownership: { basis: 'DOCUMENT', coown: 'SOLE' },
   facts: { jimok: '답', ledger_area_m2: ledger, incorporated_area_m2: inc, arithmetic: { incorporated_ratio_pct: Math.round((inc / ledger) * 1000) / 10, partial: inc < ledger } }, card: card(n), ...extra });
 
 test('필지 키·이름·번호: 색인 행은 고시+일련, 색인 밖은 PNU·주소 · 같은 PNU는 경고만', () => {

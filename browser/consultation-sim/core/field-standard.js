@@ -6,6 +6,7 @@
 // - 감정평가서에서 선정이 확인된 비교표준지가 아니면 '비교표준지 후보'로만 부른다. 보정률·보상액 계산 없음.
 import { analyzeStandardCandidates, normalizeStandardRow, useGroup, STANDARD_FIELD_ALIASES } from './standard-land-engine.js';
 import { collapseNedRevisions } from './ned-revisions.js';
+import { PROV, provTrait, provPdValue, provDistance, compareDetail, API_LABEL } from './field-provenance.js';
 
 export const STD_LABEL = Object.freeze({
   CANDIDATE: '비교표준지 후보',
@@ -161,4 +162,52 @@ export function buildStandardReview({ response, target = {}, zoning = null }) {
       legal_dongs: s.legal_dongs || [], source: response.source || null, request_count: response.request_count?.total ?? null },
     use_group: useGroup(target.land_use),
   };
+}
+
+// ── 대상 ↔ 표준지(후보) 특성 비교표(검토 보조) ─────────────────────────────
+// columns: buildStandardReview 목록 항목(후보 또는 선택한 표준지). pdValues: 대상 공적자료 값. review: reviewZoningFor 결과.
+// 값은 응답 그대로(없으면 '미확인'), 등급은 field-provenance.js. 동일/상이는 같은 말인지 여부만 — 가격 우열·보정률 판단 없음.
+export const MATRIX_ROWS = Object.freeze([
+  { key: 'zoning', label: '용도지역', diff: true },
+  { key: 'land_category', label: '지목', diff: true },
+  ...TRAIT_FIELDS.map((f) => ({ key: f.key, label: f.label, diff: true, trait: true })),
+  { key: 'price', label: '공시지가', diff: false },
+  { key: 'distance', label: '대상과 거리', diff: false },
+]);
+const won = (n, y) => (n == null ? null : `${Number(n).toLocaleString('ko-KR')}원/㎡${y ? `(${y})` : ''}`);
+const cellOf = (value, tier, extra = {}) => ({ value: value == null || String(value).trim() === '' ? null : String(value), tier: value == null || String(value).trim() === '' ? PROV.UNVERIFIED : tier, ...extra });
+export function buildStdMatrix({ pdValues = [], columns = [], review = null }) {
+  const by = Object.fromEntries((pdValues || []).map((v) => [v.key, v]));
+  const tt = targetTraits(pdValues);
+  const excluded = review?.basis === 'PROJECT_EXCLUDED';
+  const pd = (key, value = by[key]?.value, extra = {}) => cellOf(value, provPdValue(by[key]), { year: by[key]?.base_year ?? null, label: API_LABEL, ...(by[key]?.mismatch ? { note: by[key].mismatch, label: '불일치·확인 필요' } : {}), ...extra });
+  const target = {
+    zoning: excluded ? cellOf(review.zoning, PROV.ESTIMATED, { year: null, hold: '사업 영향 배제 기준 후보 ↔ 공시연도 값(기준 다름)', label: '추정(배제 기준 후보)', note: '사업 영향 배제 기준 후보(현재값 아님)' })
+      : pd('zoning', by.zoning?.value, review?.basis === 'CURRENT_CHANGE_UNCONFIRMED' ? { hold: '용도지역 변경 사유 미확인' } : {}),
+    land_category: pd('land_category'),
+    price: pd('price', won(by.price?.value, by.price?.base_year), { note: '개별공시지가' }),
+    distance: { value: '대상', tier: null },
+    ...Object.fromEntries(TRAIT_FIELDS.map((f) => [f.key, pd(f.key, tt[f.key].value, { status: tt[f.key].status })])),
+  };
+  const cols = columns.map((c) => {
+    const t = c.traits || {}; const year = c.year ?? null;
+    const own = (key, value, extra = {}) => (c.conflict?.[key] ? { value: null, tier: PROV.UNVERIFIED, year, status: 'CONFLICT', text: '값 충돌·확인 필요', label: '값 충돌' } : cellOf(value, PROV.RECEIVED, { year, label: API_LABEL, ...extra }));
+    const cells = {
+      zoning: own('zoning', c.zoning), land_category: own('land_category', c.land_category),
+      price: own('price', won(c.price, c.year), { note: '표준지공시지가' }),
+      distance: cellOf(c.distance_m == null ? null : c.distance_m >= 1000 ? `${(c.distance_m / 1000).toFixed(2)}km` : `${Math.round(c.distance_m)}m`, provDistance(c.distance_m), { note: '중심↔중심 직선' }),
+      ...Object.fromEntries(TRAIT_FIELDS.map((f) => { const b = t[f.key]; const status = b?.status || 'MISSING';
+        const value = b?.value || (status === 'CODE_ONLY' ? `코드 ${b.code}(명칭 미확인)` : null);
+        const text = status === 'CONFLICT' ? `값 충돌·확인 필요(${(b.values || []).join(' / ')})` : status === 'NAME_OTHER' ? `${value}(명칭만 참고 · 이 필지 확인 안 됨)` : status === 'NAME_FROM_LC' ? `${value}(필지 구분 미제공 · 확인 필요)` : null;
+        return [f.key, { value, text, tier: provTrait(status), status, year: b?.year ?? year, ...(status === 'API_NAME' ? { label: API_LABEL } : {}) }]; })),
+    };
+    return { pnu: c.pnu, rank: c.rank ?? null, kind: c.kind, label: c.label, year, cells };
+  });
+  const rows = MATRIX_ROWS.map((r) => ({ ...r, target: target[r.key],
+    cells: cols.map((c) => { const d = r.diff ? compareDetail(target[r.key], c.cells[r.key]) : null; return { ...c.cells[r.key], diff: d ? d.diff : null, diff_reason: d ? d.reason : '' }; }) }));
+  return { rows, columns: cols.map(({ cells, ...rest }) => rest),
+    notes: ['공시지가: 대상은 개별공시지가, 표준지는 표준지공시지가 — 서로 다른 가격이며 우열·보상액 판단에 쓰지 않음',
+      '기준연도·기준이 다르거나 미확인이면 동일/상이 판정 보류(시간 변화인지 확인되지 않음)',
+      '동일/상이는 같은 명칭인지 여부만 표시 — 도로접면·형상·고저 등급으로 가격 우열을 판정하지 않음',
+      'API 텍스트 값 · 토지특성현황도(도면) 원문 아님 · 비교표준지 선정은 감정평가사'] };
 }

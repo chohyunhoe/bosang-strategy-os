@@ -78,6 +78,7 @@ export function buildFieldCard({ profile, index, row, selectedIssueIds = [], mem
   if (facts.arithmetic) {
     arithmetic.push(`[산술] 편입률 ${facts.arithmetic.incorporated_ratio_pct}% · 공부면적−편입면적 ${fmt(facts.arithmetic.remainder_area_m2)}㎡`);
     if (facts.arithmetic.partial) arithmetic.push('[산술] 일부 편입으로 보임 — 잔여지 여부는 현재 조서·도면으로 확인(제73조·제74조 구별)');
+    if (facts.arithmetic.inconsistent) arithmetic.push(`[확인 필요] 편입면적이 공부면적보다 큼 — 고시 기재값 그대로 둠(자동 보정 안 함) · PDF ${row.pdf_page}쪽 원문·조서 대조`);
   }
   const unverified = [...UNVERIFIED_BASE];
   if (row.ri_source === 'CARRIED') unverified.unshift(`리 이름(${row.ri})은 원본 표의 반복 셀에서 이어받음 — PDF ${row.pdf_page}쪽 원문 재확인`);
@@ -99,7 +100,7 @@ export function buildFieldCard({ profile, index, row, selectedIssueIds = [], mem
     ...(memoText ? ['', '■ 상담 메모', memoText] : []),
     '', '※ 보상액·법률 결론·기간을 정하지 않으며 증액을 약속하지 않습니다. 공적자료 실조회 값은 이용조건 확인 전이라 이 카드에 넣지 않았습니다.',
   ].join('\n');
-  const ratio = facts.arithmetic ? ` · [산술] 편입률 ${facts.arithmetic.incorporated_ratio_pct}%${facts.arithmetic.partial ? '(일부 편입으로 보임)' : ''}` : '';
+  const ratio = facts.arithmetic ? ` · [산술] 편입률 ${facts.arithmetic.incorporated_ratio_pct}%${facts.arithmetic.partial ? '(일부 편입으로 보임)' : ''}${facts.arithmetic.inconsistent ? '(편입>공부 · 원문 대조 필요)' : ''}` : '';
   const summary = summaryText({ head: `[BSO 현장 요약 · 검토 보조 · ${notice.notice_no || '고시'} 일련 ${row.serial}] ${now.toISOString().slice(0, 10)}`,
     place: `소재지: ${address} — 고시 기재 · PDF ${row.pdf_page}쪽 원문확인 필요`,
     area: `지목 ${facts.jimok || '—'} · 공부 ${fmt(facts.ledger_area_m2)}㎡ · 편입 ${fmt(facts.incorporated_area_m2)}㎡${ratio}`,

@@ -13,7 +13,8 @@
   <header class="f-top">
     <span class="eyebrow" data-f-project>BSO · 현장 지번 상담</span>
     <h1>지번 한 칸 상담 <small>검토 보조 · 감정평가·법률자문 아님</small></h1>
-    <div class="f-badges"><span class="badge" data-f-notice-badge>고시 색인 없음</span><span class="badge" data-f-pd-badge>공적자료 확인 중…</span></div>
+    <div class="f-badges"><span class="badge" data-f-notice-badge>고시 색인 없음</span><span class="badge" data-f-pd-badge>공적자료 확인 중…</span>
+      <button type="button" class="ghost f-client" data-f-client-toggle aria-pressed="false" title="메모·내부 입력란을 숨기고 지도·특성만 보여 줍니다(입력 내용은 보존)">고객설명 모드</button></div>
   </header>
 
   <section class="f-loader" data-f-loader hidden>
@@ -31,16 +32,27 @@
     </div>
   </form>
 
+  <div class="f-work" data-f-work>
+  <aside class="f-side" data-f-side aria-label="상담 묶음(다필지)">
   <section class="f-bundle" data-f-bundle aria-label="상담 묶음" hidden></section>
+  <section class="f-bundle-tools" data-f-bundle-tools data-f-step-sec="3" aria-label="상담 묶음 통합 요약" hidden></section>
+  </aside>
 
   <section data-f-result aria-live="polite"></section>
 
   <main class="f-grid" data-f-card hidden>
+    <nav class="f-steps" data-f-steps aria-label="상담 단계 이동">
+      <button type="button" data-f-step-go="1" aria-current="step">① 대상확인</button>
+      <button type="button" data-f-step-go="2">② 표준지비교</button>
+      <button type="button" data-f-step-go="3">③ 상담·요약</button>
+      <button type="button" class="f-pin" data-f-map-pin aria-pressed="true" title="지도를 화면 위에 고정">지도 고정</button>
+    </nav>
+    <section class="f-panel f-kpi" data-f-kpi data-f-step-sec="1" aria-label="대상 요약"></section>
     <section class="f-panel f-map-panel" data-f-map-panel aria-label="지도" hidden>
       <h2>지도 <span class="sub">VWorld 항공영상 + 연속지적 경계 · 화면 열람 전용</span></h2>
       <div data-f-map></div>
     </section>
-    <section class="f-panel" aria-label="확인 사실">
+    <section class="f-panel" data-f-facts-panel data-f-step-sec="1" aria-label="확인 사실">
       <h2>확인 사실 <span class="sub">고시 기재값 · 원문확인 필요</span></h2>
       <div data-f-facts></div>
       <h2 class="f-h2-gap" data-f-pd-h2>공적자료 <span class="sub">승인된 로컬 경로만 · 값별 출처</span></h2>
@@ -51,24 +63,37 @@
       <h2 class="f-h2-gap">미확인</h2>
       <ul class="f-list" data-f-unverified></ul>
     </section>
-    <section class="f-panel" aria-label="상담">
+    <section class="f-panel f-std-section" data-f-std-section data-f-step-sec="2" aria-label="표준지 특성 비교">
+      <h2>표준지 특성 비교 <span class="sub">대상 ↔ 비교표준지 후보 · 동일/상이만 · 우열 판정 아님</span></h2>
+      <div data-f-std></div>
+    </section>
+    <section class="f-panel" data-f-consult-panel data-f-step-sec="3" aria-label="상담">
       <h2>상담 쟁점 <span class="sub">상담자가 선택 · 판단 아님</span></h2>
+      <p class="small f-client-note" data-f-client-note hidden>고객설명 모드 — 메모·내부 입력란을 숨겼습니다(입력 내용은 그대로 보존).</p>
       <div data-f-issues></div>
       <h2 class="f-h2-gap">확보할 문서</h2><ul class="f-list" data-f-docs></ul>
       <h2 class="f-h2-gap">후속조치</h2><ul class="f-list" data-f-next></ul>
       <label class="f-memo">상담 메모 <span class="hint">실명·전화번호는 적지 마세요 · 이 화면 메모리에만</span>
         <textarea data-f-memo rows="3"></textarea></label>
       <div class="f-actions">
-        <button type="button" class="primary" data-f-copy-summary>현장 요약 복사</button>
-        <button type="button" class="secondary" data-f-copy>상세 검토본 복사</button>
-        <button type="button" class="secondary" data-f-save>상세본 저장(.txt)</button>
+        <button type="button" class="primary" data-f-copy-summary>현재 필지 요약 복사</button>
+        <button type="button" class="secondary" data-f-copy>현재 필지 상세본 복사</button>
+        <button type="button" class="secondary" data-f-save>상세본 내려받기(.txt)</button>
         <button type="button" class="ghost" data-f-print>인쇄</button>
       </div>
       <p class="small" data-f-out aria-live="polite"></p>
     </section>
   </main>
 
-  <section class="f-bundle-tools" data-f-bundle-tools aria-label="상담 묶음 통합 요약" hidden></section>
+  </div>
+
+  <div class="f-dock" data-f-dock-bar role="toolbar" aria-label="현장 빠른 실행" hidden>
+    <p class="small f-dock-out" data-f-dock-out aria-live="polite"></p>
+    <button type="button" class="secondary" data-f-dock="add">＋ 묶음 담기</button>
+    <button type="button" class="primary" data-f-dock="summary">현재 필지 요약</button>
+    <button type="button" class="primary" data-f-dock="bundle" hidden>묶음 통합 요약</button>
+    <button type="button" class="secondary" data-f-dock="save">현재 필지 상세본 받기</button>
+  </div>
 
   <footer class="f-foot"><ul data-f-warnings></ul></footer>
 
