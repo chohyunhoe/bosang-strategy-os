@@ -314,6 +314,14 @@ function renderMap() {
   box.querySelectorAll('[data-f-std-pin]').forEach((b) => b.addEventListener('click', () => selectStandard(b.dataset.fStdPin, false)));
   sbox.querySelectorAll('[data-f-std-item]').forEach((b) => b.addEventListener('click', () => selectStandard(b.dataset.fStdItem, true, b.dataset.fStdItemYear)));
   sbox.querySelectorAll('[data-f-std-col]').forEach((b) => b.addEventListener('click', () => selectStandard(b.dataset.fStdCol, true)));
+  sbox.querySelectorAll('[data-f-mx-diff-toggle]').forEach((b) => b.addEventListener('click', () => {
+    if (!st.std) return;
+    st.std.diffOnly = !st.std.diffOnly;
+    const wrap = b.closest('[data-f-std-matrix-wrap]');
+    if (wrap) wrap.dataset.fMxDiffOnly = String(st.std.diffOnly);
+    b.setAttribute('aria-pressed', String(st.std.diffOnly));
+    b.textContent = st.std.diffOnly ? '전체 항목 보기' : '차이·미확인 우선';
+  }));
   sbox.querySelectorAll('[data-f-std-go]').forEach((b) => b.addEventListener('click', runStandard));
   box.querySelectorAll('[data-f-cad-load]').forEach((b) => b.addEventListener('click', () => loadCad(m, cadCoverage(m.view, m.cad).missing.slice(0, CAD.perClick))));
 }
@@ -424,9 +432,11 @@ function stdMatrix(sr, cols, selected) {
   if (!cols.length) return '';
   const mx = buildStdMatrix({ pdValues: st.pd?.values || [], columns: cols, review: sr.review });
   const isSel = (c) => c.pnu === selected;
-  return `<div class="f-mx-wrap" data-f-std-matrix-wrap><div class="f-mx-context"><b>후보 ${cols.length}건 · 확정 아님</b><span>기본 출처: 대상 토지특성 API · 후보 표준지 API (수신값·원문 대조 전)</span></div><table class="f-mx small" data-f-std-matrix data-cols="${cols.length}">
+  const diffOnly = Boolean(st.std?.diffOnly);
+  const stableRows = mx.rows.filter((r) => r.target?.tier === PROV.RECEIVED && r.cells.length && r.cells.every((c) => c.diff === 'SAME' && c.tier === PROV.RECEIVED)).length;
+  return `<div class="f-mx-wrap" data-f-std-matrix-wrap data-f-mx-diff-only="${diffOnly}"><div class="f-mx-context"><b>후보 ${cols.length}건 · 확정 아님</b><span>기본 출처: 대상 토지특성 API · 후보 표준지 API (수신값·원문 대조 전)</span><button type="button" class="f-mx-diff-toggle" data-f-mx-diff-toggle aria-pressed="${diffOnly}" title="모든 후보가 동일한 API 수신 명칭을 가진 ${stableRows}개 행만 숨깁니다. 추정·미확인·가격·거리·연도 주의사항은 유지합니다.">${diffOnly ? '전체 항목 보기' : '차이·미확인 우선'}</button></div><table class="f-mx small" data-f-std-matrix data-cols="${cols.length}">
     <thead><tr><th scope="col">구분</th><th scope="col">대상 필지<br><span class="muted" data-f-mx-year="target">${esc(pdYear() || '연도 미상')}${pdYear() ? '년' : ''} · 토지특성 API</span></th>${mx.columns.map((c) => `<th scope="col"${isSel(c) ? ' class="sel"' : ''}><button type="button" class="f-mx-col${isSel(c) ? ' sel' : ''}" data-f-std-col="${esc(c.pnu)}" aria-pressed="${isSel(c)}"><span class="n">${esc(c.rank ?? '·')}</span>${esc(shortLabel(c.label))}</button><span class="muted" data-f-mx-year="${esc(c.pnu)}">${esc(c.year || '연도 미상')}${c.year ? '년' : ''} 공시 · 표준지 API</span></th>`).join('')}</tr></thead>
-    <tbody>${mx.rows.map((r) => `<tr data-f-mx-row="${r.key}"><th scope="row">${esc(r.label)}</th><td data-f-mx-target>${mxCompactCell(r.target)}</td>${r.cells.map((c, i) => `<td data-f-mx-cell="${esc(mx.columns[i].pnu)}"${isSel(mx.columns[i]) ? ' class="sel"' : ''}>${mxCompactCell(c, r.target)}</td>`).join('')}</tr>`).join('')}</tbody></table>
+    <tbody>${mx.rows.map((r) => `<tr data-f-mx-row="${r.key}" data-f-mx-row-stable="${Boolean(r.target?.tier === PROV.RECEIVED && r.cells.length && r.cells.every((c) => c.diff === 'SAME' && c.tier === PROV.RECEIVED))}"><th scope="row">${esc(r.label)}</th><td data-f-mx-target>${mxCompactCell(r.target)}</td>${r.cells.map((c, i) => `<td data-f-mx-cell="${esc(mx.columns[i].pnu)}"${isSel(mx.columns[i]) ? ' class="sel"' : ''}>${mxCompactCell(c, r.target)}</td>`).join('')}</tr>`).join('')}</tbody></table>
     <ul class="small muted f-mx-notes" data-f-mx-notes>${mx.notes.map((n) => `<li>${esc(n)}</li>`).join('')}</ul></div>`;
 }
 const won = (n) => (n == null ? '미기재' : `${Number(n).toLocaleString('ko-KR')}원/㎡`);
@@ -653,7 +663,38 @@ function renderActiveContext() {
   if (!active()) { el.hidden = true; el.textContent = ''; return; }
   const label = st.row ? `${st.row.ri} ${st.row.lot_label}` : st.direct.scope === 'PNU' ? `PNU ${st.direct.pnu}` : `${st.direct.leaf || ''} ${st.direct.lot_label || ''}`;
   el.hidden = false;
-  el.innerHTML = `<b>현재 상담 필지</b><strong data-f-active-label>${esc(label.trim())}</strong><span>검색창은 새 필지 조회용</span>`;
+  el.innerHTML = `<div class="f-active-label"><b>현재 상담 필지</b><strong data-f-active-label>${esc(label.trim())}</strong></div><div class="f-quick-actions"><button type="button" data-f-quick-map aria-label="현재 필지 지도 또는 지도 조회 위치로 이동">지도 보기</button><button type="button" data-f-quick-memo aria-label="현재 필지 상담 메모 입력으로 이동">메모 쓰기</button></div><span class="f-quick-hint" data-f-quick-hint aria-live="polite" hidden></span>`;
+  el.querySelector('[data-f-quick-map]')?.addEventListener('click', () => {
+    delete document.body.dataset.fConsultMini;
+    const mini = $('[data-f-map-mini]'); if (mini) mini.hidden = true;
+    const map = $('[data-f-map-panel] .f-map-frame');
+    const hasMap = Boolean(map?.getClientRects().length);
+    const go = $('[data-f-pd-go]');
+    // 로컬 브리지 연결 확인 중에는 조회 버튼이 아직 없다. KPI가 아니라 공적자료 상태로 안내한다.
+    const dest = hasMap ? map : go || $('[data-f-pd]') || $('[data-f-facts-panel]');
+    if (dest) {
+      dest.scrollIntoView({ block: 'center', behavior: 'auto' });
+      if (dest === go) go.focus({ preventScroll: true });
+    }
+    const hint = el.querySelector('[data-f-quick-hint]');
+    if (hint) {
+      hint.hidden = hasMap;
+      hint.textContent = !hasMap ? go ? '공적자료 조회 버튼을 확인하세요. 조회는 자동 실행되지 않습니다.'
+        : !st.pdBridge ? '공적자료 연결 확인 중입니다. 연결되면 조회 버튼이 표시됩니다.'
+          : '지도가 아직 표시되지 않습니다. 공적자료 확인 상태를 확인하세요.' : '';
+    }
+  });
+  el.querySelector('[data-f-quick-memo]')?.addEventListener('click', () => {
+    const hint = el.querySelector('[data-f-quick-hint]');
+    if (document.body.dataset.fClient === '1') { if (hint) { hint.hidden = false; hint.textContent = '고객설명 모드에서는 내부 메모가 숨겨집니다.'; } return; }
+    if (hint) hint.hidden = true;
+    goStep(3);
+    requestAnimationFrame(() => {
+      const memo = $('[data-f-memo]'); if (!memo) return;
+      memo.scrollIntoView({ block: 'center', behavior: 'auto' });
+      memo.focus({ preventScroll: true });
+    });
+  });
 }
 function render() { renderResult(); renderCard(); renderPublicData(); renderZoning(); renderMap(); renderBundle(); renderActiveContext(); }
 

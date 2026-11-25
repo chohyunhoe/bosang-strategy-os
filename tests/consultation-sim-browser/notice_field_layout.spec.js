@@ -570,3 +570,85 @@ test('Phase3 Fold8 접기·펼치기: 이전 지도축소·풀폭 모드 정리,
   expect(await overflowX(page)).toBeLessThanOrEqual(0);
   expect(b.log.length).toBe(count);
 });
+
+
+test('FastFlow: 활성 필지에서 지도·메모 원탭 이동, 상담 메모와 조회량 보존', async ({ page }) => {
+  const b=bridge(page); await b.ready; await loadIndex(page);
+  await open(page,'바위리 12-3');
+  await expect(page.locator('[data-f-quick-map]')).toBeVisible();
+  await expect(page.locator('[data-f-quick-memo]')).toBeVisible();
+  const n0=b.log.length;
+  await page.locator('[data-f-quick-map]').click();
+  await expect(page.locator('[data-f-pd-go]')).toBeFocused();
+  expect(b.log.length).toBe(n0); // 바로가기는 조회를 자동으로 시작하지 않는다.
+  await lookup(page); await std(page);
+  const n=b.log.length;
+  if(width(page)===412){
+    await page.locator('[data-f-step-go="3"]').click();
+    await expect(page.locator('[data-f-map-mini]')).toBeVisible();
+    await page.locator('[data-f-quick-map]').click();
+    await expect(page.locator('[data-f-map-mini]')).toBeHidden();
+    await expect(page.locator('[data-f-map-panel] .f-map-frame')).toBeVisible();
+  } else {
+    await page.locator('[data-f-quick-map]').click();
+    await expect(page.locator('[data-f-map-panel] .f-map-frame')).toBeVisible();
+  }
+  await page.locator('[data-f-quick-memo]').click();
+  await expect(page.locator('[data-f-memo]')).toBeFocused();
+  await page.locator('[data-f-memo]').fill('상담 원탭 이동 후 기록');
+  await expect(page.locator('[data-f-memo]')).toHaveValue('상담 원탭 이동 후 기록');
+  expect(b.log.length).toBe(n);
+  expect(await overflowX(page)).toBeLessThanOrEqual(0);
+});
+
+test('FastFlow: 5열에서 동일 API 항목만 접고 차이·추정·가격은 보존', async ({ page }) => {
+  test.skip(width(page)<860,'5열은 Fold8 펼침 및 PC 전용');
+  const b=bridge(page); await b.ready; await loadIndex(page); await twoParcels(page);
+  const n=b.log.length;
+  const control=page.locator('[data-f-mx-diff-toggle]');
+  await expect(control).toBeVisible();
+  await expect(control).toHaveAttribute('aria-pressed','false');
+  const allRows=page.locator('[data-f-std-matrix] tbody tr');
+  const stableRows=page.locator('[data-f-std-matrix] [data-f-mx-row-stable="true"]');
+  const total=await allRows.count();
+  const stable=await stableRows.count();
+  expect(stable).toBeGreaterThan(0);
+  await control.click();
+  await expect(control).toHaveAttribute('aria-pressed','true');
+  await expect(stableRows.first()).toBeHidden();
+  await expect(page.locator('[data-f-mx-row="price"]')).toBeVisible();
+  await expect(page.locator('[data-f-mx-row="distance"]')).toBeVisible();
+  expect(await allRows.count()).toBe(total);
+  await page.locator('[data-f-std-col]').last().click();
+  await expect(page.locator('[data-f-mx-diff-toggle]')).toHaveAttribute('aria-pressed','true');
+  await page.locator('[data-f-mx-diff-toggle]').click();
+  await expect(stableRows.first()).toBeVisible();
+  expect(b.log.length).toBe(n);
+  expect(await overflowX(page)).toBeLessThanOrEqual(0);
+});
+
+
+test('FastFlow: 초기 브리지 연결 확인 중 지도 바로가기는 상태영역 안내, 연결 후 조회버튼 이동', async ({ page }) => {
+  const b=bridge(page); await b.ready;
+  let release;
+  const held=new Promise((resolve)=>{ release=resolve; });
+  await page.route('**/__public_data_bridge/status', async (route) => {
+    await held;
+    await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({
+      ok:true,vworld_configured:true,public_data_configured:true,
+    })});
+  });
+  try {
+    await loadIndex(page);
+    await open(page,'바위리 12-3');
+    await expect(page.locator('[data-f-pd-go]')).toHaveCount(0);
+    await page.locator('[data-f-quick-map]').click();
+    await expect(page.locator('[data-f-quick-hint]')).toContainText('공적자료 연결 확인 중');
+    await expect(page.locator('[data-f-pd-state="CHECKING"]')).toBeVisible();
+    expect(b.log).toEqual([]);
+  } finally { release(); }
+  await expect(page.locator('[data-f-pd-go]')).toBeVisible();
+  await page.locator('[data-f-quick-map]').click();
+  await expect(page.locator('[data-f-pd-go]')).toBeFocused();
+  expect(b.log).toEqual([]);
+});
