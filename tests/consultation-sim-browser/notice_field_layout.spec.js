@@ -868,3 +868,65 @@ test('현장 집중: 면적 충돌은 간편 화면에도 즉시 경고, 전체 
   await expect(page.locator('[data-f-ratio]')).toContainText('120%');
   expect(b.log).toEqual([]);
 });
+
+
+test('간편 표준지 현황: 도로접면·형상·고저·이용상황을 대상/후보별 바로 표시', async ({page},testInfo)=>{
+  const b=bridge(page);await b.ready;await loadIndex(page,null,{focus:true});
+  await open(page,'바위리 12-3');
+  await expect(page.locator('[data-f-focus-pd]')).toBeEnabled();
+  await page.locator('[data-f-focus-pd]').click();
+  await expect(page.locator('[data-f-pd-state="OK"]')).toBeAttached();
+  await page.locator('[data-f-step-go="2"]').click();
+  await page.locator('[data-f-std-go]').click();
+  await expect(page.locator('[data-f-std-state="FOUND"]')).toBeVisible();
+  const first=page.locator('[data-f-std-item-kind="CANDIDATE"]').first();
+  await first.click();
+  const cards=page.locator('[data-f-std-focus-traits]');
+  await expect(cards).toBeVisible();
+  await expect(cards.locator('[data-f-std-focus-trait]')).toHaveCount(4);
+  if (width(page) >= 860) {
+    const traitBox = await cards.boundingBox(); const matrixBox = await page.locator('[data-f-std-matrix]').boundingBox();
+    expect(traitBox.y + traitBox.height).toBeLessThanOrEqual(matrixBox.y + 2);
+  } else {
+    // 커버 집중 ②는 후보/특성 우선, 지도를 하단에 둬 바로 확인한다.
+    const traitBox = await cards.boundingBox(); const mapBox = await page.locator('[data-f-map-panel]').boundingBox();
+    expect(traitBox.y + traitBox.height).toBeLessThanOrEqual(mapBox.y + 2);
+  }
+  for (const key of ['land_use','road_access','shape','elevation']) {
+    const card=cards.locator('[data-f-std-focus-trait="'+key+'"]');
+    await expect(card).toBeVisible();
+    await expect(card.locator('[data-f-trait-target]')).toBeVisible();
+    await expect(card.locator('[data-f-trait-std]')).toBeVisible();
+  }
+  await expect(cards.locator('[data-f-std-focus-trait="road_access"] [data-f-trait-target]')).toContainText('세로(가)');
+  await expect(cards.locator('[data-f-std-focus-trait="road_access"] [data-f-trait-std]')).toContainText('세로(가)');
+  await expect(cards.locator('[data-f-std-focus-trait="shape"] [data-f-trait-std]')).toContainText('부정형');
+  await expect(cards.locator('[data-f-std-focus-trait="elevation"] [data-f-trait-std]')).toContainText('저지');
+  await expect(cards.locator('[data-f-std-focus-trait="elevation"] [data-f-trait-std]')).toHaveAttribute('data-f-tier','ESTIMATED');
+  await expect(cards.locator('[data-f-std-focus-trait="elevation"] .prov-estimated')).toBeVisible();
+  await expect(cards.locator('.f-std-focus-origin')).toContainText('공식 토지특성현황도 대조 전');
+  const log=b.log.length;
+  await shot(page,testInfo,'focus-std-traits');
+  // 두 번째 후보는 도로접면 코드만 있음. 다른 표준지의 이름을 임의로 끌어오지 않는다.
+  await page.locator('[data-f-std-item-kind="CANDIDATE"]').nth(1).click();
+  await expect(cards.locator('[data-f-std-focus-trait="road_access"] [data-f-trait-std]')).toContainText('코드 03');
+  await expect(cards.locator('[data-f-std-focus-trait="road_access"] [data-f-trait-std]')).toHaveAttribute('data-f-tier','UNVERIFIED');
+  await expect(cards.locator('[data-f-std-focus-trait="shape"] [data-f-trait-std]')).toContainText('미확인');
+  await expect(cards.locator('[data-f-std-focus-trait="elevation"] [data-f-trait-std]')).toContainText('미확인');
+  expect(b.log.length).toBe(log);
+  // 원래 전체 정보에서는 커버 1:1, 펼침/PC는 5열 표를 사용한다.
+  await page.locator('[data-f-focus-toggle]').click();
+  await expect(cards).toBeHidden();
+  if (width(page) < 860) {
+    await expect(page.locator('[data-f-std-traits]')).toBeVisible();
+    for (const k of ['road_access','shape','elevation'])
+      await expect(page.locator('[data-f-std-traits] [data-f-std-trait="'+k+'"]')).toBeVisible();
+  } else {
+    await expect(page.locator('[data-f-std-matrix]')).toBeVisible();
+    for (const k of ['road_access','shape','elevation'])
+      await expect(page.locator('[data-f-std-matrix] [data-f-mx-row="'+k+'"]')).toBeVisible();
+    await expect(page.locator('[data-f-std-traits]')).toBeHidden();
+  }
+  expect(await overflowX(page)).toBeLessThanOrEqual(0);
+  expect(b.log.length).toBe(log);
+});
