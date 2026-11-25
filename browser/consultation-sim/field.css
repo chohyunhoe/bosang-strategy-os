@@ -43,7 +43,7 @@ button:disabled{opacity:.45;cursor:not-allowed}
 .f-foot ul{margin:14px 0 0;padding-left:18px;font-size:12px;color:var(--muted)}
 /* 인쇄·PDF: 공적자료(이용조건 확인 전)와 조작 요소 제외 */
 .f-print-only{display:none}
-@media print{.f-search,.f-actions,.f-loader,.f-badges,button,[data-f-result],[data-f-pd],[data-f-pd-h2],[data-f-map-panel],[data-f-zoning],[data-f-zoning-h2]{display:none!important}.f-print-only{display:block!important}body{background:#fff}}
+@media print{.f-search,.f-actions,.f-loader,.f-badges,button,[data-f-result],[data-f-pd],[data-f-pd-h2],[data-f-map-panel],[data-f-zoning],[data-f-zoning-h2],[data-f-bundle],[data-f-bundle-tools]{display:none!important}.f-print-only{display:block!important}body{background:#fff}}
 .f-map-panel{grid-column:1/-1}.f-map{max-width:960px}
 .f-map-frame{position:relative;width:100%;aspect-ratio:4/3;background:#2b332b;border-radius:8px;overflow:hidden}
 .f-map-img,.f-map-svg{position:absolute;inset:0;width:100%;height:100%;display:block}
@@ -101,3 +101,19 @@ button:disabled{opacity:.45;cursor:not-allowed}
 .f-std-line{margin:2px 0}
 /* 좁은 화면: 이름/값 2열 표를 위아래로(값 칸이 좁아 세로로 길어지는 문제) */
 @media (max-width:600px){.f-kv{grid-template-columns:1fr;gap:0}.f-kv dt{margin-top:6px}.f-kv dd{margin-left:0}}
+/* 상담 묶음(다필지) */
+.f-bundle{margin:6px 0}
+.f-bundle-add{min-height:36px;font-size:13px}
+.f-bundle-bar{border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:#fff}
+.f-bundle-head{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center}
+.f-bundle-head button{min-height:36px;font-size:13px;padding:2px 10px}
+.f-bundle-chips{display:flex;gap:6px;overflow-x:auto;padding:6px 0;-webkit-overflow-scrolling:touch}
+.f-chip{flex:none;min-height:36px;padding:2px 10px;border-radius:999px;border:1px solid #c7ccd2;background:#fff;color:#333;font-size:13px;white-space:nowrap}
+.f-chip.sel{background:#1f6fff;border-color:#1f6fff;color:#fff}
+.f-chip.draft{display:inline-flex;align-items:center;border-style:dashed;color:var(--muted)}
+.f-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#ffb400;margin-left:4px;vertical-align:middle}
+.f-own{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:4px 0}.f-own select{min-height:36px;font-size:13px;max-width:100%}
+.f-bundle-map{margin-top:6px}.f-map-svg .f-bundle-other{fill:rgba(255,64,64,.08);stroke-dasharray:6 3}
+.f-traits{border-collapse:collapse;margin:4px 0;width:100%;max-width:520px}.f-traits th,.f-traits td{border-bottom:1px solid var(--line);padding:3px 6px;text-align:left;font-weight:500}
+.f-traits thead th{color:var(--muted);font-weight:650}.f-traits [data-f-trait-status="MISSING"],.f-traits [data-f-trait-status="CODE_ONLY"]{color:var(--muted)}
+.f-bundle-tools{margin:10px 0}

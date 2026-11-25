@@ -35,6 +35,7 @@ const ERROR_TEXT = {
   VWORLD_REVISION_CONFLICT: '같은 연도 자료가 서로 다름(수정본 충돌) — 값 미사용, 원문 확인 필요',
   VWORLD_API_KEY_MISSING: 'VWorld 키 미설정', PUBLIC_DATA_KEY_MISSING: '공공데이터포털 키 미설정',
   BRIDGE_UNREACHABLE: '로컬 브리지 응답 없음', LEGAL_DONG_MULTIPLE_CANDIDATES: '법정동 후보 복수', LEGAL_DONG_NOT_FOUND: '법정동 코드 없음',
+  BUNDLE_STD_LIMIT: '상담 묶음의 표준지 조회 한도(3회)에 닿음 — 같은 조건 재조회는 저장된 결과 사용', CLIENT_TIMEOUT: '응답 시간 초과 — 다시 조회 가능',
 };
 const RESULT_TEXT = {
   INCORRECT_KEY: '인증키가 이 서비스(토지특성 등)에 허용되지 않았거나 올바르지 않음 — VWorld 인증키 관리에서 서비스 범위·상태 확인',

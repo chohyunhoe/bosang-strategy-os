@@ -28,6 +28,36 @@ export function reviewZoningFor(zoning, currentZoning) {
   return { zoning: currentZoning || null, basis: 'CURRENT', label: `현재 용도지역 ${currentZoning || '미확보'}`, note: null };
 }
 
+// ── 표준지·대상 필지 특성(이용상황·도로접면·형상·고저) ─────────────────────────
+// API 속성 텍스트일 뿐 '토지특성현황도'(공식 도면) 원문이 아니다. 값이 없으면 '미확인'으로 둔다(추정·보간 없음).
+export const TRAIT_FIELDS = Object.freeze([
+  { key: 'land_use', label: '이용상황', name: 'ladUseSittnNm', code: 'ladUseSittn' },
+  { key: 'road_access', label: '도로접면', name: 'roadSideCodeNm', code: 'roadSideCode' },
+  { key: 'shape', label: '형상', name: 'tpgrphFrmCodeNm', code: 'tpgrphFrmCode' },
+  { key: 'elevation', label: '고저', name: 'tpgrphHgCodeNm', code: 'tpgrphHgCode' },
+]);
+export const TRAIT_STATUS = Object.freeze({
+  API_NAME: 'VWorld 표준지 속성(텍스트)', NAME_FROM_LC: '표준지 코드 + 같은 연도 토지특성 명칭', CODE_ONLY: '코드만 — 명칭 미확인', MISSING: '미확인',
+});
+export function standardTraits(raw, row = null) {
+  const filled = new Set(raw?.name_filled_from_land_characteristics || []);
+  return Object.fromEntries(TRAIT_FIELDS.map((f) => {
+    const value = String(raw?.[f.name] ?? '').trim() || (f.key === 'land_use' ? String(row?.land_use || '').trim() : '') || null;
+    const code = String(raw?.[f.code] ?? '').trim() || null;
+    const status = value ? (filled.has(f.name) ? 'NAME_FROM_LC' : 'API_NAME') : code ? 'CODE_ONLY' : 'MISSING';
+    return [f.key, { value, code, status, year: raw?.stdrYear || row?.year || null }];
+  }));
+}
+// 대상 필지 특성: 공적자료(토지특성) 값 그대로. pdValues: [{key,value,base_year,source}]
+export function targetTraits(pdValues = []) {
+  const by = Object.fromEntries((pdValues || []).map((v) => [v.key, v]));
+  return Object.fromEntries(TRAIT_FIELDS.map((f) => {
+    const v = by[f.key];
+    const value = v && v.value != null && String(v.value).trim() ? String(v.value).trim() : null;
+    return [f.key, { value, status: value ? 'API_NAME' : 'MISSING', year: v?.base_year || null, source: v?.source || null }];
+  }));
+}
+
 const fmtR = (m) => (m == null ? '미정' : `${Number(m).toLocaleString('ko-KR')}m`);
 const fmtM = (m) => (m == null ? '거리 미산출' : m >= 1000 ? `${(m / 1000).toFixed(2)}km` : `${Math.round(m)}m`);
 
@@ -77,7 +107,8 @@ export function buildStandardReview({ response, target = {}, zoning = null }) {
     pnu: row.pnu, label: [raw?.ldCodeNm, raw?.mnnmSlno].filter(Boolean).join(' ') || row.label || row.pnu, lot: raw?.mnnmSlno || null,
     price: row.price, year: row.year, zoning: row.zoning, land_use: row.land_use, land_category: row.land_category,
     distance_m: distance, located: Boolean(loc[row.pnu]?.status === 'EXACT_ONE'),
-    names_from_land_characteristics: raw?.name_filled_from_land_characteristics || [], ...extra,
+    names_from_land_characteristics: raw?.name_filled_from_land_characteristics || [],
+    traits: standardTraits(raw, row), ...extra,
   });
   const list = [
     ...(analysis.candidates || []).map((c) => detail(c.row, rawOf.get(c.row.pnu), c.distance_m, {
