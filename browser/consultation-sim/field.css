@@ -286,3 +286,54 @@ button,select{min-width:44px}.f-zoning-confirm :is(select,input){min-height:44px
   .f-dock button{font-size:12.5px;white-space:nowrap;padding:4px 3px;min-width:0}
   .f-dock-menu button{font-size:13px;padding:8px;white-space:normal}
 }
+
+/* Gemini 2차 Phase 3: 레이아웃만 전환. 사진·SVG는 4:3 동일 좌표계 유지. */
+.f-map-mini{min-height:52px;align-items:center;justify-content:space-between;gap:8px;padding:4px 8px;background:#e6eef6;border:1px solid #9db8d2;border-radius:8px;color:#193b62;font-size:12px}
+.f-map-mini button{min-height:44px;padding:4px 10px;background:#fff;border:1px solid #1d4ed8;border-radius:8px;color:#1d4ed8;font-size:12px;font-weight:700}
+.f-map-size-toggle{display:none;margin-left:auto;padding:4px 10px;min-height:44px;font-size:12px;border:1px solid #94a3b8;border-radius:8px;background:#fff;color:#1e3a5f}
+@media(max-width:859px){
+  body[data-f-consult-mini="1"] .f-grid>[data-f-map-panel]>h2{display:none}
+  body[data-f-consult-mini="1"] .f-grid>[data-f-map-panel] [data-f-map]>.f-map>*{display:none!important}
+  body[data-f-consult-mini="1"] .f-grid>[data-f-map-panel] .f-map-mini{display:flex;order:1;position:sticky;top:0;z-index:7;box-shadow:0 2px 7px rgba(15,23,42,.13)}
+  body[data-f-consult-mini="1"] .f-grid>.f-steps{top:52px;z-index:8}
+  body[data-f-consult-mini="1"] [data-f-step-sec]{scroll-margin-top:122px}
+}
+/* 펼침 884px: 표준지 탭을 직접 누르면 지도 4:3 한쪽, 도구 다른쪽, 표는 전체 폭으로. */
+@media(min-width:860px) and (max-width:1199px){
+  body[data-f-analysis-full="1"] .f-grid{grid-template-columns:minmax(0,1fr);grid-template-areas:"steps" "map" "std" "kpi" "facts" "consult";grid-template-rows:repeat(6,auto);gap:8px}
+  body[data-f-analysis-full="1"] .f-grid>.f-steps{grid-area:steps;position:sticky;top:0;z-index:8}
+  body[data-f-analysis-full="1"] .f-grid>[data-f-map-panel]{grid-area:map;position:sticky;top:54px;max-height:none;overflow:visible;min-width:0;z-index:5;background:#fff;box-shadow:0 2px 9px rgba(15,23,42,.08);padding:8px 10px}
+  body[data-f-analysis-full="1"] .f-grid>[data-f-map-panel]>h2{font-size:13px;margin-bottom:5px}
+  body[data-f-analysis-full="1"] .f-grid>[data-f-map-panel] .f-map{display:grid;grid-template-columns:minmax(0,350px) minmax(0,1fr);grid-template-areas:"frame tools" "frame status" "frame legend" "frame note";grid-template-rows:auto auto auto 1fr;gap:2px 10px;align-items:start;max-width:none}
+  body[data-f-analysis-full="1"] .f-map-frame{grid-area:frame;width:100%;max-width:350px;aspect-ratio:4/3}
+  body[data-f-analysis-full="1"] .f-map-tools{grid-area:tools;margin:0}
+  body[data-f-analysis-full="1"] .f-map-status{grid-area:status;margin:0}
+  body[data-f-analysis-full="1"] .f-legend{grid-area:legend}
+  body[data-f-analysis-full="1"] .f-map-note{grid-area:note}
+  body[data-f-analysis-full="1"] .f-grid>[data-f-std-section]{grid-area:std;min-width:0}
+  body[data-f-analysis-full="1"] .f-grid>[data-f-kpi]{grid-area:kpi}
+  body[data-f-analysis-full="1"] .f-grid>[data-f-facts-panel]{grid-area:facts}
+  body[data-f-analysis-full="1"] .f-grid>[data-f-consult-panel]{grid-area:consult}
+  body[data-f-analysis-full="1"] .f-mx th,body[data-f-analysis-full="1"] .f-mx td{padding:6px 8px}
+}
+/* PC: 중앙 지도는 상단에 콤팩트 고정, 아래 5열 표를 같은 화면에서 볼 수 있다. */
+@media(min-width:1200px){
+  .f-grid>[data-f-map-panel]{position:sticky;top:0;z-index:5;background:#fff;box-shadow:0 2px 8px rgba(15,23,42,.09)}
+  .f-grid>[data-f-map-panel]>h2{display:flex;align-items:center;gap:8px}
+  .f-map-size-toggle{display:inline-flex;align-items:center;justify-content:center}
+  body:not([data-f-pc-map-expanded="1"]) .f-grid>[data-f-map-panel] .f-map{display:grid;grid-template-columns:minmax(0,290px) minmax(0,1fr);grid-template-areas:"frame tools" "frame status" "frame legend" "frame note";grid-template-rows:auto auto auto 1fr;gap:2px 10px;align-items:start;max-width:none}
+  body:not([data-f-pc-map-expanded="1"]) .f-map-frame{grid-area:frame;max-width:290px;width:100%;aspect-ratio:4/3}
+  body:not([data-f-pc-map-expanded="1"]) .f-map-tools{grid-area:tools;margin:0}
+  body:not([data-f-pc-map-expanded="1"]) .f-map-status{grid-area:status;margin:0}
+  body:not([data-f-pc-map-expanded="1"]) .f-legend{grid-area:legend}
+  body:not([data-f-pc-map-expanded="1"]) .f-map-note{grid-area:note}
+}
+@media print{.f-map-mini,.f-map-size-toggle{display:none!important}}
+
+/* PC 중앙 영역은 지도와 표를 한 번에 배치하고, 긴 표만 독립 스크롤한다.
+   map sticky가 표의 헤더를 덮던 문제를 방지한다. */
+@media(min-width:1200px){
+  .f-grid>[data-f-map-panel]{position:relative;top:auto;z-index:auto;box-shadow:none}
+  .f-grid>[data-f-std-section]{max-height:max(340px,calc(100vh - 440px));overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable}
+  .f-grid>[data-f-std-section] .f-mx thead th{position:sticky;top:0;z-index:2}
+}

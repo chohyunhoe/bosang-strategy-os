@@ -115,18 +115,22 @@ test('화면 배치: PC는 다필지|지도+5열 비교|상담 3단 · 펼침은
   await page.locator('[data-f-std-section]').scrollIntoViewIfNeeded();
   await shot(page, testInfo, '2-std');
   if (w < 860) {
-    // 커버: 상담 구간까지 내려도 지도는 화면 위에 붙어 있음 · 단계 막대는 지도 바로 아래
+    // 커버: ③ 상담 진입 시 실제 영상/SVG DOM은 보존하고 지도 대신 미니바를 상단 고정.
     await page.locator('[data-f-step-go="3"]').click();
     await expect(page.locator('[data-f-step-go="3"]')).toHaveAttribute('aria-current', 'step');
-    const f = await box(page, '[data-f-map-panel] .f-map-frame'); const s = await box(page, '[data-f-steps]');
-    expect(Math.abs(f.y)).toBeLessThan(2); expect(Math.abs(s.y - (f.y + f.height))).toBeLessThan(4);
-    const c = await box(page, '[data-f-consult-panel]'); expect(c.y).toBeGreaterThanOrEqual(s.y + s.height - 2); expect(c.y).toBeLessThan(page.viewportSize().height);
+    await expect(page.locator('[data-f-map-panel] .f-map-frame')).toBeHidden();
+    await expect(page.locator('[data-f-map-mini]')).toBeVisible();
+    const f = await box(page, '[data-f-map-mini]'); const s = await box(page, '[data-f-steps]');
+    expect(Math.abs(f.y)).toBeLessThan(4); expect(Math.abs(s.y - (f.y + f.height))).toBeLessThan(4);
+    const c = await box(page, '[data-f-consult-panel]');
+    expect(c.y).toBeGreaterThanOrEqual(s.y + s.height - 2); expect(c.y).toBeLessThan(page.viewportSize().height);
     await shot(page, testInfo, '3-consult');
-    // 지도 고정 해제 → 지도는 흐름 속으로(위로 사라짐)
+    await page.locator('[data-f-map-restore]').click();
+    await expect(page.locator('[data-f-map-panel] .f-map-frame')).toBeVisible();
     await page.locator('[data-f-map-pin]').click();
     await expect(page.locator('[data-f-map-pin]')).toHaveAttribute('aria-pressed', 'false');
-    await page.locator('[data-f-step-go="3"]').click();
-    expect((await box(page, '[data-f-map-panel] .f-map-frame')).y).toBeLessThan(-100);
+    await page.locator('[data-f-step-go="2"]').click();
+    await expect(page.locator('[data-f-map-panel] .f-map-frame')).toBeVisible();
   } else {
     await page.locator('[data-f-consult-panel]').scrollIntoViewIfNeeded();
     await shot(page, testInfo, '3-consult');
@@ -441,4 +445,128 @@ test('개선: 커버 하단은 주요 3버튼 · 묶음요약과 실제 상세 �
   const [download] = await Promise.all([page.waitForEvent('download'), page.locator('[data-f-dock-menu-action="save"]').click()]);
   expect(fs.readFileSync(await download.path(), 'utf8')).toContain('BSO 현장 상담카드');
   expect(b.log).toEqual([]);
+});
+
+
+// Phase 3: 레이아웃/인터랙션 독립 회귀. 합성 브리지로 실제 VWorld 호출 0회.
+test('Phase3 884: ② 클릭 시 풀폭 5열+상단 4:3 콤팩트 지도, 후보↔지도 연동, ③ 복귀', async ({ page }, testInfo) => {
+  test.skip(width(page) !== 884, 'Fold8 펼침 전용');
+  const b = bridge(page); await b.ready; await loadIndex(page); await twoParcels(page);
+  const before = b.log.length;
+  await page.locator('[data-f-step-go="2"]').click();
+  await expect(page.locator('body')).toHaveAttribute('data-f-analysis-full', '1');
+  await expect(page.locator('[data-f-std-matrix]')).toBeVisible();
+  const mx = await box(page, '[data-f-std-matrix]');
+  const frame = await box(page, '[data-f-map-panel] .f-map-frame');
+  expect(mx.width).toBeGreaterThan(700);
+  expect(Math.abs(frame.width / frame.height - 4 / 3)).toBeLessThan(0.02);
+  const sizes = await page.evaluate(() => {
+    const i = document.querySelector('.f-map-img').getBoundingClientRect();
+    const s = document.querySelector('.f-map-svg').getBoundingClientRect();
+    return {dw:Math.abs(i.width-s.width),dh:Math.abs(i.height-s.height)};
+  });
+  expect(sizes.dw).toBeLessThan(1); expect(sizes.dh).toBeLessThan(1);
+  await shot(page, testInfo, 'phase3-full-matrix');
+  const last = page.locator('[data-f-std-matrix] [data-f-std-col]').last();
+  const pnu = await last.getAttribute('data-f-std-col');
+  await last.click();
+  await expect(page.locator('[data-f-std-detail]')).toHaveAttribute('data-f-std-detail', pnu);
+  await expect(page.locator('[data-f-std-pin] .f-pin-dot').first()).toBeAttached();
+  expect(b.log.length).toBe(before);
+  await page.locator('[data-f-step-go="3"]').click();
+  await expect(page.locator('body')).not.toHaveAttribute('data-f-analysis-full', '1');
+  const map = await box(page, '[data-f-map-panel] .f-map-frame');
+  const consult = await box(page, '[data-f-consult-panel]');
+  expect(map.x + map.width).toBeLessThanOrEqual(consult.x);
+  expect(await overflowX(page)).toBeLessThanOrEqual(0);
+});
+
+test('Phase3 412: ③ 지도 자동 미니바 · 44px 복원 · 기존 영상·메모·조회수 그대로', async ({ page }, testInfo) => {
+  test.skip(width(page) !== 412, 'Fold8 커버 전용');
+  const b = bridge(page); await b.ready; await loadIndex(page);
+  await open(page, '바위리 12-3'); await page.locator('[data-f-bundle-add]').click(); await lookup(page); await std(page);
+  await page.locator('[data-f-memo]').fill('지도 축소 상태 보존');
+  const n = b.log.length;
+  const originalImg=await page.locator('[data-f-map-img]').getAttribute('src');
+  await page.locator('[data-f-step-go="3"]').click();
+  await expect(page.locator('[data-f-map-mini]')).toBeVisible();
+  await expect(page.locator('[data-f-map-panel] .f-map-frame')).toBeHidden();
+  await expect(page.locator('[data-f-map-img]')).toHaveCount(1);
+  await shot(page, testInfo, 'phase3-consult-mini');
+  const restore=page.locator('[data-f-map-restore]');
+  const dimensions=await restore.boundingBox();
+  expect(dimensions.height).toBeGreaterThanOrEqual(44);
+  await restore.click();
+  await expect(page.locator('[data-f-map-panel] .f-map-frame')).toBeVisible();
+  await expect(page.locator('[data-f-map-img]')).toHaveAttribute('src', originalImg);
+  await page.locator('[data-f-step-go="3"]').click();
+  await expect(page.locator('[data-f-map-mini]')).toBeVisible();
+  await page.locator('[data-f-step-go="2"]').click();
+  await expect(page.locator('[data-f-map-mini]')).toBeHidden();
+  await expect(page.locator('[data-f-memo]')).toHaveValue('지도 축소 상태 보존');
+  expect(b.log.length).toBe(n);
+});
+
+test('Phase3 PC: 지도 기본 콤팩트·5열 표 동시 열람, 지도 확대 토글은 API 재조회 없음', async ({ page }, testInfo) => {
+  test.skip(width(page) !== 1440, 'ThinkPad PC 전용');
+  const b=bridge(page); await b.ready; await loadIndex(page); await twoParcels(page);
+  const n=b.log.length;
+  const frame=page.locator('[data-f-map-panel] .f-map-frame');
+  const before=await frame.boundingBox();
+  const matrix=page.locator('[data-f-std-matrix]');
+  await expect(matrix).toBeVisible();
+  expect(before.width).toBeLessThanOrEqual(295);
+  await page.evaluate(() => {
+    const el=document.querySelector('[data-f-map-panel]');
+    window.scrollTo(0,Math.max(0,el.getBoundingClientRect().top+window.scrollY-70));
+  });
+  const mapVisible=await frame.boundingBox();
+  const matrixVisible=await matrix.boundingBox();
+  expect(mapVisible.y).toBeGreaterThanOrEqual(0);
+  expect(mapVisible.y+mapVisible.height).toBeLessThan(page.viewportSize().height);
+  expect(matrixVisible.y).toBeLessThan(page.viewportSize().height);
+  const stdScroll=await page.locator('[data-f-std-section]').evaluate((el)=> {
+    const y=window.scrollY;el.scrollTop=150;return {inner:el.scrollTop,pageMoved:Math.abs(window.scrollY-y)>1};
+  });
+  expect(stdScroll.inner).toBeGreaterThan(10);expect(stdScroll.pageMoved).toBe(false);
+  await shot(page,testInfo,'phase3-map-and-table');
+  const btn=page.locator('[data-f-pc-map-toggle]');
+  await expect(btn).toBeVisible();
+  await btn.click();
+  await expect(btn).toHaveAttribute('aria-pressed','true');
+  const expanded=await frame.boundingBox();
+  expect(expanded.width).toBeGreaterThan(before.width+50);
+  await btn.click();
+  await expect(btn).toHaveAttribute('aria-pressed','false');
+  const restored=await frame.boundingBox();
+  expect(Math.abs(restored.width-before.width)).toBeLessThan(2);
+  await expect(matrix).toBeVisible();
+  expect(await overflowX(page)).toBeLessThanOrEqual(0);
+  expect(b.log.length).toBe(n);
+});
+
+test('Phase3 Fold8 접기·펼치기: 이전 지도축소·풀폭 모드 정리, 버튼 재배치, 입력 보존', async ({ page }) => {
+  test.skip(width(page) !== 412, '커버에서 펼치는 전환만 시험');
+  const b=bridge(page);await b.ready;await loadIndex(page);await twoParcels(page);
+  await page.locator('[data-f-memo]').fill('접기·펼치기에도 메모 유지');
+  const count=b.log.length;
+  await page.locator('[data-f-step-go="3"]').click();
+  await expect(page.locator('[data-f-map-mini]')).toBeVisible();
+  await page.setViewportSize({width:884,height:1104});
+  await expect(page.locator('[data-f-map-mini]')).toBeHidden();
+  await expect(page.locator('[data-f-map-panel] .f-map-frame')).toBeVisible();
+  await page.locator('[data-f-step-go="2"]').click();
+  await expect(page.locator('body')).toHaveAttribute('data-f-analysis-full','1');
+  await page.setViewportSize({width:412,height:915});
+  await expect(page.locator('body')).not.toHaveAttribute('data-f-analysis-full','1');
+  await expect(page.locator('[data-f-std-matrix]')).toBeHidden();
+  await expect(page.locator('[data-f-dock="more"]')).toBeVisible();
+  await page.locator('[data-f-step-go="3"]').click();
+  await expect(page.locator('[data-f-map-mini]')).toBeVisible();
+  await page.setViewportSize({width:884,height:1104});
+  await expect(page.locator('[data-f-map-mini]')).toBeHidden();
+  await expect(page.locator('[data-f-dock="bundle"]')).toBeVisible();
+  await expect(page.locator('[data-f-memo]')).toHaveValue('접기·펼치기에도 메모 유지');
+  expect(await overflowX(page)).toBeLessThanOrEqual(0);
+  expect(b.log.length).toBe(count);
 });
