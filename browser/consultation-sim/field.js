@@ -668,10 +668,21 @@ function renderActiveContext() {
     delete document.body.dataset.fConsultMini;
     const mini = $('[data-f-map-mini]'); if (mini) mini.hidden = true;
     const map = $('[data-f-map-panel] .f-map-frame');
-    const dest = map && map.getClientRects().length ? map : $('[data-f-pd-go]') || $('[data-f-kpi]');
-    if (dest) { dest.scrollIntoView({ block: 'center', behavior: 'auto' }); if (dest !== map && dest.matches('button')) dest.focus({ preventScroll: true }); }
+    const hasMap = Boolean(map?.getClientRects().length);
+    const go = $('[data-f-pd-go]');
+    // 로컬 브리지 연결 확인 중에는 조회 버튼이 아직 없다. KPI가 아니라 공적자료 상태로 안내한다.
+    const dest = hasMap ? map : go || $('[data-f-pd]') || $('[data-f-facts-panel]');
+    if (dest) {
+      dest.scrollIntoView({ block: 'center', behavior: 'auto' });
+      if (dest === go) go.focus({ preventScroll: true });
+    }
     const hint = el.querySelector('[data-f-quick-hint]');
-    if (hint) { hint.hidden = Boolean(map && map.getClientRects().length); hint.textContent = '지도가 아직 없다면 공적자료 조회를 먼저 진행하세요.'; }
+    if (hint) {
+      hint.hidden = hasMap;
+      hint.textContent = !hasMap ? go ? '공적자료 조회 버튼을 확인하세요. 조회는 자동 실행되지 않습니다.'
+        : !st.pdBridge ? '공적자료 연결 확인 중입니다. 연결되면 조회 버튼이 표시됩니다.'
+          : '지도가 아직 표시되지 않습니다. 공적자료 확인 상태를 확인하세요.' : '';
+    }
   });
   el.querySelector('[data-f-quick-memo]')?.addEventListener('click', () => {
     const hint = el.querySelector('[data-f-quick-hint]');
