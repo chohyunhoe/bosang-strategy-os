@@ -409,7 +409,9 @@ test('개선: 출처 계층화·추정 포함 명칭 일치 · 후보별 코드/
     const mx = page.locator('[data-f-std-matrix]');
     await expect(mx).toBeVisible();
     await expect(page.locator('.f-mx-context')).toBeVisible();
-    await expect(page.locator('.f-mx-context')).toContainText('원문 대조 전');
+    // 반복 주석은 표 머리에서 빼고 접힌 '비교 기준·근거'에 둔다(현장 화면 간소화)
+    await expect(page.locator('.f-mx-context')).not.toContainText('원문 대조 전');
+    await expect(page.locator('[data-f-mx-notes]')).toContainText('토지특성현황도(도면) 원문 아님');
     const row = mx.locator('[data-f-mx-row="elevation"]');
     await expect(row.locator('[data-f-diff="SAME"]').first()).toContainText('추정 포함');
     expect(await mx.locator('[data-f-mx-source="RECEIVED"]').count()).toBeGreaterThan(0);
@@ -509,7 +511,7 @@ test('Phase3 412: ③ 지도 자동 미니바 · 44px 복원 · 기존 영상·�
   expect(b.log.length).toBe(n);
 });
 
-test('Phase3 PC: 지도 기본 콤팩트·5열 표 동시 열람, 지도 확대 토글은 API 재조회 없음', async ({ page }, testInfo) => {
+test('PC: 기본 지도 600~800px · 지도와 선택 표준지 요약 동시 열람 · 지도 크게 토글은 API 재조회 없음', async ({ page }, testInfo) => {
   test.skip(width(page) !== 1440, 'ThinkPad PC 전용');
   const b=bridge(page); await b.ready; await loadIndex(page); await twoParcels(page);
   const n=b.log.length;
@@ -517,16 +519,17 @@ test('Phase3 PC: 지도 기본 콤팩트·5열 표 동시 열람, 지도 확대 
   const before=await frame.boundingBox();
   const matrix=page.locator('[data-f-std-matrix]');
   await expect(matrix).toBeVisible();
-  expect(before.width).toBeLessThanOrEqual(295);
+  // 2026-11-26 현장 실사용 개선: 290px 상한 폐지 — 기본 600~800px(가용 화면에 맞춤)
+  expect(before.width).toBeGreaterThanOrEqual(600); expect(before.width).toBeLessThanOrEqual(801);
   await page.evaluate(() => {
     const el=document.querySelector('[data-f-map-panel]');
     window.scrollTo(0,Math.max(0,el.getBoundingClientRect().top+window.scrollY-70));
   });
   const mapVisible=await frame.boundingBox();
-  const matrixVisible=await matrix.boundingBox();
+  const stripVisible=await page.locator('[data-f-std-strip]').boundingBox();
   expect(mapVisible.y).toBeGreaterThanOrEqual(0);
   expect(mapVisible.y+mapVisible.height).toBeLessThan(page.viewportSize().height);
-  expect(matrixVisible.y).toBeLessThan(page.viewportSize().height);
+  expect(stripVisible.y).toBeLessThan(page.viewportSize().height); // 지도와 함께 선택 표준지 요약이 같은 화면에
   const stdScroll=await page.locator('[data-f-std-section]').evaluate((el)=> {
     const y=window.scrollY;el.scrollTop=150;return {inner:el.scrollTop,pageMoved:Math.abs(window.scrollY-y)>1};
   });

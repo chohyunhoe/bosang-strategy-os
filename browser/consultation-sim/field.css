@@ -535,6 +535,10 @@ body[data-f-focus="1"] .f-std-focus-traits{display:block;margin:8px 0;border:1px
   body:not([data-f-pc-map-expanded="1"]) .f-work:has([data-f-bundle-bar]) .f-grid>[data-f-map-panel] .f-map{grid-template-columns:minmax(0,1fr);grid-template-areas:"frame" "tools" "status" "strip" "legend" "note";grid-template-rows:auto}
   .f-grid>[data-f-std-section]{max-height:max(340px,calc(100vh - 200px))}
   body[data-f-pc-map-expanded="1"] .f-std-strip{display:block;margin-top:6px}
+  /* '지도 크게': 지도를 상담 칸 위까지 가로 전체로 올리고 화면 높이에 맞춰 키운다(기본 600~800px보다 큼) */
+  body[data-f-pc-map-expanded="1"]:not([data-f-focus="1"]) .f-grid{grid-template-areas:"map map" "kpi consult" "std consult" "facts consult"}
+  body[data-f-pc-map-expanded="1"]:not([data-f-focus="1"]) .f-grid>[data-f-map-panel]{grid-column:1/-1}
+  body[data-f-pc-map-expanded="1"] .f-map-frame{max-width:min(100%,calc((100vh - 140px) * 4 / 3))}
   body[data-f-focus="1"] .f-map{max-width:1100px}
   body[data-f-focus="1"] .f-grid>[data-f-map-panel] .f-map{display:grid;grid-template-columns:minmax(0,clamp(600px,min(calc((100vh - 300px) * 4 / 3),calc(100% - 290px)),800px)) minmax(260px,1fr);grid-template-areas:"frame tools" "frame status" "frame strip" "frame legend" "frame note";grid-template-rows:auto auto auto auto 1fr;gap:2px 10px;align-items:start}
   body[data-f-focus="1"] .f-map-frame{grid-area:frame;max-width:800px}
