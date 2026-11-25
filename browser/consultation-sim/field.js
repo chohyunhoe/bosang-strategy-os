@@ -73,6 +73,9 @@ function setIndex(index, origin) {
 function showIndexError(msg) { const e = $('[data-f-index-error]'); e.hidden = false; e.textContent = msg; $('[data-f-loader]').hidden = false; }
 
 function newConsultation() {
+  delete document.body.dataset.fAnalysisFull;
+  delete document.body.dataset.fConsultMini;
+  const mini = $('[data-f-map-mini]'); if (mini) mini.hidden = true;
   st.bundle = null; bundleKeys.bar = ''; bundleKeys.map = '';
   st.search = null; st.directOffer = null; freshParcel();
   $('[data-f-q]').value = '';
@@ -264,7 +267,7 @@ function renderMap() {
   if (!panel || !box || !sbox) return;
   renderBundle(); // 묶음 막대(조회 중 표시·호출 집계)도 같이 갱신 — 바뀐 것이 없으면 다시 그리지 않음
   panel.hidden = !active() || !st.map;
-  if (panel.hidden) { box.innerHTML = ''; lastMapKey = ''; sbox.innerHTML = active() ? STD_WAIT : ''; return; }
+  if (panel.hidden) { delete document.body.dataset.fAnalysisFull; delete document.body.dataset.fConsultMini; const mini = $('[data-f-map-mini]'); if (mini) mini.hidden = true; box.innerHTML = ''; lastMapKey = ''; sbox.innerHTML = active() ? STD_WAIT : ''; return; }
   const m = st.map;
   // 같은 화면 상태면 다시 그리지 않는다(영상 재요청 방지). 영상 수신 상태는 칩만 바꾼다.
   const sr = m.status === 'EXACT_ONE' ? stdReview() : null;
@@ -846,13 +849,29 @@ function markStep(n) { document.querySelectorAll('[data-f-step-go]').forEach((b)
 // 단계 구간의 맨 위(화면 배치 순서 기준 — DOM 순서와 다를 수 있음)
 const stepSec = (n) => [...document.querySelectorAll(`[data-f-step-sec="${n}"]`)].filter((x) => !x.hidden && x.offsetParent !== null)
   .sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top)[0] || null;
+// 화면만 재배치: 상태 객체, 실제 영상 요소, SVG/PNU 및 비동기 조회는 변경하지 않는다.
+function setVisualStepMode(n) {
+  const hasMap = Boolean($('.f-map-frame'));
+  const fullMatrix = hasMap && n === 2 && window.matchMedia('(min-width:860px) and (max-width:1199px)').matches;
+  const mini = hasMap && n === 3 && window.matchMedia('(max-width:859px)').matches;
+  if (fullMatrix) document.body.dataset.fAnalysisFull = '1'; else delete document.body.dataset.fAnalysisFull;
+  if (mini) document.body.dataset.fConsultMini = '1'; else delete document.body.dataset.fConsultMini;
+  const bar = $('[data-f-map-mini]'); if (bar) bar.hidden = !mini;
+  return { fullMatrix, mini };
+}
 function goStep(n) {
-  const sec = stepSec(n);
-  if (!sec) return;
+  if (!stepSec(n)) return;
+  const mode = setVisualStepMode(n);
   markStep(n); stepLock = Date.now();
-  const nav = $('[data-f-steps]'); const navH = nav && nav.offsetParent ? nav.getBoundingClientRect().height : 0;
-  const pin = $('.f-map-frame'); const pinned = pin && getComputedStyle(pin).position === 'sticky' ? pin.getBoundingClientRect().height : 0;
-  window.scrollTo(0, Math.max(0, sec.getBoundingClientRect().top + window.scrollY - navH - pinned - 14));
+  requestAnimationFrame(() => {
+    const sec = stepSec(n); if (!sec) return;
+    const nav = $('[data-f-steps]'); const navH = nav && nav.offsetParent ? nav.getBoundingClientRect().height : 0;
+    const pin = $('.f-map-frame');
+    const stickyHeight = mode.fullMatrix ? ($('[data-f-map-panel]')?.getBoundingClientRect().height || 0)
+      : mode.mini ? ($('[data-f-map-mini]')?.getBoundingClientRect().height || 0)
+      : pin && getComputedStyle(pin).position === 'sticky' && getComputedStyle(pin).display !== 'none' ? pin.getBoundingClientRect().height : 0;
+    window.scrollTo(0, Math.max(0, sec.getBoundingClientRect().top + window.scrollY - navH - stickyHeight - 14));
+  });
 }
 let stepLock = 0;
 function spyStep() {
@@ -920,7 +939,27 @@ function init() {
   document.querySelectorAll('[data-f-step-go]').forEach((b) => b.addEventListener('click', () => goStep(Number(b.dataset.fStepGo))));
   let spyQueued = false;
   window.addEventListener('scroll', () => { if (spyQueued) return; spyQueued = true; requestAnimationFrame(() => { spyQueued = false; spyStep(); }); }, { passive: true });
+  // Fold8 접기/펼치기: 다른 화면폭에서 지난 레이아웃 모드·메뉴가 겹치지 않도록 정리.
+  window.addEventListener('resize', () => {
+    if (!window.matchMedia('(max-width:859px)').matches) {
+      delete document.body.dataset.fConsultMini;
+      const mini = $('[data-f-map-mini]'); if (mini) mini.hidden = true;
+    }
+    if (!window.matchMedia('(min-width:860px) and (max-width:1199px)').matches) delete document.body.dataset.fAnalysisFull;
+    renderDock();
+  }, { passive: true });
   $('[data-f-map-pin]').addEventListener('click', (e) => { const on = e.currentTarget.getAttribute('aria-pressed') !== 'true'; e.currentTarget.setAttribute('aria-pressed', String(on)); if (on) delete document.body.dataset.fUnpin; else document.body.dataset.fUnpin = '1'; });
+  $('[data-f-map-restore]').addEventListener('click', () => {
+    delete document.body.dataset.fConsultMini;
+    $('[data-f-map-mini]').hidden = true;
+    requestAnimationFrame(() => $('.f-map-frame')?.scrollIntoView({ block: 'start' }));
+  });
+  $('[data-f-pc-map-toggle]').addEventListener('click', (e) => {
+    const expanded = document.body.dataset.fPcMapExpanded !== '1';
+    if (expanded) document.body.dataset.fPcMapExpanded = '1'; else delete document.body.dataset.fPcMapExpanded;
+    e.currentTarget.setAttribute('aria-pressed', String(expanded));
+    e.currentTarget.textContent = expanded ? '지도 간단히' : '지도 크게';
+  });
   $('[data-f-client-toggle]').addEventListener('click', (e) => { const on = e.currentTarget.getAttribute('aria-pressed') !== 'true'; e.currentTarget.setAttribute('aria-pressed', String(on)); e.currentTarget.textContent = on ? '고객설명 모드 끄기' : '고객설명 모드'; if (on) document.body.dataset.fClient = '1'; else delete document.body.dataset.fClient; $('[data-f-client-note]').hidden = !on; });
   // 인쇄·PDF 저장(버튼·브라우저 메뉴·window.print 모두): 공적자료 영역은 CSS로 숨기고, 인쇄 직전 DOM에서도 비운다.
   window.addEventListener('beforeprint', () => { document.body.dataset.printing = '1'; ['[data-f-pd]', '[data-f-map]', '[data-f-std]', '[data-f-zoning]', '[data-f-bundle-map]'].forEach((sel) => { const box = $(sel); if (box) box.innerHTML = ''; }); lastMapKey = ''; lastZoningKey = ''; bundleKeys.map = ''; });
