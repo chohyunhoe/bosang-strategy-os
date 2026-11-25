@@ -31,6 +31,7 @@
       <button type="button" class="secondary" data-f-new>새 상담</button>
     </div>
   </form>
+  <div class="f-active-context" data-f-active-context aria-live="polite" hidden></div>
 
   <div class="f-work" data-f-work>
   <aside class="f-side" data-f-side aria-label="상담 묶음(다필지)">
@@ -93,6 +94,11 @@
     <button type="button" class="primary" data-f-dock="summary">현재 필지 요약</button>
     <button type="button" class="primary" data-f-dock="bundle" hidden>묶음 통합 요약</button>
     <button type="button" class="secondary" data-f-dock="save">현재 필지 상세본 받기</button>
+    <button type="button" class="secondary f-dock-more" data-f-dock="more" aria-expanded="false" aria-controls="f-dock-menu" hidden>묶음·상세 ▾</button>
+    <div class="f-dock-menu" id="f-dock-menu" data-f-dock-menu hidden>
+      <button type="button" class="primary" data-f-dock-menu-action="bundle">묶음 통합 요약 복사</button>
+      <button type="button" class="secondary" data-f-dock-menu-action="save">현재 필지 상세본 내려받기(.txt)</button>
+    </div>
   </div>
 
   <footer class="f-foot"><ul data-f-warnings></ul></footer>

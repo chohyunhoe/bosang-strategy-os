@@ -107,7 +107,7 @@ test('화면 배치: PC는 다필지|지도+5열 비교|상담 3단 · 펼침은
     await expect(page.locator('[data-f-dock-bar]')).toBeVisible();
     await expect(matrix).toBeHidden(); // 커버: 2열(대상 ↔ 선택 후보)
     await expect(page.locator('[data-f-std-traits]')).toBeVisible();
-    for (const [, dock] of Object.entries(await page.locator('[data-f-dock-bar] button').evaluateAll((els) => els.map((e) => e.getBoundingClientRect().height)))) expect(dock).toBeGreaterThanOrEqual(48);
+    for (const dock of await page.locator('[data-f-dock-bar] button').evaluateAll((els) => els.filter((e) => e.checkVisibility()).map((e) => e.getBoundingClientRect().height))) expect(dock).toBeGreaterThanOrEqual(48);
   }
   expect(await overflowX(page)).toBeLessThanOrEqual(0);
   await page.evaluate(() => window.scrollTo(0, 0));
@@ -286,7 +286,8 @@ test('하단 엄지 막대: 실제 함수 호출(담기·요약 복사·.txt 내
   await add.click();
   await expect(page.locator('[data-f-bundle-bar]')).toHaveAttribute('data-count', '1');
   await expect(add).toBeDisabled(); await expect(add).toContainText('담김 ①');
-  const [download] = await Promise.all([page.waitForEvent('download'), page.locator('[data-f-dock="save"]').click()]);
+  if (width(page) <= 480) await page.locator('[data-f-dock="more"]').click();
+  const [download] = await Promise.all([page.waitForEvent('download'), page.locator(width(page) <= 480 ? '[data-f-dock-menu-action="save"]' : '[data-f-dock="save"]').click()]);
   expect(fs.readFileSync(await download.path(), 'utf8')).toContain('BSO 현장 상담카드');
   await expect(page.locator('[data-f-dock-out]')).toContainText('다운로드를 요청했습니다');
   await page.locator('[data-f-dock="summary"]').click();
@@ -335,8 +336,9 @@ test('요약 구분: 현재 필지 요약은 1필지 · 묶음 통합 요약은 
   await page.locator(pc ? '[data-f-copy-summary]' : '[data-f-dock="summary"]').click();
   await expect(page.locator('[data-f-out]')).toContainText('현재 필지 현장 요약을 복사했습니다');
   const one = await clip(); expect(one).toContain('[BSO 현장 요약'); expect(one).not.toContain('통합'); expect(one).not.toContain('바위리 12-3');
-  if (!pc) await expect(page.locator('[data-f-dock="bundle"]')).toHaveText('묶음 통합 요약(3필지)');
-  await page.locator(pc ? '[data-f-bundle-copy]' : '[data-f-dock="bundle"]').click();
+  if (!pc && width(page) > 480) await expect(page.locator('[data-f-dock="bundle"]')).toHaveText('묶음 통합 요약(3필지)');
+  if (!pc && width(page) <= 480) await page.locator('[data-f-dock="more"]').click();
+  await page.locator(pc ? '[data-f-bundle-copy]' : width(page) <= 480 ? '[data-f-dock-menu-action="bundle"]' : '[data-f-dock="bundle"]').click();
   await expect(page.locator(pc ? '[data-f-bundle-out]' : '[data-f-dock-out]')).toContainText('묶음 통합 현장요약을 복사했습니다(담긴 3필지)');
   const all = await clip(); expect(all).toContain('통합 현장요약'); expect(all).toContain('3필지'); expect(all).toContain('① 바위리 12-3');
   expect(b.log).toEqual([]);
@@ -370,4 +372,73 @@ test('UI 조작은 추가 조회 0회: 후보·열·단계·고객설명·요약
   expect(aerial).toBe(a0);
   for (const i of [1, 0, 1, 0]) await page.locator('[data-f-bundle-pick]').nth(i).click();
   expect(b.log.length).toBe(n);
+});
+
+
+// Gemini 2차 정밀개선: 동작 회귀 방지. 합성 자료만 사용하고 실제 VWorld 호출 없음.
+test('개선: 검색 초안과 실제 활성 필지 구분 · 검색 성공/필지 전환 후 검색창 초기화', async ({ page }) => {
+  const b = bridge(page); await b.ready; await loadIndex(page);
+  await open(page, '바위리 12-3');
+  await expect(page.locator('[data-f-active-label]')).toContainText('바위리 12-3');
+  await expect(page.locator('[data-f-q]')).toHaveValue('');
+  await page.locator('[data-f-bundle-add]').click();
+  await page.locator('[data-f-q]').fill('새솔리 12-3');
+  await expect(page.locator('[data-f-active-label]')).toContainText('바위리 12-3');
+  await page.locator('[data-f-go]').click();
+  await expect(page.locator('[data-f-active-label]')).toContainText('새솔리 12-3');
+  await expect(page.locator('[data-f-q]')).toHaveValue('');
+  await page.locator('[data-f-bundle-add]').click();
+  await page.locator('[data-f-q]').fill('임시 조회 문구');
+  await page.locator('[data-f-bundle-pick]').first().click();
+  await expect(page.locator('[data-f-active-label]')).toContainText('바위리 12-3');
+  await expect(page.locator('[data-f-q]')).toHaveValue('');
+  expect(b.count('standard_lands')).toBe(0);
+});
+
+test('개선: 출처 계층화·추정 포함 명칭 일치 · 후보별 코드/연도와 상태 보존', async ({ page }) => {
+  const b = bridge(page); await b.ready; await loadIndex(page);
+  await open(page, '바위리 12-3'); await lookup(page); await std(page);
+  await expect(page.locator('[data-f-std-traits] [data-f-std-trait="elevation"] [data-f-diff]')).toContainText('추정 포함');
+  if (width(page) >= 860) {
+    const mx = page.locator('[data-f-std-matrix]');
+    await expect(mx).toBeVisible();
+    await expect(page.locator('.f-mx-context')).toBeVisible();
+    await expect(page.locator('.f-mx-context')).toContainText('원문 대조 전');
+    const row = mx.locator('[data-f-mx-row="elevation"]');
+    await expect(row.locator('[data-f-diff="SAME"]').first()).toContainText('추정 포함');
+    expect(await mx.locator('[data-f-mx-source="RECEIVED"]').count()).toBeGreaterThan(0);
+    expect(await mx.locator('.prov-received').count()).toBe(0);
+  }
+  expect(b.count('standard_lands')).toBe(1);
+});
+
+test('개선: 면적기준일은 요약을 유지하고 원문 확인 입력은 기본 접힘', async ({ page }) => {
+  const b = bridge(page); await b.ready; await loadIndex(page);
+  await open(page, '바위리 12-3'); await page.locator('[data-f-bundle-add]').click();
+  const details = page.locator('[data-f-area-basis-box]');
+  await expect(details).toBeAttached();
+  expect(await details.evaluate((el) => el.open)).toBe(false);
+  await expect(page.locator('[data-f-area-basis-state]')).toContainText('기준일 미확인');
+  await details.locator('summary').click();
+  await page.locator('[data-f-area-basis]').fill('1999-12-01');
+  await expect(page.locator('[data-f-area-basis-state]')).toContainText('합산 안 함');
+  expect(b.log).toEqual([]);
+});
+
+test('개선: 커버 하단은 주요 3버튼 · 묶음요약과 실제 상세 다운로드는 더보기에서', async ({ page }) => {
+  test.skip(width(page) > 480, 'Fold8 커버 전용 조작');
+  const b = bridge(page); await b.ready; await loadIndex(page);
+  await open(page, '바위리 12-3');
+  const dock = page.locator('[data-f-dock-bar]');
+  expect(await dock.locator(':scope > button:visible').count()).toBe(3);
+  await page.locator('[data-f-dock="add"]').click();
+  await page.locator('[data-f-dock="more"]').click();
+  await expect(page.locator('[data-f-dock-menu-action="bundle"]')).toBeVisible();
+  await expect(page.locator('[data-f-dock-menu-action="save"]')).toBeVisible();
+  await page.locator('[data-f-dock-menu-action="bundle"]').click();
+  await expect(page.locator('[data-f-dock-out]')).toContainText('묶음 통합 현장요약');
+  await page.locator('[data-f-dock="more"]').click();
+  const [download] = await Promise.all([page.waitForEvent('download'), page.locator('[data-f-dock-menu-action="save"]').click()]);
+  expect(fs.readFileSync(await download.path(), 'utf8')).toContain('BSO 현장 상담카드');
+  expect(b.log).toEqual([]);
 });

@@ -80,8 +80,9 @@ function newConsultation() {
   if (!$('[data-f-q]').disabled) $('[data-f-q]').focus();
 }
 
-function openDirect(target) { saveSlot(); freshParcel({ direct: target }); render(); }
-function selectRow(row) { saveSlot(); freshParcel({ row }); render(); }
+function clearResolvedQuery() { const q = $('[data-f-q]'); if (q) q.value = ''; }
+function openDirect(target) { saveSlot(); freshParcel({ direct: target }); clearResolvedQuery(); render(); }
+function selectRow(row) { saveSlot(); freshParcel({ row }); clearResolvedQuery(); render(); }
 
 // 묶음에 담기: 지금 열린 필지를 슬롯으로(같은 필지면 그 슬롯으로 전환만). 소유 확인은 상담자가 고른다(기본 미확인).
 function addToBundle({ force = false } = {}) {
@@ -117,6 +118,7 @@ function switchTo(pid) {
   saveSlot(); st.bundle.pending = null;
   PARCEL_KEYS.forEach((k) => { st[k] = slot[k]; });
   st.pid = slot.pid; st.slotId = slot.pid; st.epoch += 1; st.search = null; st.directOffer = null;
+  clearResolvedQuery(); // 검색 초안과 활성 필지 혼동 차단
   $('[data-f-memo]').value = st.memo || ''; $('[data-f-out]').textContent = '';
   const y = window.scrollY; // 필지 전환은 화면 위치를 옮기지 않는다(단계·스크롤 유지)
   render();
@@ -384,6 +386,22 @@ const STD_WAIT = '<p class="small muted" data-f-std-wait>공적자료 조회로 
 const shortLabel = (label) => String(label || '').trim().split(/\s+/).slice(-2).join(' ');
 const mxVal = (c) => (c?.text ? esc(c.text) : c?.value == null ? '미확인' : esc(c.value));
 const mxBadge = (c) => (c.tier ? provBadge(c.tier, { label: c.label && c.value != null || c.status === 'CONFLICT' ? c.label : '', note: c.note || '' }) : '');
+const mxDiff = (c, target) => {
+  if (!c?.diff) return '';
+  if (c.diff === 'SAME' && (c.tier === PROV.ESTIMATED || target?.tier === PROV.ESTIMATED))
+    return '<span class="f-diff f-diff-estimated" data-f-diff="SAME" title="명칭은 같지만 한쪽 이상이 추정 자료입니다">명칭 일치·추정 포함</span>';
+  return diffTag(c.diff, c.diff_reason);
+};
+// 공통 API 출처는 열 헤더에 노출하고, 값별 출처는 속성·툴팁과 예외 배지에 보존.
+const mxCompactCell = (cell, target = null) => {
+  const value = mxVal(cell); const tier = cell?.tier || PROV.UNVERIFIED;
+  const label = cell?.label || (tier === PROV.RECEIVED ? 'API 수신 · 원문 대조 전' : tier === PROV.ESTIMATED ? '추정' : '미확인');
+  const attrs = ` data-f-mx-source="${esc(tier)}" title="${esc(label)}"`;
+  const showTier = tier === PROV.ESTIMATED || (tier === PROV.UNVERIFIED && value !== '미확인' && cell?.diff !== 'UNKNOWN');
+  const badge = showTier ? ` ${mxBadge(cell)}` : '';
+  const diff = cell?.diff && !(cell.diff === 'UNKNOWN' && value === '미확인') ? ` ${mxDiff(cell, target)}` : '';
+  return `<span class="f-mx-value"${attrs}>${value}</span>${badge}${diff}`;
+};
 const pdYear = () => [...TRAIT_FIELDS.map((f) => f.key), 'zoning', 'land_category'].map((k) => (st.pd?.values || []).find((v) => v.key === k)?.base_year).find(Boolean);
 function traitTable(sel, review, dup = false) {
   const mx = buildStdMatrix({ pdValues: st.pd?.values || [], columns: [sel], review });
@@ -394,7 +412,7 @@ function traitTable(sel, review, dup = false) {
       return `<tr data-f-std-trait="${r.key}"><th>${esc(r.label)}</th>
         <td><span data-f-trait-target data-f-trait-status="${esc(a.status || (a.value == null ? 'MISSING' : 'API_NAME'))}">${mxVal(a)}</span>${a.tier ? ` ${mxBadge(a)}` : ''}</td>
         <td><span data-f-trait-std data-f-trait-status="${esc(b.status || (b.value == null ? 'MISSING' : 'API_NAME'))}">${mxVal(b)}</span> ${mxBadge(b)}</td>
-        <td>${b.diff ? diffTag(b.diff, b.diff_reason) : ''}</td></tr>`; }).join('')}
+        <td>${mxDiff(b, a)}</td></tr>`; }).join('')}
     </tbody></table>
     <p class="small muted" data-f-trait-note>대상: 공적자료 토지특성 ${esc(ty || '연도 미상')}년 · ${sel.kind === 'CANDIDATE' ? '후보' : '표준지'}: 표준지 ${esc(sy || '연도 미상')}년 공시 속성${ty && sy && String(ty) !== String(sy) ? ' · <b>기준연도 다름</b>' : ''} — API 텍스트 값, 토지특성현황도(도면) 원문 아님 · 검토 보조</p>`;
 }
@@ -403,9 +421,9 @@ function stdMatrix(sr, cols, selected) {
   if (!cols.length) return '';
   const mx = buildStdMatrix({ pdValues: st.pd?.values || [], columns: cols, review: sr.review });
   const isSel = (c) => c.pnu === selected;
-  return `<div class="f-mx-wrap" data-f-std-matrix-wrap><table class="f-mx small" data-f-std-matrix data-cols="${cols.length}">
+  return `<div class="f-mx-wrap" data-f-std-matrix-wrap><div class="f-mx-context"><b>후보 ${cols.length}건 · 확정 아님</b><span>기본 출처: 대상 토지특성 API · 후보 표준지 API (수신값·원문 대조 전)</span></div><table class="f-mx small" data-f-std-matrix data-cols="${cols.length}">
     <thead><tr><th scope="col">구분</th><th scope="col">대상 필지<br><span class="muted" data-f-mx-year="target">${esc(pdYear() || '연도 미상')}${pdYear() ? '년' : ''} · 토지특성 API</span></th>${mx.columns.map((c) => `<th scope="col"${isSel(c) ? ' class="sel"' : ''}><button type="button" class="f-mx-col${isSel(c) ? ' sel' : ''}" data-f-std-col="${esc(c.pnu)}" aria-pressed="${isSel(c)}"><span class="n">${esc(c.rank ?? '·')}</span>${esc(shortLabel(c.label))}</button><span class="muted" data-f-mx-year="${esc(c.pnu)}">${esc(c.year || '연도 미상')}${c.year ? '년' : ''} 공시 · 표준지 API</span></th>`).join('')}</tr></thead>
-    <tbody>${mx.rows.map((r) => `<tr data-f-mx-row="${r.key}"><th scope="row">${esc(r.label)}</th><td data-f-mx-target>${mxVal(r.target)}${r.target.tier ? ` ${mxBadge(r.target)}` : ''}</td>${r.cells.map((c, i) => `<td data-f-mx-cell="${esc(mx.columns[i].pnu)}"${isSel(mx.columns[i]) ? ' class="sel"' : ''}>${mxVal(c)} ${mxBadge(c)}${c.diff ? ` ${diffTag(c.diff, c.diff_reason)}` : ''}</td>`).join('')}</tr>`).join('')}</tbody></table>
+    <tbody>${mx.rows.map((r) => `<tr data-f-mx-row="${r.key}"><th scope="row">${esc(r.label)}</th><td data-f-mx-target>${mxCompactCell(r.target)}</td>${r.cells.map((c, i) => `<td data-f-mx-cell="${esc(mx.columns[i].pnu)}"${isSel(mx.columns[i]) ? ' class="sel"' : ''}>${mxCompactCell(c, r.target)}</td>`).join('')}</tr>`).join('')}</tbody></table>
     <ul class="small muted f-mx-notes" data-f-mx-notes>${mx.notes.map((n) => `<li>${esc(n)}</li>`).join('')}</ul></div>`;
 }
 const won = (n) => (n == null ? '미기재' : `${Number(n).toLocaleString('ko-KR')}원/㎡`);
@@ -627,7 +645,14 @@ function renderZoning() {
   renderZoningResult();
 }
 
-function render() { renderResult(); renderCard(); renderPublicData(); renderZoning(); renderMap(); renderBundle(); }
+function renderActiveContext() {
+  const el = $('[data-f-active-context]'); if (!el) return;
+  if (!active()) { el.hidden = true; el.textContent = ''; return; }
+  const label = st.row ? `${st.row.ri} ${st.row.lot_label}` : st.direct.scope === 'PNU' ? `PNU ${st.direct.pnu}` : `${st.direct.leaf || ''} ${st.direct.lot_label || ''}`;
+  el.hidden = false;
+  el.innerHTML = `<b>현재 상담 필지</b><strong data-f-active-label>${esc(label.trim())}</strong><span>검색창은 새 필지 조회용</span>`;
+}
+function render() { renderResult(); renderCard(); renderPublicData(); renderZoning(); renderMap(); renderBundle(); renderActiveContext(); }
 
 // ── 상담 묶음 막대 · 전체 필지 지도 · 통합 요약 ─────────────────────────────
 const bundleKeys = { bar: '', map: '' };
@@ -652,7 +677,7 @@ function areaBasisForm(v) {
     <label>출처 <select data-f-area-basis-source>${opt(AREA_BASIS_SOURCES, v?.source || '')}</select></label>
     <label>확인 <select data-f-area-basis-check>${opt(AREA_BASIS_CHECKS, v?.check || 'UNCHECKED')}</select></label></div></details>`;
 }
-let areaBoxOpen = window.innerWidth >= 860; // 커버에서는 접어 지도를 밀어내지 않는다(펼침 여부 유지)
+let areaBoxOpen = false; // 기준일 입력은 원문 확인 시 펼친다. 상태 요약은 상시 표시.
 const AREA_TONE = { NONE: 'prov-unverified', INPUT_ONLY: 'prov-estimated', CHECKED: 'prov-statement' };
 function bindAreaBasis(box, act) {
   const d = $('[data-f-area-basis]', box); const src = $('[data-f-area-basis-source]', box); const chk = $('[data-f-area-basis-check]', box); if (!d) return;
@@ -803,8 +828,17 @@ function renderDock() {
   const full = Boolean(b && b.slots.length >= BUNDLE.maxParcels);
   add.textContent = act ? `담김 ${circled(b.slots.indexOf(act) + 1)} · ${b.slots.length}/${BUNDLE.maxParcels}` : full ? `묶음 ${BUNDLE.maxParcels}필지 꽉 참` : `＋ 묶음 담기${b ? ` ${b.slots.length}/${BUNDLE.maxParcels}` : ''}`;
   add.disabled = Boolean(act) || full;
-  const bs = $('[data-f-dock="bundle"]', d); bs.hidden = !b; if (b) bs.textContent = `묶음 통합 요약(${b.slots.length}필지)`;
-  d.dataset.count = b ? '4' : '3';
+  const narrow = window.matchMedia('(max-width:480px)').matches;
+  const bs = $('[data-f-dock="bundle"]', d); bs.hidden = !b || narrow; if (b) bs.textContent = `묶음 통합 요약(${b.slots.length}필지)`;
+  $('[data-f-dock="save"]', d).hidden = narrow;
+  $('[data-f-dock="more"]', d).hidden = !narrow;
+  $('[data-f-dock="summary"]', d).textContent = narrow ? '현재 요약' : '현재 필지 요약';
+  if (narrow) add.textContent = act ? `담김 ${circled(b.slots.indexOf(act) + 1)}` : '＋ 묶음 담기';
+  const menu = $('[data-f-dock-menu]', d);
+  menu.hidden = !narrow || d.dataset.moreOpen !== 'true';
+  $('[data-f-dock-menu-action="bundle"]', menu).hidden = !b;
+  $('[data-f-dock="more"]', d).setAttribute('aria-expanded', String(!menu.hidden));
+  d.dataset.count = narrow ? '3' : b ? '4' : '3';
 }
 // 단계 이동: 내용을 숨기지 않고 해당 구간으로 스크롤만 한다(입력·선택·스크롤 상태를 지우지 않음). 현재 구간은 스크롤 위치로 표시.
 function stepOffset() { const nav = $('[data-f-steps]'); if (!nav || !nav.offsetParent) return 0; const r = nav.getBoundingClientRect(); return Math.max(0, r.bottom); }
@@ -818,7 +852,7 @@ function goStep(n) {
   markStep(n); stepLock = Date.now();
   const nav = $('[data-f-steps]'); const navH = nav && nav.offsetParent ? nav.getBoundingClientRect().height : 0;
   const pin = $('.f-map-frame'); const pinned = pin && getComputedStyle(pin).position === 'sticky' ? pin.getBoundingClientRect().height : 0;
-  window.scrollTo(0, Math.max(0, sec.getBoundingClientRect().top + window.scrollY - navH - pinned - 6));
+  window.scrollTo(0, Math.max(0, sec.getBoundingClientRect().top + window.scrollY - navH - pinned - 14));
 }
 let stepLock = 0;
 function spyStep() {
@@ -864,7 +898,7 @@ function init() {
     saveSlot(); st.directOffer = null; freshParcel(); // 묶음에 담긴 필지는 슬롯에 남고, 새 검색은 묶음 밖 필지로 연다
     st.search = st.index ? searchNoticeIndex(st.index, q)
       : (q.trim() ? { status: SEARCH_STATUS.NOT_IN_INDEX, message: '고시 색인이 없습니다. 전체 주소로 전국 공적자료만 조회할 수 있습니다(편입 여부 미확인).', matches: [] } : { status: SEARCH_STATUS.EMPTY, matches: [] });
-    if (st.search.status === SEARCH_STATUS.UNIQUE) { st.row = st.search.matches[0]; }
+    if (st.search.status === SEARCH_STATUS.UNIQUE) { st.row = st.search.matches[0]; clearResolvedQuery(); }
     else if ([SEARCH_STATUS.NOT_IN_INDEX, SEARCH_STATUS.OUTSIDE_NOTICE_AREA, SEARCH_STATUS.PNU_NOT_SUPPORTED].includes(st.search.status)) st.directOffer = directLookupTarget(st.index, q);
     render();
   }
@@ -879,6 +913,9 @@ function init() {
   $('[data-f-dock="summary"]').addEventListener('click', () => copyCard('summary'));
   $('[data-f-dock="bundle"]').addEventListener('click', async () => { await copyBundle(); $('[data-f-dock-out]').textContent = $('[data-f-bundle-out]')?.textContent || ''; });
   $('[data-f-dock="save"]').addEventListener('click', saveCard);
+  $('[data-f-dock="more"]').addEventListener('click', () => { const d = $('[data-f-dock-bar]'); d.dataset.moreOpen = d.dataset.moreOpen === 'true' ? 'false' : 'true'; renderDock(); });
+  $('[data-f-dock-menu-action="bundle"]').addEventListener('click', async () => { $('[data-f-dock-bar]').dataset.moreOpen = 'false'; renderDock(); await copyBundle(); $('[data-f-dock-out]').textContent = $('[data-f-bundle-out]')?.textContent || ''; });
+  $('[data-f-dock-menu-action="save"]').addEventListener('click', () => { $('[data-f-dock-bar]').dataset.moreOpen = 'false'; renderDock(); saveCard(); });
   new MutationObserver(() => { $('[data-f-dock-out]').textContent = $('[data-f-out]').textContent; }).observe($('[data-f-out]'), { childList: true, characterData: true, subtree: true });
   document.querySelectorAll('[data-f-step-go]').forEach((b) => b.addEventListener('click', () => goStep(Number(b.dataset.fStepGo))));
   let spyQueued = false;

@@ -239,3 +239,50 @@ body[data-f-client] :is(.f-memo,[data-f-other],.f-zoning-confirm,[data-f-bundle-
 button,select{min-width:44px}.f-zoning-confirm :is(select,input){min-height:44px}
 @media (max-width:859px){.f-dock button{line-height:1.25}}
 .f-row button{flex:none;white-space:nowrap}.f-badges{align-items:center}
+
+/* LK BSO UI 정밀개선: 검색/활성필지 분리 및 Diff-First 가독성 */
+.f-active-context{display:flex;align-items:center;flex-wrap:wrap;gap:3px 8px;background:#e6eef6;border:1px solid #9db8d2;border-left:4px solid #1d4ed8;border-radius:9px;padding:5px 9px;margin:7px 0 0;font-size:12px;color:#193b62}
+.f-active-context strong{font-size:15px;font-weight:800;color:#102f57;overflow-wrap:anywhere}
+.f-active-context span{font-size:11px;color:#475569}
+.f-active-context[hidden]{display:none!important}
+.f-mx-context{display:flex;gap:4px 10px;flex-wrap:wrap;align-items:center;background:#f8fafc;border:1px solid var(--line);border-bottom:0;border-radius:8px 8px 0 0;padding:5px 8px;font-size:11.5px;color:#475569}
+.f-mx-context b{color:#1e3a5f}
+.f-mx-value{display:inline}
+.f-mx td:has([data-f-diff="DIFF"]){background:#fff7ed;border-left:3px solid #d97706}
+.f-mx td:has([data-f-diff="UNKNOWN"]),.f-mx td:has([data-f-diff="HOLD"]){background:#f8fafc}
+.f-mx .f-diff-same{background:transparent;color:#64748b;border:0;padding:0 2px}
+.f-diff-estimated{background:#fef3c7;color:#854d0e;border-color:#fcd34d;white-space:normal}
+.f-steps{background:#fff;box-shadow:0 2px 7px rgba(15,23,42,.08)}
+@media(max-width:1199px){
+  .f-top{padding-bottom:5px}
+  .f-top .eyebrow{font-size:10px}
+  .f-top h1{font-size:18px;margin:0 0 4px}
+  .f-top h1 small{font-size:11px}
+  .f-top .badge{font-size:11px;padding:2px 7px}
+  .f-search{margin-top:6px;padding:8px 10px}
+  .f-own{gap:3px 6px}
+  .f-bundle-bar{padding:6px 8px}
+  .f-own-banner{padding:4px 7px;font-size:11px}
+  .f-bundle-head button{min-height:44px}
+  .f-bundle-chips{padding:3px 0}
+  .f-bundle-chips .f-chip{min-height:44px}
+}
+@media(max-width:859px){
+  [data-f-step-sec]{scroll-margin-top:calc((100vw - 24px) * .75 + 80px)}
+  body[data-f-unpin] [data-f-step-sec]{scroll-margin-top:80px}
+}
+@media(min-width:860px){
+  [data-f-step-sec]{scroll-margin-top:80px}
+  [data-f-std-list]{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px}
+  [data-f-std-list] .f-std-item.cand.compact{min-width:0;width:100%;padding:5px 4px;font-size:11px}
+  [data-f-std-list] .f-std-item.cand.compact .small{display:none}
+}
+/* 커버 하단 3개 주요 동작 + 묶음요약/상세 내려받기 확장메뉴 */
+.f-dock-more[hidden],.f-dock-menu[hidden]{display:none!important}
+.f-dock-menu{position:absolute;right:10px;bottom:calc(100% + 5px);width:min(340px,calc(100vw - 20px));background:#fff;border:1px solid #cbd5e1;border-radius:12px;box-shadow:0 10px 28px rgba(15,23,42,.20);padding:8px;display:grid;gap:6px}
+.f-dock-menu button{width:100%;text-align:left;min-height:48px;font-size:13px}
+@media(max-width:480px){
+  .f-dock{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:6px}
+  .f-dock button{font-size:12.5px;white-space:nowrap;padding:4px 3px;min-width:0}
+  .f-dock-menu button{font-size:13px;padding:8px;white-space:normal}
+}
