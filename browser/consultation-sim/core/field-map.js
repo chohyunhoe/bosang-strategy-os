@@ -187,7 +187,7 @@ export function renderFieldMap(model) {
   const pressed = (b) => `aria-pressed="${b ? 'true' : 'false'}"`;
   const layer = (k, on, text) => `<button type="button" class="f-layer" data-f-map-toggle="${k}" ${pressed(on)}>${text}</button>`;
   const cadBtn = cov && !cov.full ? (() => {
-    const left = Math.max(0, CAD.sessionCalls - (model.cadUsed ?? model.cad.calls ?? 0));
+    const left = model.cadLeft ?? Math.max(0, CAD.sessionCalls - (model.cadUsed ?? model.cad.calls ?? 0));
     const need = cov.missing.length;
     const label = model.cad.busy ? '지적 불러오는 중…' : !need ? '' : left <= 0 ? '지적 조회 한도(이번 상담)' : need > CAD.perClick ? `확대 후 지적 불러오기(${need}칸)` : `현재 화면 지적 불러오기(${need}칸)`;
     return label ? `<button type="button" class="f-cad-load" data-f-cad-load data-need="${need}" ${model.cad.busy || left <= 0 || need > CAD.perClick ? 'disabled' : ''}>${label}</button>` : '';
@@ -195,7 +195,7 @@ export function renderFieldMap(model) {
   const aerialChip = `<span class="chip ${model.aerial === 'FAILED' ? 'bad' : model.aerial === 'OK' ? 'ok' : ''}" data-f-map-aerial="${esc(model.aerial)}">${model.aerial === 'FAILED' ? '영상 미수신' : model.aerial === 'OK' ? '영상' : '영상 수신 중'}</span>`;
   const cadChip = cov ? `<span class="chip ${cov.full ? 'ok' : 'warn'}" data-f-cad-coverage="${cov.full ? 'FULL' : cov.loading ? 'LOADING' : 'PARTIAL'}">${esc(cov.label)}${cov.full ? '' : ` · ${cov.complete}/${cov.tiles.length}칸`}</span>` : '';
   const stdSum = model.std?.summary ? `<span class="small" data-f-std-sum>${esc(model.std.summary)}</span>` : '';
-  const cadDetail = cov ? `<p data-f-cad-detail>지적 조회 칸(0.01° 격자, 화면 ${cov.tiles.length}칸): ${cov.states.map(({ t, s: ts }) => `${t[0] / 100},${t[1] / 100} ${ts ? `${CAD_LABEL[ts.status] || ts.status}${ts.total != null ? `(${ts.received ?? 0}/${ts.total}건)` : ''}${ts.reason && ts.status !== 'COMPLETE' ? ` ${esc(ts.reason)}` : ''}` : '미조회'}`).join(' · ')} · 이번 상담 지적 VWorld 호출 ${model.cadUsed ?? (model.cad.calls || 0)}회(상한 ${CAD.sessionCalls}회${model.cadUsed != null ? ' · 상담 묶음 공유' : ''}). 빗금 = 지적 미조회·일부 구역(지적선이 없어도 필지가 없는 것이 아님).</p>` : '';
+  const cadDetail = cov ? `<p data-f-cad-detail>지적 조회 칸(0.01° 격자, 화면 ${cov.tiles.length}칸): ${cov.states.map(({ t, s: ts }) => `${t[0] / 100},${t[1] / 100} ${ts ? `${CAD_LABEL[ts.status] || ts.status}${ts.total != null ? `(${ts.received ?? 0}/${ts.total}건)` : ''}${ts.reason && ts.status !== 'COMPLETE' ? ` ${esc(ts.reason)}` : ''}` : '미조회'}`).join(' · ')} · 이번 상담 지적 VWorld 호출 ${model.cadUsed ?? (model.cad.calls || 0)}회(상한 ${CAD.sessionCalls}회${model.cadShared ?? model.cadUsed != null ? ' · 상담 묶음 공유' : ''}${model.cadUnknown ? ` · 이 중 미확인 최대 ${model.cadUnknown}회` : ''}). 빗금 = 지적 미조회·일부 구역(지적선이 없어도 필지가 없는 것이 아님).</p>` : '';
   return `<div class="f-map" data-f-map-state="EXACT_ONE" data-f-map-pnu="${esc(model.pnu)}" data-f-map-zoom="${v.zoom}" data-f-map-mode="${esc(model.mode || 'CUSTOM')}">
     <div class="f-map-frame">
       <img class="f-map-img" data-f-map-img src="${esc(aerialUrl(v))}" width="${MAP.width}" height="${MAP.height}" alt="항공영상(VWorld PHOTO)" referrerpolicy="no-referrer">

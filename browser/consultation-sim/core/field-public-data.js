@@ -2,6 +2,7 @@
 // - 고시 색인에서 법정리까지 하나로 확정된 행에서만 호출한다(후보가 여럿이면 호출하지 않음).
 // - 실패·미설정은 '미조회'로 표시하고 합성·추정 값으로 채우지 않는다.
 const PREFIX = '/__public_data_bridge';
+export const REUSED_AT_HEADER = 'X-BSO-Reused-At';
 
 export const PD_STATUS = Object.freeze({
   OFFLINE: 'OFFLINE', NOT_CONFIGURED: 'NOT_CONFIGURED', NOT_QUERIED: 'NOT_QUERIED', OK: 'OK', NO_DATA: 'NO_DATA', FAILED: 'FAILED',
@@ -18,7 +19,10 @@ export function bridgeAllowed(loc, doc = globalThis.document) {
 async function call(fetchImpl, path, body) {
   try {
     const res = await fetchImpl(`${PREFIX}${path}`, body ? { method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : { cache: 'no-store' });
-    return await res.json().catch(() => ({ ok: false, error_code: 'INVALID_BRIDGE_RESPONSE' }));
+    const json = await res.json().catch(() => ({ ok: false, error_code: 'INVALID_BRIDGE_RESPONSE' }));
+    const at = res.headers?.get?.(REUSED_AT_HEADER); // 저장 결과 재사용이면 처음 받은 시각
+    if (at && json && typeof json === 'object') json._reused_at = at;
+    return json;
   } catch (_e) { return { ok: false, error_code: 'BRIDGE_UNREACHABLE' }; }
 }
 
@@ -35,7 +39,7 @@ const ERROR_TEXT = {
   VWORLD_REVISION_CONFLICT: '같은 연도 자료가 서로 다름(수정본 충돌) — 값 미사용, 원문 확인 필요',
   VWORLD_API_KEY_MISSING: 'VWorld 키 미설정', PUBLIC_DATA_KEY_MISSING: '공공데이터포털 키 미설정',
   BRIDGE_UNREACHABLE: '로컬 브리지 응답 없음', LEGAL_DONG_MULTIPLE_CANDIDATES: '법정동 후보 복수', LEGAL_DONG_NOT_FOUND: '법정동 코드 없음',
-  BUNDLE_STD_LIMIT: '상담 묶음의 표준지 조회 한도(3회)에 닿음 — 같은 조건 재조회는 저장된 결과 사용', CLIENT_TIMEOUT: '응답 시간 초과 — 다시 조회 가능',
+  BUNDLE_STD_LIMIT: '상담 묶음의 표준지 조회 한도(3회)에 닿음 — 이 조회에는 저장된 결과 없음(실패·시간 초과한 전송도 한도에 포함) · 이 묶음에서는 재시도 불가', BUNDLE_CAD_LIMIT: '지적 VWorld 호출 한도(40회) — 보내지 않음', CLIENT_TIMEOUT: '응답 시간 초과 — 다시 조회 가능',
 };
 const RESULT_TEXT = {
   INCORRECT_KEY: '인증키가 이 서비스(토지특성 등)에 허용되지 않았거나 올바르지 않음 — VWorld 인증키 관리에서 서비스 범위·상태 확인',
@@ -98,8 +102,8 @@ export async function queryPublicData({ fetchImpl, location: loc, index, row = n
   const records = [];
   for (const year of years) {
     const res = await call(fetchImpl, '/vworld_land', { pnu, standard_year: year, dedupe_revisions: true });
-    attempts.push({ year, ok: Boolean(res.ok), code: res.error_code || res.status || null, result_code: resultCodeOf(res.error_message), message: res.error_message || null, fetched_at: at() });
-    if (res.ok && res.record) records.push({ year, record: res.record, fetched_at: at() });
+    attempts.push({ year, ok: Boolean(res.ok), code: res.error_code || res.status || null, result_code: resultCodeOf(res.error_message), message: res.error_message || null, fetched_at: res._reused_at || at() });
+    if (res.ok && res.record) records.push({ year, record: res.record, fetched_at: res._reused_at || at() });
   }
   const zoningHistory = records.map((x) => ({ year: x.year, zoning: x.record.zoning ?? null, fetched_at: x.fetched_at, source: 'VWorld 국가중점데이터 토지특성' }));
   const latest = records.slice().sort((a, b) => b.year - a.year)[0];
@@ -107,7 +111,7 @@ export async function queryPublicData({ fetchImpl, location: loc, index, row = n
     {
       const year = latest.year;
       const r = latest.record; const src = 'VWorld 국가중점데이터 토지특성(로컬 브리지 경유)';
-      const v = (key, label, value, extra = {}) => ({ key, label, value: value ?? null, source: src, base_year: year, fetched_at: at(), status: value == null ? PD_STATUS.NO_DATA : PD_STATUS.OK, ...extra });
+      const v = (key, label, value, extra = {}) => ({ key, label, value: value ?? null, source: src, base_year: year, fetched_at: latest.fetched_at, status: value == null ? PD_STATUS.NO_DATA : PD_STATUS.OK, ...extra });
       const jimokMismatch = r.land_category && row?.jimok && r.land_category !== row.jimok;
       return {
         status: PD_STATUS.OK, stage: PD_STAGE.LIVE_DATA, ...base, attempts, zoning_history: zoningHistory,
@@ -136,7 +140,7 @@ export async function queryZoningHistory({ fetchImpl, location: loc, pnu, years 
     const res = await call(fetchImpl, '/vworld_land', { pnu, standard_year: year, dedupe_revisions: true });
     const zoning = res.ok && res.record ? (res.record.zoning ?? null) : null;
     attempts.push({ year, ok: Boolean(res.ok), found: Boolean(zoning), code: res.error_code || null, result_code: resultCodeOf(res.error_message) });
-    if (zoning) rows.push({ year, zoning, fetched_at: at(), source: 'VWorld 국가중점데이터 토지특성' });
+    if (zoning) rows.push({ year, zoning, fetched_at: res._reused_at || at(), source: 'VWorld 국가중점데이터 토지특성' });
     if (!res.ok && ['RATE_LIMITED', 'BRIDGE_UNREACHABLE', 'UNAUTHORIZED'].includes(res.error_code)) break;
   }
   const failed = attempts.filter((x) => !x.ok);
@@ -149,7 +153,7 @@ export async function queryParcelMap({ fetchImpl, location: loc, pnu, now = () =
   if (!bridgeAllowed(loc)) return { status: 'OFFLINE', pnu, reason: '오프라인 — 지도 미조회' };
   // 주변 지적은 화면 범위 칸 단위로 따로 조회(queryCadastralTiles) — 여기서는 대상 경계만.
   const r = await call(fetchImpl, '/parcel_map', { pnu });
-  const at = now().toISOString();
+  const at = r._reused_at || now().toISOString();
   if (!r.ok) return { status: 'FAILED', pnu, code: r.error_code, reason: errorText(r.error_code, r.error_message), fetched_at: at };
   const t = r.target || {};
   if (t.status !== 'EXACT_ONE' || String(t.pnu) !== String(pnu) || !t.geometry) {
@@ -180,5 +184,6 @@ export async function queryStandardLands({ fetchImpl, location: loc, pnu, year, 
   if (year == null || year === '' || !Number.isInteger(Number(year)) || Number(year) < 2000) return { ok: false, error_code: 'YEAR_INVALID', reason: '공시 기준연도 미확인 — 표준지 조회 안 함', fetched_at: at };
   const r = await call(fetchImpl, '/standard_lands', { pnu, year: Number(year), radius_m: radiusM, review_zoning: reviewZoning || '' });
   if (!r.ok) return { ...r, reason: errorText(r.error_code, r.error_message), fetched_at: at };
-  return { ...r, fetched_at: at };
+  const { _reused_at: reusedAt, ...rest } = r;
+  return { ...rest, fetched_at: reusedAt || now().toISOString(), ...(reusedAt ? { reused: true } : {}) };
 }

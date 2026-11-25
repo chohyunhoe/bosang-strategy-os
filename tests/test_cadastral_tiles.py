@@ -94,6 +94,12 @@ class CadastralTileTest(unittest.TestCase):
         out = bridge.parcel_map_tiles(TARGET, [[1, 2]], p)
         self.assertEqual(out["tiles"][0]["status"], "FAILED"); self.assertEqual(out["tiles"][0]["reason"], "TILE_INVALID")
 
+    def test_failed_tile_calls_are_counted(self):
+        # 실패한 칸이 이미 쓴 VWorld 호출도 request_count에 남는다(0으로 사라지지 않음)
+        p = FakeProvider({(12731, 3662): 0}, fail={(12732, 3662)})
+        r = bridge.parcel_map_tiles(TARGET, [[12731, 3662], [12732, 3662]], p)
+        self.assertEqual(r["request_count"], len(p.calls)); self.assertEqual(r["request_count"], 2)
+
 
 if __name__ == "__main__":
     unittest.main()

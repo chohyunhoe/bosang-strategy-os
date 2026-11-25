@@ -248,7 +248,7 @@ def parcel_map_tiles(pnu: str, tiles: Any, provider: Any) -> dict[str, Any]:
         else:
             used_bytes += size
         out.append(r)
-    calls = sum(int(t.get("calls") or 0) for t in out)
+    calls = TILE_CALL_BUDGET - budget[0]  # 실패한 칸이 쓴 호출도 포함(예산에서 실제로 뺀 수)
     return {"ok": True, "mode": "TILES", "pnu": pnu, "tiles": out, "request_count": calls, "source": "VWorld 연속지적도(LP_PA_CBND_BUBUN)", "review_required": True}
 
 

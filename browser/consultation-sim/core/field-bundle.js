@@ -32,17 +32,28 @@ export function pnuConflicts(slots) {
   return [...by.entries()].filter(([, ns]) => ns.length > 1).map(([pnu, ns]) => ({ pnu, numbers: ns }));
 }
 
-// ── 브리지 요청 캐시(묶음 전용) ───────────────────────────────────────────
-// fetchImpl과 같은 모양의 함수를 돌려준다. POST 브리지 작업만 캐시(상태 GET은 그대로).
+// ── 브리지 요청 계량·캐시 ──────────────────────────────────────────────
+// fetchImpl과 같은 모양의 함수를 돌려준다. POST 브리지 작업만 다룬다(상태 GET은 그대로).
+// - cache:false(묶음 전 단일 필지): 계량·시간 제한만. 재사용·표준지 한도 없음(기존 단일 필지 동작). enableCache()부터 묶음 동작.
 // - 키: 작업 경로 + 요청 본문(JSON). 같은 키 진행 중이면 그 결과를 함께 기다린다(중복 요청 없음).
-// - 성공(ok:true)만 저장. 실패·시간초과는 저장하지 않아 '다시 조회'가 실제로 다시 보낸다.
-// - 표준지는 묶음당 실제 전송 stdLookups회까지만(캐시 적중은 세지 않음).
-// - 실제 VWorld 호출 수는 서버가 돌려주는 request_count(표준지·지적 칸)를 더한다. 그 밖의 작업은 브리지 요청 수로 센다.
-export function createBridgeCache({ fetchImpl, limits = BUNDLE, timeoutMs = limits.timeoutMs, setTimer = setTimeout, clearTimer = clearTimeout }) {
-  const done = new Map(); const inflight = new Map();
-  const stats = { network: 0, reuse: 0, std_sent: 0, vworld_std: 0, vworld_cad: 0, other_requests: 0, blocked: 0 };
-  const jsonResponse = (text, status = 200) => new Response(text, { status, headers: { 'Content-Type': 'application/json' } });
-  async function send(url, init, op) {
+// - 성공(ok:true)만 저장하고 처음 받은 시각을 X-BSO-Reused-At으로 돌려준다. 실패·시간초과는 저장하지 않는다.
+// - 지적 칸: 보내기 전에 그 요청의 최대 소비량(서버 예산)을 예약한다. 예약+확인+미확인이 한도를 넘으면 보내지 않는다.
+//   응답의 request_count로 확정하고, 실패·시간초과·집계 없는 응답은 0으로 치지 않고 예약량을 '미확인'으로 남긴다.
+// - 표준지: 묶음당 전송 stdLookups회. 서버가 VWorld 호출 전에 거절한 전송만 한도에서 뺀다.
+// - 확인 집계는 서버가 알려준 request_count(표준지·지적 칸)뿐이다. 그 밖의 작업은 브리지 요청 수만 센다(VWorld 호출 수 미제공).
+export const TILE_REQUEST_MAX_CALLS = 8; // 서버 TILE_CALL_BUDGET
+export const TILE_MAX_PAGES = 3; // 서버 CADASTRAL_MAX_PAGES(칸당)
+// 서버가 VWorld를 부르기 전에 끝내는 거절(호출 0회가 확실한 것만)
+const NOT_SENT_UPSTREAM = new Set(['RATE_LIMITED', 'UNAUTHORIZED', 'FIELD_ACCESS_TOKEN_REQUIRED', 'FIELD_TAILNET_LOGIN_NOT_ALLOWED', 'FIELD_ROUTE_NOT_ALLOWED', 'VWORLD_API_KEY_MISSING', 'PNU_INVALID', 'YEAR_INVALID', 'TILES_INVALID', 'INVALID_JSON', 'REQUEST_TOO_LARGE']);
+const countOf = (v) => (typeof v === 'number' && Number.isInteger(v) && v >= 0 ? v : null);
+export function createBridgeCache({ fetchImpl, limits = BUNDLE, timeoutMs = limits.timeoutMs, cache = true, now = () => new Date(), setTimer = setTimeout, clearTimer = clearTimeout }) {
+  const done = new Map(); const inflight = new Map(); let caching = cache;
+  const stats = { network: 0, reuse: 0, std_sent: 0, std_ok: 0, std_failed: 0, std_unknown: 0, vworld_std: 0, vworld_cad: 0, cad_unknown: 0, cad_reserved: 0, other_requests: 0, other_failed: 0, blocked: 0 };
+  const jsonResponse = (text, status = 200, reusedAt = null) => new Response(text, { status, headers: { 'Content-Type': 'application/json', ...(reusedAt ? { 'X-BSO-Reused-At': reusedAt } : {}) } });
+  const cadUsed = () => stats.vworld_cad + stats.cad_unknown + stats.cad_reserved;
+  // 지금 보낼 수 있는 지적 호출 여유(한 칸 최대 소비보다 작으면 0)
+  const cadLeft = () => { const left = limits.cadCalls - cadUsed(); return left >= TILE_MAX_PAGES ? left : 0; };
+  async function send(url, init) {
     let timer;
     const timeout = new Promise((resolve) => { timer = setTimer(() => resolve({ timeout: true }), timeoutMs); });
     try {
@@ -52,43 +63,73 @@ export function createBridgeCache({ fetchImpl, limits = BUNDLE, timeoutMs = limi
     } catch (_e) { return { status: 200, text: JSON.stringify({ ok: false, error_code: 'BRIDGE_UNREACHABLE' }) }; }
     finally { clearTimer(timer); }
   }
-  function count(op, text) {
-    let j = null; try { j = JSON.parse(text); } catch (_e) { /* 형식 오류는 집계만 생략 */ }
-    if (op === 'standard_lands') stats.vworld_std += Number(j?.request_count?.total) || 0;
-    else if (op === 'parcel_map' && j?.mode === 'TILES') stats.vworld_cad += Number(j?.request_count) || 0;
-    else stats.other_requests += 1;
+  function settle(op, cost, text) {
+    let j = null; try { j = JSON.parse(text); } catch (_e) { /* 형식 오류 = 소비량 미확인 */ }
+    const free = j?.ok === false && NOT_SENT_UPSTREAM.has(j.error_code);
+    if (op === 'standard_lands') {
+      const n = countOf(j?.request_count?.total);
+      if (n != null) stats.vworld_std += n;
+      if (j?.ok === true) stats.std_ok += 1; else stats.std_failed += 1;
+      if (free) stats.std_sent -= 1; else if (n == null) stats.std_unknown += 1;
+    } else if (cost) {
+      stats.cad_reserved -= cost;
+      const n = j?.mode === 'TILES' ? countOf(j.request_count) : null;
+      if (n != null) stats.vworld_cad += n; else if (!free) stats.cad_unknown += cost;
+    } else { stats.other_requests += 1; if (j?.ok !== true) stats.other_failed += 1; }
     return j;
   }
+  const refuse = (code) => { stats.blocked += 1; return jsonResponse(JSON.stringify({ ok: false, error_code: code })); };
   const wrapped = async (url, init = {}) => {
     const method = String(init.method || 'GET').toUpperCase();
     const op = String(url).split('?')[0].split('/').pop();
     if (method !== 'POST') return fetchImpl(url, init);
     const key = `${op}|${init.body || ''}`;
-    if (done.has(key)) { stats.reuse += 1; return jsonResponse(done.get(key)); }
-    if (inflight.has(key)) { stats.reuse += 1; const r = await inflight.get(key); return jsonResponse(r.text, r.status); }
-    if (op === 'standard_lands' && stats.std_sent >= limits.stdLookups) { stats.blocked += 1; return jsonResponse(JSON.stringify({ ok: false, error_code: 'BUNDLE_STD_LIMIT' })); }
+    if (caching && done.has(key)) { stats.reuse += 1; const d = done.get(key); return jsonResponse(d.text, 200, d.at); }
+    if (caching && inflight.has(key)) { stats.reuse += 1; const r = await inflight.get(key); return jsonResponse(r.text, r.status); }
+    let cost = 0;
+    if (op === 'parcel_map') { let t = null; try { t = JSON.parse(init.body || '{}').tiles; } catch (_e) { /* 서버가 거절 */ } if (Array.isArray(t)) cost = Math.min(TILE_REQUEST_MAX_CALLS, Math.max(1, t.length) * TILE_MAX_PAGES); }
+    // 아래 한도 확인과 예약 사이에 await 없음 — 동시 요청도 순서대로 예약된다.
+    if (cost && cadUsed() + cost > limits.cadCalls) return refuse('BUNDLE_CAD_LIMIT');
+    if (caching && op === 'standard_lands' && stats.std_sent >= limits.stdLookups) return refuse('BUNDLE_STD_LIMIT');
     if (op === 'standard_lands') stats.std_sent += 1;
-    stats.network += 1;
-    const p = send(url, init, op).then((r) => { const j = count(op, r.text); if (j?.ok === true) done.set(key, r.text); return r; });
+    stats.cad_reserved += cost; stats.network += 1;
+    const p = send(url, init).then((r) => { const j = settle(op, cost, r.text); if (j?.ok === true) done.set(key, { text: r.text, at: now().toISOString() }); return r; });
     inflight.set(key, p);
-    try { const r = await p; return jsonResponse(r.text, r.status); } finally { inflight.delete(key); }
+    try { const r = await p; return jsonResponse(r.text, r.status); } finally { if (inflight.get(key) === p) inflight.delete(key); }
   };
-  return { fetch: wrapped, stats, size: () => done.size, inflight: () => inflight.size };
+  return { fetch: wrapped, stats, cadUsed, cadLeft, enableCache: () => { caching = true; }, size: () => done.size, inflight: () => inflight.size };
 }
 
 // ── 통합 현장요약 · 필지별 상세본 ──────────────────────────────────────────
 const fmt = (n) => (typeof n === 'number' ? n.toLocaleString('ko-KR', { maximumFractionDigits: 1 }) : '—');
 // parcels: [{ n, label, kind:'ROW'|'DIRECT', notice:{notice_no,notice_date}|null, facts:{jimok,ledger_area_m2,incorporated_area_m2,arithmetic}|null, ownership, card }]
+// 같은 땅일 수 있는 고시 행(같은 PNU, 또는 같은 고시의 같은 지번)은 어느 쪽도 합산하지 않고 보류한다(자동 병합·임의 선택 없음).
+export function areaHolds(parcels) {
+  const rows = parcels.filter((p) => p.kind === 'ROW'); const out = [];
+  const collect = (reason, keyOf) => {
+    const m = new Map();
+    rows.forEach((p) => { const k = keyOf(p); if (!k) return; if (!m.has(k)) m.set(k, []); m.get(k).push(p.n); });
+    for (const numbers of m.values()) if (numbers.length > 1 && !out.some((h) => numbers.every((n) => h.numbers.includes(n)))) out.push({ reason, numbers });
+  };
+  collect('SAME_PNU', (p) => p.pnu);
+  collect('SAME_LOT', (p) => (p.lot_key ? `${p.notice?.notice_no || ''}|${p.notice?.notice_date || ''}|${p.lot_key}` : null));
+  return out;
+}
+// 합산 단위: 사업 · 고시번호 · 고시일 · 기준일이 모두 같은 행끼리만
 export function bundleTotals(parcels) {
-  const groups = new Map(); const excluded = [];
+  const groups = new Map(); const excluded = []; const held = areaHolds(parcels); const heldSet = new Set(held.flatMap((h) => h.numbers));
+  const duplicates = parcels.filter((p) => p.kind !== 'ROW' && p.pnu).map((p) => ({ n: p.n, of: parcels.filter((q) => q.n !== p.n && q.pnu === p.pnu).map((q) => q.n) })).filter((d) => d.of.length);
   for (const p of parcels) {
     const f = p.facts;
     if (p.kind !== 'ROW' || !f || typeof f.ledger_area_m2 !== 'number' || typeof f.incorporated_area_m2 !== 'number') { excluded.push(p.n); continue; }
-    const k = `${p.notice?.notice_no || '고시 미상'}|${p.notice?.notice_date || '일자 미상'}`;
-    if (!groups.has(k)) groups.set(k, { notice_no: p.notice?.notice_no || '고시 미상', notice_date: p.notice?.notice_date || '일자 미상', ledger: 0, incorporated: 0, numbers: [] });
+    if (heldSet.has(p.n)) continue;
+    const no = p.notice?.notice_no || '고시 미상'; const date = p.notice?.notice_date || '일자 미상'; const project = p.notice?.project || '';
+    const basis = p.valuation_date || '';
+    const k = JSON.stringify([project, no, date, basis]);
+    if (!groups.has(k)) groups.set(k, { project, notice_no: no, notice_date: date, basis_date: basis, ledger: 0, incorporated: 0, numbers: [] });
     const g = groups.get(k); g.ledger += f.ledger_area_m2; g.incorporated += f.incorporated_area_m2; g.numbers.push(p.n);
   }
-  return { groups: [...groups.values()], excluded, total: parcels.length };
+  return { groups: [...groups.values()], excluded, held, duplicates, total: parcels.length };
 }
 
 export function buildBundleSummary({ bundleNo = 1, parcels = [], commonMemo = '', now = new Date() }) {
@@ -109,9 +150,12 @@ export function buildBundleSummary({ bundleNo = 1, parcels = [], commonMemo = ''
   const lines = [
     `[BSO 통합 현장요약 · 검토 보조 · 상담 묶음 #${bundleNo} · ${parcels.length}필지] ${now.toISOString().slice(0, 10)}`,
     ...parcels.map(line),
-    '■ 면적 — 고시 기재값 단순 합계(소유 지분 미반영 · 같은 고시끼리만)',
-    ...(t.groups.length ? t.groups.map((g) => `- ${g.notice_no}(${g.notice_date}): 공부 ${fmt(g.ledger)}㎡ · 편입 ${fmt(g.incorporated)}㎡ · ${t.total}필지 중 ${g.numbers.length}필지(${g.numbers.map(circled).join('')})`) : ['- 합산할 고시 기재 면적 없음']),
+    '■ 면적 — 고시 기재값 단순 합계(소유 지분 미반영 · 사업·고시·고시일·기준일이 같은 필지끼리만)',
+    ...(t.groups.length ? t.groups.map((g) => `- ${g.notice_no}(${g.notice_date}): 공부 ${fmt(g.ledger)}㎡ · 편입 ${fmt(g.incorporated)}㎡ · ${t.total}필지 중 ${g.numbers.length}필지(${g.numbers.map(circled).join('')}) · ${g.project ? `사업 ${g.project} · ` : ''}기준일 ${g.basis_date || '미확인'}`) : ['- 합산할 고시 기재 면적 없음']),
     ...(t.groups.length > 1 ? ['- 고시·기준일이 달라 전체 합계를 내지 않음'] : []),
+    ...t.held.map((h) => `- ⚠ 합계 보류 ${h.numbers.length}필지(${h.numbers.map(circled).join('')}) — ${h.reason === 'SAME_PNU' ? '같은 PNU' : '같은 고시·같은 지번 행'}(중복 가능) · 이중 합산 방지 · 원문 확인 필요`),
+    ...t.duplicates.map((d) => `- 중복 제외 ${circled(d.n)} — 색인 밖 입력이 ${d.of.map(circled).join('')}와 같은 PNU`),
+    ...(parcels.some((p) => !p.pnu) && parcels.length > 1 ? [`- PNU 미확인 ${parcels.filter((p) => !p.pnu).length}필지(${parcels.filter((p) => !p.pnu).map((p) => circled(p.n)).join('')}) — 같은 필지 중복 여부 확인 전`] : []),
     ...(t.excluded.length ? [`- 합계 제외 ${t.excluded.length}필지(${t.excluded.map(circled).join('')}) — 고시 기재 면적 없음`] : []),
     ...(warn.length ? [`⚠ 소유 미확인·공동소유(지분 미확인) ${warn.length}필지(${warn.map(circled).join('')}) — 합계는 본인 몫 면적이 아님`] : []),
     `쟁점: ${issueMap.size ? [...issueMap.entries()].map(([l, ns]) => `${l}(${ns.map(circled).join('')})`).join(' · ') : '(선택 없음)'}`,

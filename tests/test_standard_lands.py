@@ -94,7 +94,7 @@ class StandardLandSearchTest(unittest.TestCase):
         assert rows[b]["prposAreaNm1"] == "제2종일반주거지역"
         assert rows[d]["prposAreaNm1"] == ""  # 명칭 충돌 → 채우지 않음
         assert r["name_resolution"]["conflicts"] == {"prposArea1": ["99"]}
-        assert "posesnStle" not in rows[a] and set(rows[a]) <= set(KEEP_FIELDS) | {"ldCodeNm", "name_filled_from_land_characteristics"}
+        assert "posesnStle" not in rows[a] and set(rows[a]) <= set(KEEP_FIELDS) | {"ldCodeNm", "name_filled_from_land_characteristics", "name_sources"}
         assert rows[a]["ldCodeNm"] == "가상도 가상시 숲내읍 바위리"
 
 
@@ -122,6 +122,43 @@ class StandardLandSearchTest(unittest.TestCase):
         s, _geo, _ = make()
         r = search_standard_lands({"pnu": TARGET, "year": 2026}, searcher=s)
         assert "synthetic-not-a-key" not in repr(r)
+
+    def test_name_sources_per_parcel_and_mismatched_rows_not_learned(self):
+        s, geo, (a, b, c, d) = make()
+        # a: 같은 PNU·연도 응답 / c: 같은 코드지만 다른 필지 응답에서 배운 명칭 / b: 다른 연도 응답, d: 다른 PNU 응답 → 배우지 않음
+        s.land.land_char = {a: [{"pnu": a, "stdrYear": "2026", "prposArea1": "71", "prposArea1Nm": "농림지역"}],
+                            b: [{"pnu": b, "stdrYear": "2024", "prposArea1": "14", "prposArea1Nm": "옛명칭"}],
+                            d: [{"pnu": a, "stdrYear": "2026", "prposArea1": "99", "prposArea1Nm": "남의값"}]}
+        rows = {x["pnu"]: x for x in search_standard_lands({"pnu": TARGET, "year": 2026}, searcher=s)["rows"]}
+        assert rows[a]["name_sources"]["prposAreaNm1"] == "SAME_PNU_LC"
+        assert rows[b]["prposAreaNm1"] == "" and rows[d]["prposAreaNm1"] == ""
+        s2, _, (a, b, c, d) = make()
+        s2.land.land_char = {a: [{"pnu": a, "stdrYear": "2026", "prposArea1": "71", "prposArea1Nm": "농림지역", "ladUseSittn": "510", "ladUseSittnNm": "전"}]}
+        rows = {x["pnu"]: x for x in search_standard_lands({"pnu": TARGET, "year": 2026}, searcher=s2)["rows"]}
+        assert rows[c]["prposAreaNm1"] == "농림지역" and rows[c]["name_sources"]["prposAreaNm1"] == "OTHER_PNU_LC"
+
+    def test_name_from_standard_row_and_unverified_source(self):
+        s, geo, (a, b, c, d) = make()
+        s.land.standard_by_ld["9999910101"][1]["prposAreaNm1"] = "농림지역"  # c에 명칭 있음 → a는 그 명칭을 빌림
+        s.land.land_char = {}
+        rows = {x["pnu"]: x for x in search_standard_lands({"pnu": TARGET, "year": 2026}, searcher=s)["rows"]}
+        assert rows[a]["prposAreaNm1"] == "농림지역" and rows[a]["name_sources"]["prposAreaNm1"] == "STANDARD_ROW"
+        s2, _, (a, b, c, d) = make()  # 응답에 PNU·연도 없음 → 같은 필지로 확인하지 않음
+        rows = {x["pnu"]: x for x in search_standard_lands({"pnu": TARGET, "year": 2026}, searcher=s2)["rows"]}
+        assert rows[a]["name_sources"]["prposAreaNm1"] == "UNVERIFIED_LC"
+
+    def test_same_pnu_conflicting_land_rows_do_not_make_same_pnu_source(self):
+        s, geo, (a, b, c, d) = make()
+        s.land.land_char[a] = [{"pnu": a, "stdrYear": "2026", "prposArea1": x, "prposArea1Nm": n} for x, n in (("71", "농림지역"), ("14", "계획관리지역"))]
+        rows = {x["pnu"]: x for x in search_standard_lands({"pnu": TARGET, "year": 2026}, searcher=s)["rows"]}
+        assert rows[a].get("name_sources", {}).get("prposAreaNm1") != "SAME_PNU_LC"
+
+    def test_failure_reports_consumed_calls(self):
+        s, geo, _ = make()
+        geo.fail.add(TARGET)
+        r = search_standard_lands({"pnu": TARGET, "year": 2026}, searcher=s)
+        assert not r["ok"] and r["request_count"]["total"] == 1
+        assert search_standard_lands({"pnu": "9999910101100990000", "year": 2026}, searcher=make()[0])["request_count"]["total"] == 1
 
 
 if __name__ == "__main__":
