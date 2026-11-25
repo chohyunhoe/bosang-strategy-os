@@ -36,6 +36,7 @@ function freshParcel({ row = null, direct = null } = {}) {
   else st.bundle.pending = null;
   st.row = row; st.direct = direct; st.issues = new Set(); st.memo = ''; st.map = null; st.std = null; st.other = '';
   st.zoningConfirm = { relation: '', basis_doc: '', by: '', valuation_date: '' }; st.zoningExtra = null; st.pd = null; st.pdBusy = false;
+  if (document.body.dataset.fFocus === '1') { document.body.dataset.fFocusStep = '1'; markStep(1); setVisualStepMode(1); }
   $('[data-f-memo]').value = ''; $('[data-f-out]').textContent = '';
 }
 const activeSlot = () => (st.bundle && st.slotId != null ? st.bundle.slots.find((s) => s.pid === st.slotId) || null : null);
@@ -549,6 +550,8 @@ function renderIssuesBox(card) {
     }));
     $('[data-f-other]', issueBox)?.addEventListener('input', (e) => { st.other = e.target.value; $('[data-f-out]').textContent = ''; });
   }
+  const selectedCount = $('[data-f-issues-selected]');
+  if (selectedCount) selectedCount.textContent = `${st.issues.size}개 선택`;
   const other = $('[data-f-other]', issueBox);
   if (other) { other.hidden = !st.issues.has('other'); if (other.value !== st.other) other.value = st.other; }
   $('[data-f-docs]').innerHTML = card.documents.length ? card.documents.map((d) => `<li>${esc(d)}</li>`).join('') : '<li class="muted">쟁점을 고르면 표시됩니다.</li>';
@@ -676,11 +679,12 @@ function renderActiveContext() {
   el.querySelector('[data-f-quick-map]')?.addEventListener('click', () => {
     delete document.body.dataset.fConsultMini;
     const mini = $('[data-f-map-mini]'); if (mini) mini.hidden = true;
+    if (focusOn()) goStep(1);
     const map = $('[data-f-map-panel] .f-map-frame');
     const hasMap = Boolean(map?.getClientRects().length);
-    const go = $('[data-f-pd-go]');
+    const go = focusOn() ? $('[data-f-focus-pd]') : $('[data-f-pd-go]');
     // 로컬 브리지 연결 확인 중에는 조회 버튼이 아직 없다. KPI가 아니라 공적자료 상태로 안내한다.
-    const dest = hasMap ? map : go || $('[data-f-pd]') || $('[data-f-facts-panel]');
+    const dest = hasMap ? map : go || (focusOn() ? $('[data-f-kpi]') : $('[data-f-pd]')) || $('[data-f-facts-panel]');
     if (dest) {
       dest.scrollIntoView({ block: 'center', behavior: 'auto' });
       if (dest === go) go.focus({ preventScroll: true });
@@ -869,9 +873,22 @@ function renderKpi() {
     head = st.direct.scope === 'PNU' ? `PNU ${st.direct.pnu}` : `${st.direct.leaf || ''} ${st.direct.lot_label || ''}`.trim();
     cells = [['고시 기재값', '없음', PROV.UNVERIFIED], ['편입 여부', '미확인', PROV.UNVERIFIED]];
   }
+  const warnings = st.direct ? ['고시 색인 밖 · 편입 미확인'] : ['고시 원문 미대조'];
+  if (st.row?.ri_source === 'CARRIED') warnings.push('리 명칭 보완값 · 원문 대조');
+  if (conflict) warnings.push('면적 충돌');
+  else if (st.row && noticeFacts(st.row).arithmetic?.partial) warnings.push('일부 편입 · 잔여지 확인');
+  if (st.bundle && own.tier === PROV.UNVERIFIED) warnings.push('소유관계 미확인');
+  if (m && !['EXACT_ONE', 'LOADING'].includes(m.status)) warnings.push('지적경계 미확정');
+  const ready = st.pdBridge?.status === PD_STATUS.NOT_QUERIED;
+  const busy = Boolean(st.pdBusy);
+  const showLookup = st.pd?.status !== PD_STATUS.OK;
   box.innerHTML = `<div class="f-kpi-head"><b data-f-kpi-head>${esc(head)}</b> <span class="small muted">${st.row ? `${esc(st.index?.notice?.notice_no || '고시')} 세목 일련 ${esc(st.row.serial)}` : '고시 색인 밖'}</span></div>
     <div class="f-kpi-grid">${cells.map(([k, v, t]) => `<div class="f-kpi-cell" data-f-kpi-cell="${esc(k)}"><span class="k">${esc(k)}</span><b>${esc(v)}</b>${provBadge(t, { label: t === PROV.RECEIVED ? NOTICE_LABEL : '' })}</div>`).join('')}</div>
-    <div class="f-kpi-status small" data-f-kpi-status>${provBadge(provMap(m), { label: mapLabel })} ${provBadge(own.tier, { label: own.label })} ${originPending()} <span class="chip" data-f-kpi-incorp-line>사업 편입선: 공식 도형 미연결 — 표시 안 함</span>${conflict ? ' <span class="chip bad" data-f-kpi-conflict>편입면적 &gt; 공부면적 — 원문 대조(보정 안 함)</span>' : ''}</div>`;
+    <div class="f-kpi-status small" data-f-kpi-status>${provBadge(provMap(m), { label: mapLabel })} ${provBadge(own.tier, { label: own.label })} ${originPending()} <span class="chip" data-f-kpi-incorp-line>사업 편입선: 공식 도형 미연결 — 표시 안 함</span>${conflict ? ' <span class="chip bad" data-f-kpi-conflict>편입면적 &gt; 공부면적 — 원문 대조(보정 안 함)</span>' : ''}</div>
+    <div class="f-focus-summary" data-f-focus-summary>${warnings.map((w) => `<span class="f-focus-flag${w.includes('충돌') || w.includes('미확정') ? ' danger' : ''}">${esc(w)}</span>`).join('')}</div>
+    <div class="f-focus-tools" data-f-focus-tools>${showLookup ? `<button type="button" class="primary" data-f-focus-pd ${busy || !ready ? 'disabled' : ''}>${busy ? '조회 중…' : ready ? '공적자료·지도 조회' : '공적자료 연결 확인 중'}</button>` : ''}<button type="button" class="secondary" data-f-focus-more>고시·공적자료 상세</button></div>`;
+  $('[data-f-focus-pd]', box)?.addEventListener('click', runPublicData);
+  $('[data-f-focus-more]', box)?.addEventListener('click', () => { setFocusMode(false); requestAnimationFrame(() => $('[data-f-facts-panel]')?.scrollIntoView({ block: 'start' })); });
 }
 function renderDock() {
   const d = $('[data-f-dock-bar]'); if (!d) return;
@@ -894,6 +911,22 @@ function renderDock() {
   d.dataset.count = narrow ? '3' : b ? '4' : '3';
 }
 // 단계 이동: 내용을 숨기지 않고 해당 구간으로 스크롤만 한다(입력·선택·스크롤 상태를 지우지 않음). 현재 구간은 스크롤 위치로 표시.
+const focusOn = () => document.body.dataset.fFocus === '1';
+function syncFocusUI({ followup = true } = {}) {
+  const btn = $('[data-f-focus-toggle]');
+  if (btn) { btn.textContent = focusOn() ? '전체 정보' : '간편 상담'; btn.setAttribute('aria-pressed', String(focusOn())); }
+  const follow = $('[data-f-followup]');
+  if (follow && followup) follow.open = !focusOn();
+  const issues = $('[data-f-issues-fold]');
+  if (issues && followup) issues.open = !focusOn();
+}
+function setFocusMode(on) {
+  const current = Number(document.body.dataset.fFocusStep || document.querySelector('[data-f-step-go][aria-current="step"]')?.dataset.fStepGo || 1);
+  if (on) { document.body.dataset.fFocus = '1'; document.body.dataset.fFocusStep = String(current); }
+  else { delete document.body.dataset.fFocus; delete document.body.dataset.fFocusStep; }
+  syncFocusUI();
+  setVisualStepMode(current); markStep(current); stepLock = Date.now();
+}
 function stepOffset() { const nav = $('[data-f-steps]'); if (!nav || !nav.offsetParent) return 0; const r = nav.getBoundingClientRect(); return Math.max(0, r.bottom); }
 function markStep(n) { document.querySelectorAll('[data-f-step-go]').forEach((b) => { if (Number(b.dataset.fStepGo) === n) b.setAttribute('aria-current', 'step'); else b.removeAttribute('aria-current'); }); }
 // 단계 구간의 맨 위(화면 배치 순서 기준 — DOM 순서와 다를 수 있음)
@@ -910,11 +943,15 @@ function setVisualStepMode(n) {
   return { fullMatrix, mini };
 }
 function goStep(n) {
-  if (!stepSec(n)) return;
+  if (focusOn()) {
+    document.body.dataset.fFocusStep = String(n);
+    if (n === 2 && st.std && st.std.diffOnly === undefined) { st.std.diffOnly = true; renderMap(); }
+  } else if (!stepSec(n)) return;
   const mode = setVisualStepMode(n);
   markStep(n); stepLock = Date.now();
   requestAnimationFrame(() => {
-    const sec = stepSec(n); if (!sec) return;
+    const sec = focusOn() ? (n === 1 ? $('[data-f-kpi]') : n === 2 ? $('[data-f-std-section]') : $('[data-f-consult-panel]')) : stepSec(n);
+    if (!sec) return;
     const nav = $('[data-f-steps]'); const navH = nav && nav.offsetParent ? nav.getBoundingClientRect().height : 0;
     const pin = $('.f-map-frame');
     const stickyHeight = mode.fullMatrix ? ($('[data-f-map-panel]')?.getBoundingClientRect().height || 0)
@@ -925,7 +962,7 @@ function goStep(n) {
 }
 let stepLock = 0;
 function spyStep() {
-  if (Date.now() - stepLock < 400) return;
+  if (focusOn() || Date.now() - stepLock < 400) return;
   const off = stepOffset() + 8; let cur = 1;
   for (const n of [1, 2, 3]) { const sec = stepSec(n); if (sec && sec.getBoundingClientRect().top <= off) cur = n; }
   markStep(cur);
@@ -958,6 +995,8 @@ function saveCard() {
 }
 
 function init() {
+  $('[data-f-focus-toggle]').addEventListener('click', () => setFocusMode(!focusOn()));
+  syncFocusUI();
   $('[data-f-form]').addEventListener('submit', (e) => {
     e.preventDefault();
     const q = $('[data-f-q]').value;
@@ -1013,9 +1052,12 @@ function init() {
   $('[data-f-client-toggle]').addEventListener('click', (e) => { const on = e.currentTarget.getAttribute('aria-pressed') !== 'true'; e.currentTarget.setAttribute('aria-pressed', String(on)); e.currentTarget.textContent = on ? '고객설명 모드 끄기' : '고객설명 모드'; if (on) document.body.dataset.fClient = '1'; else delete document.body.dataset.fClient; $('[data-f-client-note]').hidden = !on; });
   // 인쇄·PDF 저장(버튼·브라우저 메뉴·window.print 모두): 공적자료 영역은 CSS로 숨기고, 인쇄 직전 DOM에서도 비운다.
   const printDetails = new Map();
+  let focusBeforePrint = false;
   window.addEventListener('beforeprint', () => {
+    focusBeforePrint = focusOn();
+    if (focusBeforePrint) delete document.body.dataset.fFocus;
     // 접힘은 화면 전용. 인쇄에는 기존 원문 대조 상태와 일반 유의사항을 그대로 포함한다.
-    for (const sel of ['[data-f-footer-notes]', '[data-f-facts-source]']) {
+    for (const sel of ['[data-f-footer-notes]', '[data-f-facts-source]', '[data-f-followup]', '[data-f-issues-fold]']) {
       const detail = $(sel);
       if (detail) { if (!printDetails.has(sel)) printDetails.set(sel, detail.open); detail.open = true; }
     }
@@ -1026,7 +1068,11 @@ function init() {
   window.addEventListener('afterprint', () => {
     for (const [sel,wasOpen] of printDetails) { const detail = $(sel); if (detail) detail.open = wasOpen; }
     printDetails.clear();
-    delete document.body.dataset.printing; render();
+    delete document.body.dataset.printing;
+    if (focusBeforePrint) document.body.dataset.fFocus = '1';
+    focusBeforePrint = false;
+    render();
+    if (focusOn()) syncFocusUI({ followup: false });
   });
   $('[data-f-index-file]').addEventListener('change', async (e) => {
     const file = e.target.files?.[0]; if (!file) return;

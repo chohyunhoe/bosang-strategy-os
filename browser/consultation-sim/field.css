@@ -378,3 +378,97 @@ button,select{min-width:44px}.f-zoning-confirm :is(select,input){min-height:44px
   .f-mx-price-note{font-size:11px}
 }
 @media print{.f-footer-notes{display:block!important}.f-footer-notes>summary,.f-facts-source>summary{display:none!important}}
+
+/* LK 현장 집중 모드: 지번 -> 지도 -> 표준지 -> 상담, 한 번에 하나씩.
+   표시만 바꾸며 출처/경고/인쇄·저장 원본, 실제 API/PNU 및 SVG를 변경하지 않는다. */
+.f-focus-toggle{float:right;min-height:44px;padding:5px 12px;margin-left:9px;border:1px solid #1f4e79;border-radius:10px;background:#fff;color:#1f4e79;font-size:12px;font-weight:750;white-space:nowrap}
+.f-focus-toggle[aria-pressed="true"]{background:#1f4e79;color:#fff}
+.f-focus-summary,.f-focus-tools{display:none}
+body[data-f-focus="1"] .f-focus-summary{display:flex;flex-wrap:wrap;gap:4px;margin:6px 0 0}
+.f-focus-flag{font-size:11px;border:1px solid #e2bd76;color:#795600;border-radius:6px;padding:2px 6px;background:#fff8e8}
+.f-focus-flag.danger{background:#fff1ed;color:#991b1b;border-color:#fca5a5;font-weight:750}
+body[data-f-focus="1"] .f-focus-tools{display:flex;gap:7px;flex-wrap:wrap;margin:8px 0 0}
+.f-focus-tools button{min-height:44px;flex:1 1 140px;font-size:13px;padding:6px}
+.f-followup{margin-top:8px;border:1px solid var(--line);border-radius:8px;padding:0 9px}
+.f-followup>summary{font-size:13px;font-weight:700;color:#1e3a5f;min-height:44px;padding:11px 0;cursor:pointer}
+.f-followup[open]{padding-bottom:12px}
+body[data-f-focus="1"] .f-top{border-bottom:0;padding-bottom:0;display:flex;gap:8px;align-items:center}
+body[data-f-focus="1"] .f-top .eyebrow,body[data-f-focus="1"] .f-top h1 small,body[data-f-focus="1"] .f-top .f-badges{display:none!important}
+body[data-f-focus="1"] .f-top h1{font-size:18px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex:1;margin:0}
+body[data-f-focus="1"] .f-search{padding:7px 10px;margin-top:7px}
+body[data-f-focus="1"] .f-search .hint{display:none}
+body[data-f-focus="1"] .f-active-context{margin-top:6px}
+body[data-f-focus="1"] .f-active-label b{display:none}
+body[data-f-focus="1"] .f-bundle{margin:3px 0}
+body[data-f-focus="1"] .f-bundle-bar{padding:6px 8px}
+body[data-f-focus="1"] .f-bundle-bar .f-own,
+body[data-f-focus="1"] .f-bundle-bar .f-own-banner,
+body[data-f-focus="1"] .f-bundle-bar [data-f-bundle-map-btn]{display:none!important}
+body[data-f-focus="1"] .f-bundle-bar [data-f-draft-guard],
+body[data-f-focus="1"] .f-bundle-bar [data-f-bundle-conflict],
+body[data-f-focus="1"] .f-bundle-bar [data-f-bundle-note]{display:block}
+body[data-f-focus="1"] .f-grid>[data-f-facts-panel]{display:none!important}
+body[data-f-focus="1"] .f-kpi-status{display:none!important}
+body[data-f-focus="1"] .f-kpi .f-kpi-head .muted{display:none}
+body[data-f-focus="1"] .f-kpi{padding:8px 10px}
+body[data-f-focus="1"] .f-kpi-cell{padding:4px 6px}
+body[data-f-focus="1"] .f-kpi-cell .k{font-size:11px}
+body[data-f-focus="1"] .f-kpi-cell b{font-size:16px}
+body[data-f-focus="1"] .f-grid>[data-f-std-section] h2 .sub,
+body[data-f-focus="1"] .f-grid>[data-f-map-panel]>h2 .sub{display:none!important}
+body[data-f-focus="1"] .f-grid>[data-f-consult-panel]{display:flex;flex-direction:column}
+body[data-f-focus="1"] [data-f-consult-panel]>.f-memo{order:0;margin:0 0 10px}
+body[data-f-focus="1"] [data-f-consult-panel]>h2:first-child{order:1}
+body[data-f-focus="1"] [data-f-consult-panel]>.f-client-note{order:1}
+body[data-f-focus="1"] [data-f-consult-panel]>[data-f-issues]{order:2}
+body[data-f-focus="1"] [data-f-consult-panel]>.f-followup{order:3}
+body[data-f-focus="1"] [data-f-consult-panel]>.f-actions{order:4}
+body[data-f-focus="1"] [data-f-consult-panel]>[data-f-out]{order:5}
+body[data-f-focus="1"] .f-issue{min-height:44px;padding:7px 10px;margin:4px 0}
+body[data-f-focus="1"] .f-issue .q{display:none}
+body[data-f-focus="1"] .f-std-detail .f-traits,body[data-f-focus="1"] .f-std-detail .f-fold,body[data-f-focus="1"] .f-std-detail [data-f-trait-note]{display:none}
+body[data-f-focus="1"] .f-steps .f-pin{display:none!important}
+body[data-f-focus="1"][data-f-focus-step="1"] .f-grid>[data-f-std-section],
+body[data-f-focus="1"][data-f-focus-step="1"] .f-grid>[data-f-consult-panel],
+body[data-f-focus="1"][data-f-focus-step="2"] .f-grid>[data-f-kpi],
+body[data-f-focus="1"][data-f-focus-step="2"] .f-grid>[data-f-consult-panel],
+body[data-f-focus="1"][data-f-focus-step="3"] .f-grid>[data-f-kpi],
+body[data-f-focus="1"][data-f-focus-step="3"] .f-grid>[data-f-std-section]{display:none!important}
+body[data-f-focus="1"] .f-grid>.f-steps{display:flex!important}
+@media(max-width:859px){
+ body[data-f-focus="1"][data-f-focus-step="3"] .f-grid>[data-f-map-panel] [data-f-map]>.f-map>*{display:none!important}
+ body[data-f-focus="1"] .f-map-note>summary{font-size:11.5px}
+ body[data-f-focus="1"] .f-std-panel h3 .muted{display:none}
+ body[data-f-focus="1"] [data-f-consult-panel]>.f-actions{display:none}
+}
+@media(min-width:860px) and (max-width:1199px){
+ body[data-f-focus="1"][data-f-focus-step="3"] .f-grid{grid-template-columns:minmax(0,1fr);grid-template-areas:"steps" "consult";grid-template-rows:auto 1fr;gap:8px}
+ body[data-f-focus="1"][data-f-focus-step="3"] .f-grid>[data-f-map-panel]{display:none!important}
+ body[data-f-focus="1"] [data-f-consult-panel]>.f-actions{display:none}
+}
+@media(min-width:1200px){
+ body[data-f-focus="1"] .f-grid{display:flex!important;flex-direction:column;gap:8px;grid-template-columns:none;grid-template-areas:none}
+ body[data-f-focus="1"] .f-grid>.f-steps{display:flex!important;position:sticky;top:0;z-index:8;order:0}
+ body[data-f-focus="1"] .f-grid>[data-f-map-panel]{position:relative;top:auto;max-height:none;box-shadow:none;overflow:visible}
+ body[data-f-focus="1"][data-f-focus-step="3"] .f-grid>[data-f-map-panel]{display:none!important}
+ body[data-f-focus="1"] .f-grid>.f-panel{width:100%}
+ body[data-f-focus="1"] .f-map{max-width:960px}
+}
+@media print{
+ .f-focus-toggle,.f-focus-tools,.f-focus-summary{display:none!important}
+}
+
+/* 상담은 메모부터: 체크리스트는 필요할 때만 44px 터치로 펼침 */
+.f-issues-fold{margin-top:5px;border:1px solid var(--line);border-radius:8px;padding:0 9px}
+.f-issues-fold>summary{display:list-item;min-height:44px;padding:11px 1px;color:#1e3a5f;font-weight:750;font-size:13px;cursor:pointer}
+.f-issues-selected{font-weight:550;font-size:11px;color:#64748b;margin-left:5px}
+.f-issues-fold[open]{padding-bottom:8px}
+body[data-f-focus="1"] [data-f-consult-panel]>h2:first-child{display:none}
+body[data-f-focus="1"] [data-f-consult-panel]>.f-issues-fold{order:2}
+body[data-f-focus="1"] [data-f-consult-panel]>.f-followup{order:3}
+body[data-f-focus="1"] [data-f-consult-panel]>.f-client-note{display:none}
+@media(min-width:1200px){
+ body[data-f-focus="1"] .f-grid{align-items:stretch!important}
+ body[data-f-focus="1"] .f-grid>.f-steps{width:100%;max-width:none}
+}
+@media print{.f-issues-fold>summary{display:none!important}}
