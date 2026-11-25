@@ -4,9 +4,9 @@ import { validateNoticeIndex, searchNoticeIndex, SEARCH_STATUS, noticeFacts, row
 import { issuesFor } from './core/field-issues.js';
 import { buildFieldCard, buildDirectCard } from './core/field-card.js';
 import { directLookupTarget } from './core/field-direct.js';
-import { bridgeStatus, queryPublicData, queryParcelMap, queryCadastralTiles, queryZoningHistory, queryStandardLands, TRACE_YEARS, PD_STATUS, PD_STAGE } from './core/field-public-data.js';
+import { bridgeStatus, queryPublicData, queryParcelMap, queryCadastralTiles, queryZoningHistory, queryStandardLands, queryStandardTraits, TRACE_YEARS, PD_STATUS, PD_STAGE } from './core/field-public-data.js';
 import { fitView, withZoom, renderFieldMap, mercator, MAP, project, aerialUrl, tilesForView, tileKey, featureBounds, cadCoverage, CAD } from './core/field-map.js';
-import { buildStandardReview, STD_LABEL } from './core/field-standard.js';
+import { buildStandardReview, STD_LABEL, applyDirect, directKey, directTargets, DIRECT_LABEL } from './core/field-standard.js';
 import { evaluateZoningBasis, RELATION_OPTIONS, ZONING_STATUS, ZONING_STATUS_LABEL } from './core/zoning-basis.js';
 import { EVIDENCE_STATUS_LABEL } from './core/zoning-trace.js';
 import { profileForIndex } from './profiles/index.js';
@@ -128,7 +128,7 @@ function switchTo(pid) {
   render();
   if (window.scrollY !== y) window.scrollTo(0, y);
   // 다른 필지에 있는 동안 표준지 응답이 왔으면 지금 첫 후보를 고르고 후보 비교로 맞춘다(재조회 없음)
-  if (st.std?.pendingSelect) { st.std.pendingSelect = false; const sr = stdReview(); st.std.selected = sr?.list?.find((x) => x.kind === 'CANDIDATE')?.pnu || null; st.std.selectedYear = null; if (sr?.markers?.some((x) => x.kind === 'CANDIDATE') && st.map?.status === 'EXACT_ONE') fitStandard(st.map, sr); else renderMap(); }
+  if (st.std?.pendingSelect) { st.std.pendingSelect = false; const sr = stdReview(); st.std.selected = sr?.list?.find((x) => x.kind === 'CANDIDATE')?.pnu || null; st.std.selectedYear = null; if (sr?.markers?.some((x) => x.kind === 'CANDIDATE') && st.map?.status === 'EXACT_ONE') fitStandard(st.map, sr); else renderMap(); ensureDirect(); }
 }
 
 function renderResult() {
@@ -275,7 +275,7 @@ function renderMap() {
   m.std = sr && sr.markers ? { markers: sr.markers, selected: st.std.selected, showStandards: st.std.showStandards, showCandidates: st.std.showCandidates,
     summary: `후보 ${sr.list.filter((x) => x.kind === 'CANDIDATE').length}곳 · 표준지 위치확인 ${sr.meta.located}곳` } : null;
   { const mt = meter(); m.cadUsed = mt.cadUsed(); m.cadLeft = mt.cadLeft(); m.cadUnknown = mt.stats.cad_unknown + mt.stats.cad_reserved; m.cadShared = Boolean(st.bundle); }
-  const key = JSON.stringify([st.epoch, m.status, m.pnu, m.view?.zoom, m.view?.center, m.mode, m.cad?.v, m.cadUsed, m.cadUnknown, m.cadShared, m.showTarget, m.showNeighbors, st.std?.status, st.std?.selected, st.std?.selectedYear, st.std?.reused, st.std?.retryFailed, st.std?.showStandards, st.std?.showCandidates, stdReviewKey, st.std ? st.zoningConfirm.valuation_date : '']);
+  const key = JSON.stringify([st.epoch, m.status, m.pnu, m.view?.zoom, m.view?.center, m.mode, m.cad?.v, m.cadUsed, m.cadUnknown, m.cadShared, m.showTarget, m.showNeighbors, st.std?.status, st.std?.selected, st.std?.selectedYear, st.std?.reused, st.std?.retryFailed, st.std?.showStandards, st.std?.showCandidates, st.std?.dv, stdReviewKey, st.std ? st.zoningConfirm.valuation_date : '']);
   if (key === lastMapKey) return;
   lastMapKey = key;
   // 같은 영상 주소(중심·줌 동일)면 이미 받은 영상 요소를 그대로 옮겨 붙인다 — 후보 선택·표시 전환 때 항공영상 재요청 없음.
@@ -289,6 +289,8 @@ function renderMap() {
   const openKeys = [...box.querySelectorAll('details[open]'), ...sbox.querySelectorAll('details[open]')].map((d) => [...d.attributes].find((a) => a.name.startsWith('data-f-'))?.name).filter(Boolean);
   // 표준지 비교는 지도와 따로 둔 칸(펼침·PC에서 오른쪽/아래 배치)에 그린다 — 지도 표식과 같은 선택 상태(st.std.selected)를 쓴다.
   box.innerHTML = html;
+  // PC·펼침: 지도 옆(오른쪽 칸)에 선택 표준지 ↔ 대상 핵심 현황을 바로 보이게(지도와 동시 확인). 커버는 표준지 칸의 카드로.
+  { const fm = $('.f-map', box); const strip = m.status === 'EXACT_ONE' ? stdStrip(sr) : ''; if (fm && strip) fm.insertAdjacentHTML('beforeend', strip); }
   sbox.innerHTML = m.status === 'EXACT_ONE' ? renderStdPanel(sr) : STD_WAIT;
   openKeys.forEach((k) => { const d = box.querySelector(`details[${k}]`) || sbox.querySelector(`details[${k}]`); if (d) d.open = true; });
   let img = $('[data-f-map-img]', box);
@@ -324,6 +326,7 @@ function renderMap() {
     b.textContent = st.std.diffOnly ? '전체 항목 보기' : '차이·미확인 우선';
   }));
   sbox.querySelectorAll('[data-f-std-go]').forEach((b) => b.addEventListener('click', runStandard));
+  [...box.querySelectorAll('[data-f-std-direct-retry]'), ...sbox.querySelectorAll('[data-f-std-direct-retry]')].forEach((b) => b.addEventListener('click', () => { const [pnu, year] = b.dataset.fStdDirectRetry.split('|'); ensureDirect([{ pnu, year: Number(year) }], { force: true }); }));
   box.querySelectorAll('[data-f-cad-load]').forEach((b) => b.addEventListener('click', () => loadCad(m, cadCoverage(m.view, m.cad).missing.slice(0, CAD.perClick))));
 }
 
@@ -357,13 +360,64 @@ async function runStandard() {
     t.std = { ...prev, retryFailed: res.reason || res.error_code || '사유 미상' }; repaint(t, renderMap); return;
   }
   t.std = { pnu, status: res.ok ? 'OK' : 'FAILED', response: res.ok ? res : null, error: res.ok ? null : res, fetched_at: res.fetched_at, reused: Boolean(res.reused),
-    selected: null, showStandards: false, showCandidates: true };
+    selected: null, showStandards: false, showCandidates: true, direct: {}, dv: 0, directStats: newDirectStats() };
   if (t !== st) { t.std.pendingSelect = true; renderBundle(); return; } // 그 필지로 돌아올 때 첫 후보 선택·후보 비교
   const sr = stdReview();
   st.std.selected = sr?.list?.find((x) => x.kind === 'CANDIDATE')?.pnu || null;
   // 후보가 있으면 기본 보기는 '후보 비교'(대상 + 후보), 일반 표준지는 숨김(표시 버튼으로 켬)
   if (sr?.markers?.some((x) => x.kind === 'CANDIDATE') && st.map?.status === 'EXACT_ONE') fitStandard(st.map, sr);
   else renderMap();
+  ensureDirect(); // 후보 ①②③은 각각 그 PNU·공시연도로 직접조회
+}
+// ── 표준지 개별 토지특성 직접조회(후보 ①②③ · 선택 표준지) ───────────────────────────
+// 성공(요청 PNU·연도와 일치) 결과는 이 필지의 표준지 결과(st.std.direct)에 두고 다시 쓰며, 실패·불일치는 '다시 조회'로만 다시 보낸다.
+// 표준지 조회를 다시 하면(st.std 교체) 앞선 직접조회 응답은 버린다. 서버가 구버전이면(기능 표지 없음) 보내지 않고 사유를 표시한다.
+function newDirectStats() { return { requests: 0, items: 0, vworld_calls: 0, server_reuse: 0, client_reuse: 0, failures: 0 }; }
+// 서버가 기능 표지(capabilities)에 standard_traits를 밝힌 경우에만 보낸다 — 구버전 서버 + 신버전 화면 조합을 호출 전에 감지.
+function directSupported() { const caps = st.pdBridge?.capabilities; return Array.isArray(caps) && caps.includes('standard_traits'); }
+async function ensureDirect(list = null, { force = false } = {}) {
+  const s = st.std; if (!s || s.status !== 'OK' || !s.response) return;
+  s.direct ||= {}; s.directStats ||= newDirectStats(); s.dv ||= 0;
+  const want = list || directTargets(stdReview(), s.selected, s.selectedYear);
+  const todo = [];
+  for (const x of want) {
+    const k = directKey(x.pnu, x.year); const e = s.direct[k];
+    if (e?.status === 'LOADING') continue;
+    if (e?.status === 'OK') { if (list || x.pnu === s.selected) s.directStats.client_reuse += 1; continue; } // 같은 PNU·연도 성공 결과 재사용(새 호출 없음)
+    if (e && !force) continue; // 실패·불일치는 자동으로 되풀이하지 않음 — '다시 조회'로만
+    todo.push({ pnu: x.pnu, year: Number(x.year) });
+  }
+  if (!todo.length) return;
+  if (!directSupported()) {
+    todo.forEach((x) => { s.direct[directKey(x.pnu, x.year)] = { status: 'UNSUPPORTED', code: 'SERVER_CAPABILITY_MISSING', reason: `현장 서버(${st.pdBridge?.server_rev || '버전 표지 없음'})가 표준지 직접조회를 지원하지 않음 — 같은 버전 서버로 재시작 필요` }; });
+    s.dv += 1; renderMap(); return;
+  }
+  const owner = ownerNow();
+  todo.forEach((x) => { s.direct[directKey(x.pnu, x.year)] = { status: 'LOADING' }; });
+  s.dv += 1; renderMap();
+  const res = await queryStandardTraits({ fetchImpl: fx(), location, items: todo, now: () => new Date() });
+  const t = targetOf(owner);
+  if (!t || t.std !== s) return; // 다른 상담·표준지 재조회로 바뀌었으면 버림
+  s.directStats.requests += 1; s.directStats.items += todo.length;
+  const n = Number(res.request_count?.land_characteristics); if (Number.isInteger(n) && n >= 0) s.directStats.vworld_calls += n;
+  if (!res.ok) {
+    s.directStats.failures += todo.length;
+    const unsupported = ['FIELD_ROUTE_NOT_ALLOWED', 'UNKNOWN_OP', 'UNSUPPORTED_OPERATION'].includes(res.error_code);
+    todo.forEach((x) => { s.direct[directKey(x.pnu, x.year)] = { status: unsupported ? 'UNSUPPORTED' : 'FAILED', code: res.error_code, reason: res.reason, fetched_at: res.fetched_at }; });
+  } else {
+    for (const it of res.items) {
+      if (it.reused) s.directStats.server_reuse += 1;
+      if (it.status !== 'OK' && it.status !== 'NOT_FOUND') s.directStats.failures += 1;
+      s.direct[directKey(it.pnu, it.year)] = it;
+    }
+  }
+  s.dv += 1; repaint(t, renderMap);
+}
+// 화면 표시용: 판정 결과(후보·제외 목록)에 직접조회 결과를 덧입힌다(후보 순위·선정은 그대로).
+function stdWithDirect(sr) {
+  if (!sr?.list || !st.std) return sr;
+  const d = st.std.direct || {};
+  return { ...sr, list: sr.list.map((x) => (d[directKey(x.pnu, x.year)] ? applyDirect(x, d[directKey(x.pnu, x.year)]) : x)) };
 }
 function fitParcel(m) {
   const view = m?.target ? fitView(m.target.geometry) : null;
@@ -380,6 +434,7 @@ function selectStandard(pnu, fromList, year = null) {
     if (x < 0 || x > MAP.width || y < 0 || y > MAP.height) { m.view = { ...m.view, center: mercator(mk.centroid), centerLonLat: mk.centroid }; m.aerial = 'LOADING'; }
   }
   renderMap();
+  ensureDirect(); // 고른 표준지가 후보 밖이면 그 필지만 직접조회(이미 받은 결과는 재사용)
   const el = $(fromList ? '[data-f-std-pin].sel' : '[data-f-std-detail]');
   if (el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest' });
 }
@@ -414,35 +469,62 @@ const mxCompactCell = (cell, target = null) => {
   const diff = cell?.diff && !(cell.diff === 'UNKNOWN' && value === '미확인') ? ` ${mxDiff(cell, target)}` : '';
   return `<span class="f-mx-value"${attrs}>${value}</span>${badge}${diff}`;
 };
+// 대상 면적: 고시 세목표 공부면적(고시 기재). 색인 밖 직접 조회 필지는 미확인.
+const targetArea = () => { const v = st.row ? noticeFacts(st.row)?.ledger_area_m2 : null; return v == null ? null : { value: v, label: NOTICE_LABEL, note: '고시 세목표 공부면적' }; };
+// 직접조회 상태 칩: 정상(OK)이면 아무것도 붙이지 않고, 조회 중·실패·불일치·미지원만 짧게. 실패류는 다시 조회 버튼.
+const DIRECT_RETRY = new Set(['FAILED', 'MISMATCH', 'ROW_CONFLICT', 'UNSUPPORTED', 'NOT_FOUND']);
+function directChip(x, { retry = false } = {}) {
+  const d = x?.direct; if (!d || d.status === 'NOT_QUERIED') return '';
+  if (d.status === 'OK') return d.mismatches?.length ? `<span class="chip bad f-direct-chip" data-f-std-direct="MISMATCH_FIELDS" title="${esc(d.mismatches.map((k) => ({ zoning: '용도지역', land_category: '지목', area: '면적' }[k] || TRAIT_FIELDS.find((f) => f.key === k)?.label || k)).join('·'))} 표준지 API ↔ 토지특성 직접조회 다름">불일치 ${d.mismatches.length}</span>` : '';
+  const k = directKey(x.pnu, x.year);
+  const tone = d.status === 'LOADING' ? 'calc' : d.status === 'NOT_FOUND' ? 'warn' : 'bad';
+  return `<span class="chip ${tone} f-direct-chip" data-f-std-direct="${esc(d.status)}" title="${esc(d.reason || DIRECT_LABEL[d.status] || '')}">${esc(DIRECT_LABEL[d.status] || d.status)}</span>${retry && DIRECT_RETRY.has(d.status) ? ` <button type="button" class="ghost f-direct-retry" data-f-std-direct-retry="${esc(k)}">다시 조회</button>` : ''}`;
+}
+function directDetail(x) {
+  const d = x?.direct; if (!d || d.status === 'NOT_QUERIED') return '직접조회 전 — 표준지공시지가 API 값과 코드 사전 명칭만 표시';
+  if (d.status !== 'OK') {
+    const extra = d.status === 'MISMATCH' && d.response_keys?.length ? ` · 응답 PNU|연도 ${d.response_keys.map(esc).join(', ')}` : d.status === 'ROW_CONFLICT' && d.conflict_fields?.length ? ` · 다른 항목 ${d.conflict_fields.map(esc).join(', ')}` : '';
+    return `${esc(DIRECT_LABEL[d.status] || d.status)}${d.code ? `(${esc(d.code)})` : ''}${extra} — 이 필지 값으로 쓰지 않음${d.reason ? ` · ${esc(d.reason)}` : ''}`;
+  }
+  const mm = (d.mismatches || []).map((k) => { const c = d.fields[k]; return `${esc(({ zoning: '용도지역', land_category: '지목', area: '면적' })[k] || TRAIT_FIELDS.find((f) => f.key === k)?.label || k)}: 표준지 API ${esc(c.std.value ?? c.std.code ?? '없음')}${c.std.code ? `(${esc(c.std.code)})` : ''} / 토지특성 ${esc(c.direct.value ?? c.direct.code ?? '없음')}${c.direct.code ? `(${esc(c.direct.code)})` : ''}`; });
+  return `VWorld 토지특성 · PNU ${esc(x.pnu)} · ${esc(x.year)}년 · 요청 PNU·연도와 응답 일치 확인 · 조회 ${esc(fmtTime(d.fetched_at))}${d.reused ? ' · 저장 결과 재사용' : ''}${mm.length ? `<div class="f-direct-mm" data-f-std-direct-mm>불일치(양쪽 원본 보존): ${mm.join(' · ')}</div>` : ''}`;
+}
 const pdYear = () => [...TRAIT_FIELDS.map((f) => f.key), 'zoning', 'land_category'].map((k) => (st.pd?.values || []).find((v) => v.key === k)?.base_year).find(Boolean);
-// 현장 집중모드: 선택 후보의 네 가지 토지특성을 대상과 나란히 읽는다.
-// 상태·명칭은 기존 buildStdMatrix 그대로 사용하고, 미확인/추정값을 임의로 확정하지 않는다.
+// 현장 집중모드: 선택 표준지의 기본 현황(지번·공시지가·거리·면적·용도지역·지목)과 네 가지 토지특성을 대상과 나란히 읽는다.
+// 정상 값에는 주석을 붙이지 않고, 미확인·추정·불일치·조회 실패만 짧게 표시한다. 출처·검증 근거는 접힌 상세에 둔다.
+// 상태·명칭은 buildStdMatrix 그대로(미확인/추정값을 임의로 확정하지 않음).
 function focusStandardTraits(sel, review) {
-  const mx = buildStdMatrix({ pdValues: st.pd?.values || [], columns: [sel], review });
+  const mx = buildStdMatrix({ pdValues: st.pd?.values || [], columns: [sel], review, targetArea: targetArea() });
   const targetYear = pdYear(); const stdYear = sel.year || null;
+  const row = (key) => mx.rows.find((r) => r.key === key);
+  const badgeFor = (c) => (c?.tier === PROV.ESTIMATED ? provBadge(PROV.ESTIMATED, { label: '추정' }) : c?.tier === PROV.UNVERIFIED && c?.value != null ? provBadge(PROV.UNVERIFIED, { label: c.label || '미확인' }) : '');
+  const line = (who, c, attr) => `<div class="f-std-focus-line"><small>${who}</small><span ${attr} data-f-tier="${esc(c?.tier || PROV.UNVERIFIED)}">${mxVal(c)} ${badgeFor(c)}</span></div>`;
+  const diffOf = (r) => { const b = r.cells[0]; return b.diff && b.diff !== 'SAME' ? mxDiff(b, r.target) : b.diff === 'SAME' && b.tier === PROV.ESTIMATED ? mxDiff(b, r.target) : ''; };
+  const fact = (key, label) => { const r = row(key); if (!r) return ''; const d = r.diff ? diffOf(r) : '';
+    return `<div class="f-std-focus-fact" data-f-std-focus-fact="${esc(key)}"><b>${esc(label)}</b>${line('대상', r.target, 'data-f-fact-target')}${line('표준지', r.cells[0], 'data-f-fact-std')}${d ? `<div class="f-std-focus-diff">${d}</div>` : ''}</div>`; };
   const cards = TRAIT_FIELDS.map((f) => {
-    const row = mx.rows.find((r) => r.key === f.key); if (!row) return '';
-    const a = row.target; const b = row.cells[0];
-    const source = b.tier || PROV.UNVERIFIED;
-    const sourceBadge = source === PROV.RECEIVED ? '' : provBadge(source, { label: source === PROV.ESTIMATED ? '추정' : '미확인' });
-    const targetBadge = a?.tier && a.tier !== PROV.RECEIVED ? provBadge(a.tier, { label: '미확인' }) : '';
-    const difference = b.diff && b.diff !== 'SAME' ? mxDiff(b, a) : b.diff === 'SAME' && source === PROV.ESTIMATED ? mxDiff(b, a) : '';
+    const r = row(f.key); if (!r) return '';
+    const d = diffOf(r);
     return `<div class="f-std-focus-trait" data-f-std-focus-trait="${esc(f.key)}">
       <b>${esc(f.label)}</b>
-      <div class="f-std-focus-line"><small>대상</small><span data-f-trait-target data-f-tier="${esc(a.tier || PROV.UNVERIFIED)}">${mxVal(a)} ${targetBadge}</span></div>
-      <div class="f-std-focus-line"><small>후보</small><span data-f-trait-std data-f-tier="${esc(source)}">${mxVal(b)} ${sourceBadge}</span></div>
-      ${difference ? `<div class="f-std-focus-diff">${difference}</div>` : ''}
+      ${line('대상', r.target, 'data-f-trait-target')}
+      ${line('후보', r.cells[0], 'data-f-trait-std')}
+      ${d ? `<div class="f-std-focus-diff">${d}</div>` : ''}
     </div>`;
   }).join('');
   const yearDiff = targetYear && stdYear && String(targetYear) !== String(stdYear);
-  return `<section class="f-std-focus-traits" data-f-std-focus-traits data-pnu="${esc(sel.pnu)}" aria-label="선택 표준지 후보의 이용상황·도로접면·형상·고저 비교">
-    <div class="f-std-focus-head"><b>선택 후보 토지특성</b><span>${esc(targetYear || '연도 미상')}년 대상 ↔ ${esc(stdYear || '연도 미상')}년 후보 ${yearDiff ? '<strong class="f-std-focus-year-warning">기준연도 다름</strong>' : ''}</span></div>
+  const price = row('price').cells[0]; const dist0 = row('distance').cells[0];
+  return `<section class="f-std-focus-traits" data-f-std-focus-traits data-pnu="${esc(sel.pnu)}" aria-label="선택 표준지 후보와 대상 필지 현황 비교">
+    <div class="f-std-focus-head"><b>${sel.kind === 'CANDIDATE' ? `후보 ${esc(sel.rank)}` : '표준지'} · ${esc(shortLabel(sel.label))}</b><span data-f-std-focus-sum>${mxVal(price)} · ${mxVal(dist0)}</span>${directChip(sel, { retry: true })}${yearDiff ? '<strong class="f-std-focus-year-warning">기준연도 다름</strong>' : ''}</div>
+    <div class="f-std-focus-facts">${fact('area', '면적')}${fact('zoning', '용도지역')}${fact('land_category', '지목')}</div>
     <div class="f-std-focus-grid">${cards}</div>
-    <p class="f-std-focus-origin">표준지 API 속성 · 공식 토지특성현황도 대조 전 · 비교표준지 확정 아님</p>
+    <details class="f-fold f-std-focus-src" data-f-std-focus-src><summary class="small">출처·검증 상세</summary>
+      <p class="f-std-focus-origin">대상 ${esc(targetYear || '연도 미상')}년 토지특성 ↔ 표준지 ${esc(stdYear || '연도 미상')}년 공시 · 공식 토지특성현황도 대조 전 · 비교표준지 확정 아님</p>
+      <p class="small" data-f-std-focus-direct>${directDetail(sel)}</p></details>
   </section>`;
 }
 function traitTable(sel, review, dup = false) {
-  const mx = buildStdMatrix({ pdValues: st.pd?.values || [], columns: [sel], review });
+  const mx = buildStdMatrix({ pdValues: st.pd?.values || [], columns: [sel], review, targetArea: targetArea() });
   const ty = pdYear();
   const sy = sel.year || TRAIT_FIELDS.map((f) => sel.traits?.[f.key]?.year).find(Boolean);
   return `<table class="f-traits small${dup ? ' f-traits-dup' : ''}" data-f-std-traits="${esc(sel.pnu)}"><thead><tr><th>특성</th><th>대상 필지</th><th>${sel.kind === 'CANDIDATE' ? `후보 ${sel.rank}` : '표준지'}</th><th>비교</th></tr></thead><tbody>
@@ -457,12 +539,12 @@ function traitTable(sel, review, dup = false) {
 // 5열 비교표(구분 | 대상 | 후보①②③): 펼침·PC 화면. 열 머리를 누르면 지도 표식·상세와 같이 선택된다.
 function stdMatrix(sr, cols, selected) {
   if (!cols.length) return '';
-  const mx = buildStdMatrix({ pdValues: st.pd?.values || [], columns: cols, review: sr.review });
+  const mx = buildStdMatrix({ pdValues: st.pd?.values || [], columns: cols, review: sr.review, targetArea: targetArea() });
   const isSel = (c) => c.pnu === selected;
   const diffOnly = Boolean(st.std?.diffOnly);
   const stableRows = mx.rows.filter((r) => r.target?.tier === PROV.RECEIVED && r.cells.length && r.cells.every((c) => c.diff === 'SAME' && c.tier === PROV.RECEIVED)).length;
-  return `<div class="f-mx-wrap" data-f-std-matrix-wrap data-f-mx-diff-only="${diffOnly}"><div class="f-mx-context"><b>후보 ${cols.length}건 · 확정 아님</b><span>API 수신값 · 원문 대조 전</span><button type="button" class="f-mx-diff-toggle" data-f-mx-diff-toggle aria-pressed="${diffOnly}" title="모든 후보가 동일한 API 수신 명칭을 가진 ${stableRows}개 행만 숨깁니다. 추정·미확인·가격·거리·연도 주의사항은 유지합니다.">${diffOnly ? '전체 항목 보기' : '차이·미확인 우선'}</button></div><table class="f-mx small" data-f-std-matrix data-cols="${cols.length}">
-    <thead><tr><th scope="col">구분</th><th scope="col">대상 필지<br><span class="muted" data-f-mx-year="target">${esc(pdYear() || '연도 미상')}${pdYear() ? '년' : ''} · 토지특성 API</span></th>${mx.columns.map((c) => `<th scope="col"${isSel(c) ? ' class="sel"' : ''}><button type="button" class="f-mx-col${isSel(c) ? ' sel' : ''}" data-f-std-col="${esc(c.pnu)}" aria-pressed="${isSel(c)}"><span class="n">${esc(c.rank ?? '·')}</span>${esc(shortLabel(c.label))}</button><span class="muted" data-f-mx-year="${esc(c.pnu)}">${esc(c.year || '연도 미상')}${c.year ? '년' : ''} 공시 · 표준지 API</span></th>`).join('')}</tr></thead>
+  return `<div class="f-mx-wrap" data-f-std-matrix-wrap data-f-mx-diff-only="${diffOnly}"><div class="f-mx-context"><b>후보 ${cols.length}건 · 확정 아님</b><button type="button" class="f-mx-diff-toggle" data-f-mx-diff-toggle aria-pressed="${diffOnly}" title="모든 후보가 동일한 API 수신 명칭을 가진 ${stableRows}개 행만 숨깁니다. 추정·미확인·가격·거리·연도 주의사항은 유지합니다.">${diffOnly ? '전체 항목 보기' : '차이·미확인 우선'}</button></div><table class="f-mx small" data-f-std-matrix data-cols="${cols.length}">
+    <thead><tr><th scope="col">구분</th><th scope="col">대상 필지<br><span class="muted" data-f-mx-year="target">${esc(pdYear() || '연도 미상')}${pdYear() ? '년' : ''}</span></th>${mx.columns.map((c) => `<th scope="col"${isSel(c) ? ' class="sel"' : ''}><button type="button" class="f-mx-col${isSel(c) ? ' sel' : ''}" data-f-std-col="${esc(c.pnu)}" aria-pressed="${isSel(c)}"><span class="n">${esc(c.rank ?? '·')}</span>${esc(shortLabel(c.label))}</button><span class="muted" data-f-mx-year="${esc(c.pnu)}">${esc(c.year || '연도 미상')}${c.year ? '년' : ''} 공시</span>${directChip(cols.find((x) => x.pnu === c.pnu), { retry: true })}</th>`).join('')}</tr></thead>
     <tbody>${mx.rows.map((r) => `<tr data-f-mx-row="${r.key}" data-f-mx-row-stable="${Boolean(r.target?.tier === PROV.RECEIVED && r.cells.length && r.cells.every((c) => c.diff === 'SAME' && c.tier === PROV.RECEIVED))}"><th scope="row">${esc(r.label)}</th><td data-f-mx-target>${mxCompactCell(r.target)}</td>${r.cells.map((c, i) => `<td data-f-mx-cell="${esc(mx.columns[i].pnu)}"${isSel(mx.columns[i]) ? ' class="sel"' : ''}>${mxCompactCell(c, r.target)}</td>`).join('')}</tr>`).join('')}</tbody></table>
     <p class="small f-mx-price-note">개별공시지가와 표준지공시지가는 서로 다른 지표 · 가격 우열 판정 불가</p>
     <details class="f-fold f-mx-notes-fold" data-f-mx-notes-fold>
@@ -472,8 +554,26 @@ function stdMatrix(sr, cols, selected) {
 }
 const won = (n) => (n == null ? '미기재' : `${Number(n).toLocaleString('ko-KR')}원/㎡`);
 const dist = (d) => (d == null ? '거리 미산출' : d >= 1000 ? `${(d / 1000).toFixed(2)}km` : `${Math.round(d)}m`);
-function renderStdPanel(sr) {
-  const s = st.std;
+// 지도 옆 요약: 선택 표준지(후보 또는 지도에서 고른 표준지)와 대상의 공시지가·거리·면적·용도지역·지목·이용상황·도로접면·형상·지세.
+// 정상 값은 주석 없이, 미확인·불일치·조회 중·실패만 짧게. 버튼으로 다시 조회.
+const STRIP_ROWS = ['price', 'distance', 'area', 'zoning', 'land_category', ...TRAIT_FIELDS.map((f) => f.key)];
+function stdStrip(srBase) {
+  const s = st.std; if (!s || s.status !== 'OK' || !srBase?.list) return '';
+  const sr = stdWithDirect(srBase);
+  const sel = (s.selectedYear != null && sr.list.find((x) => x.pnu === s.selected && String(x.year) === String(s.selectedYear))) || sr.list.find((x) => x.pnu === s.selected);
+  if (!sel) return '';
+  const mx = buildStdMatrix({ pdValues: st.pd?.values || [], columns: [sel], review: sr.review, targetArea: targetArea() });
+  const label = (r) => (r.key === 'price' ? '공시지가' : r.key === 'distance' ? '거리' : r.label);
+  const cell = (c) => `${mxVal(c)}${c?.tier === PROV.ESTIMATED ? ` ${provBadge(PROV.ESTIMATED, { label: '추정' })}` : ''}`;
+  const rows = STRIP_ROWS.map((k) => mx.rows.find((r) => r.key === k)).filter(Boolean).map((r) => {
+    const c = r.cells[0]; const differs = r.diff && c.diff === 'DIFF';
+    return `<tr data-f-strip-row="${r.key}"${differs ? ' data-f-strip-diff="1"' : ''}><th scope="row">${esc(label(r))}</th><td data-f-strip-target>${r.key === 'distance' ? '—' : cell(r.target)}</td><td data-f-strip-std data-f-tier="${esc(c.tier || PROV.UNVERIFIED)}">${cell(c)}</td></tr>`;
+  }).join('');
+  return `<div class="f-std-strip" data-f-std-strip="${esc(sel.pnu)}"><div class="f-std-strip-head"><b>${sel.kind === 'CANDIDATE' ? `<span class="n">${esc(sel.rank)}</span>` : ''}${esc(shortLabel(sel.label))}</b> ${directChip(sel, { retry: true })}</div>
+    <table class="f-std-strip-table small"><thead><tr><th scope="col"></th><th scope="col">대상</th><th scope="col">${sel.kind === 'CANDIDATE' ? `후보 ${esc(sel.rank)}` : '표준지'}</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+function renderStdPanel(srBase) {
+  const s = st.std; const sr = stdWithDirect(srBase);
   const cf = (x, key, text) => (x.conflict?.[key] ? '값 충돌' : text); // 충돌 필드는 한쪽 값을 고르지 않음
   const canQuery = st.pd?.status === PD_STATUS.OK && pdValue('zoning')?.base_year;
   const head = `<div class="f-std-panel" data-f-std-panel><h3 class="small"><b>비교표준지 후보</b> <span class="muted">검토 보조 · 화면 열람 전용(카드·인쇄 제외)</span></h3>`;
@@ -492,7 +592,7 @@ function renderStdPanel(sr) {
   const short = shortLabel;
   // 후보 3건은 한 줄 요약(지번·거리·원/㎡·용도지역), 나머지는 기존 상세 줄
   const item = (x) => (x.kind === 'CANDIDATE'
-    ? `<li><button type="button" class="f-std-item cand compact${x === sel ? ' sel' : ''}" data-f-std-item="${esc(x.pnu)}" data-f-std-item-kind="${x.kind}"><span class="n">${x.rank}</span><b>${esc(short(x.label))}</b> <span class="small">${esc(dist(x.distance_m))} · ${esc(won(x.price))} · ${esc(x.zoning || '용도지역 미기재')}</span></button></li>`
+    ? `<li><button type="button" class="f-std-item cand compact${x === sel ? ' sel' : ''}" data-f-std-item="${esc(x.pnu)}" data-f-std-item-kind="${x.kind}"><span class="n">${x.rank}</span><b>${esc(short(x.label))}</b> <span class="small">${esc(dist(x.distance_m))} · ${esc(won(x.price))} · ${esc(x.zoning || '용도지역 미기재')}</span> ${directChip(x)}</button></li>`
     : `<li><button type="button" class="f-std-item std${x === sel ? ' sel' : ''}" data-f-std-item="${esc(x.pnu)}" data-f-std-item-year="${esc(x.year ?? '')}" data-f-std-item-kind="${x.kind}">
       <b>${esc(x.label)}</b> <span class="small">${esc(cf(x, 'price', won(x.price)))} · ${esc(cf(x, 'zoning', x.zoning || '용도지역 미기재'))} · ${esc(cf(x, 'land_use', x.land_use || '이용상황 미기재'))} · ${esc(dist(x.distance_m))}${x.year && String(x.year) !== String(sr.meta.year) ? ` · ${esc(x.year)}년` : ''}</span>
       <span class="small muted">${esc(x.status_label)}${x.located ? '' : ' · 지도 미표시'}${x.reasons?.length ? ` — ${esc(x.reasons[0])}` : ''}</span></button></li>`);
@@ -507,6 +607,7 @@ function renderStdPanel(sr) {
     ${stdMatrix(sr, cands, s.selected)}
     ${sel ? `<div class="f-std-detail" data-f-std-detail="${esc(sel.pnu)}"><b>${sel.kind === 'CANDIDATE' ? `${STD_LABEL.CANDIDATE} ${sel.rank}` : esc(sel.status_label)} · ${esc(short(sel.label))}</b> <span class="chip warn">${esc(STD_LABEL.NOT_SELECTED)}</span>
       <p class="small f-std-line">${esc(cf(sel, 'price', won(sel.price)))} · ${esc(cf(sel, 'zoning', sel.zoning || '용도지역 미기재'))} · ${esc(cf(sel, 'land_use', sel.land_use || '이용상황 미기재'))} · 직선 ${esc(dist(sel.distance_m))}${sel.kind !== 'CANDIDATE' && sel.reasons?.length ? ` · ${esc(sel.reasons[0])}` : ''}</p>
+      ${sel.direct && sel.direct.status !== 'OK' ? `<p class="small f-direct-line" data-f-std-direct-line>${directChip(sel, { retry: true })} ${esc(sel.direct.reason || '')}</p>` : ''}
       ${traitTable(sel, sr.review, sel.kind === 'CANDIDATE')}
       <details class="f-fold" data-f-std-why><summary class="small">근거·출처</summary>
       <dl class="small"><dt>지번</dt><dd data-f-std-d="lot">${esc(sel.label)}</dd><dt>PNU</dt><dd data-f-std-d="pnu">${esc(sel.pnu)}</dd>
@@ -516,10 +617,12 @@ function renderStdPanel(sr) {
       <dt>위치</dt><dd>${sel.located ? '연속지적도 exact-one 경계로 확인' : '위치 미확인 — 지도 미표시'}</dd>
       <dt>검토 근거</dt><dd data-f-std-d="reasons">${(sel.reasons || []).map((r) => `<div>${esc(r)}</div>`).join('')}${(sel.review || []).map((r) => `<div class="muted">${esc(r)}</div>`).join('')}</dd>
       <dt>특성 출처</dt><dd data-f-std-d="traits">${TRAIT_FIELDS.map((f) => `${f.label}: ${esc(TRAIT_STATUS[sel.traits?.[f.key]?.status || 'MISSING'])}`).join(' · ')}</dd>
+      <dt>직접조회</dt><dd data-f-std-d="direct">${directDetail(sel)}</dd>
       <dt>출처</dt><dd class="muted">VWorld 표준지공시지가(getReferLandPriceAttr)${sel.names_from_land_characteristics.length ? ' · 코드 명칭 일부는 토지특성·다른 표준지 응답으로 채움(항목별 출처는 특성 출처 참조)' : ''} · 감정평가서 선정 여부 미확인</dd></dl></details></div>` : ''}
     ${rest.length ? `<details class="f-fold" data-f-std-rest><summary class="small">제외·반경 밖·위치 미확인 ${rest.length}건</summary><ul class="f-std-list">${rest.map(item).join('')}</ul></details>` : ''}
     <details class="f-fold" data-f-std-more><summary class="small">조회 범위·기준시점·유의사항</summary>
     <p class="small muted" data-f-std-scope>조회 범위: ${esc(sr.scope.label)} · 표준지 ${sr.meta.total_rows}행 · 위치 확인 ${sr.meta.located}곳(반경 안 ${sr.meta.in_radius}행) · 조회 ${esc(new Date(s.fetched_at).toLocaleString('ko-KR', { hour12: false }))}${sr.meta.request_count != null ? ` · VWorld 호출 ${sr.meta.request_count}회` : ''}${s.reused ? '<span data-f-std-reused> · 저장 결과 재사용(새 조회 아님)</span>' : ''}</p>
+    ${s.directStats ? `<p class="small muted" data-f-std-direct-stats>표준지 개별 직접조회: 요청 ${s.directStats.requests}회(${s.directStats.items}건) · VWorld 토지특성 호출 ${s.directStats.vworld_calls}회 · 서버 캐시 재사용 ${s.directStats.server_reuse}건 · 화면 재사용 ${s.directStats.client_reuse}회 · 실패·불일치 ${s.directStats.failures}건</p>` : ''}
     <p class="small" data-f-std-basis-date>표준지 공시연도 <b>${esc(sr.meta.year)}년</b>(${esc(sr.meta.year)}-01-01 공시 기준) · ${esc(currentZoning()?.valuation_date_label || '감정평가 기준시점 미확인')} — 적용할 표준지 공시연도는 기준시점에 따라 달라지므로 별도 확인(전문가 검토)</p>
     ${sr.notes.map((n) => `<p class="small warn-note">${esc(n)}</p>`).join('')}
     <button type="button" class="ghost" data-f-std-go>다시 조회</button></details></div></div>`;
@@ -837,7 +940,7 @@ function renderBundleTools() {
     $('[data-f-bundle-save]', tools).addEventListener('click', saveBundle);
   }
   const s = b.cache.stats;
-  $('[data-f-bundle-stats]', tools).textContent = `이번 묶음에서 계측된 호출(첫 필지는 담기 전 조회 포함 · 항공영상 제외 · 전체 VWorld 호출 수 아님): 지적 ${s.vworld_cad}회/${BUNDLE.cadCalls}${s.cad_unknown ? `(+미확인 최대 ${s.cad_unknown}회)` : ''}${s.cad_reserved ? `(+진행 중 예약 ${s.cad_reserved}회)` : ''} · 표준지 ${s.vworld_std}회(조회 ${s.std_sent}/${BUNDLE.stdLookups})${s.std_failed ? ` · 표준지 실패 ${s.std_failed}${s.std_unknown ? `(호출 수 미확인 ${s.std_unknown})` : ''}` : ''} · 기타 브리지 요청 ${s.other_requests}회${s.other_failed ? `(실패 ${s.other_failed})` : ''}(VWorld 호출 수 미제공) · 저장 결과 재사용 ${s.reuse}회${s.blocked ? ` · 한도로 막음 ${s.blocked}회` : ''}`;
+  $('[data-f-bundle-stats]', tools).textContent = `이번 묶음에서 계측된 호출(첫 필지는 담기 전 조회 포함 · 항공영상 제외 · 전체 VWorld 호출 수 아님): 지적 ${s.vworld_cad}회/${BUNDLE.cadCalls}${s.cad_unknown ? `(+미확인 최대 ${s.cad_unknown}회)` : ''}${s.cad_reserved ? `(+진행 중 예약 ${s.cad_reserved}회)` : ''} · 표준지 ${s.vworld_std}회(조회 ${s.std_sent}/${BUNDLE.stdLookups})${s.std_failed ? ` · 표준지 실패 ${s.std_failed}${s.std_unknown ? `(호출 수 미확인 ${s.std_unknown})` : ''}` : ''} ${s.direct_sent ? ` · 표준지 직접조회 ${s.vworld_direct}회(요청 ${s.direct_sent} · 서버 캐시 재사용 ${s.direct_server_reuse}건${s.direct_failed ? ` · 실패 ${s.direct_failed}` : ''})` : ''} · 기타 브리지 요청 ${s.other_requests}회${s.other_failed ? `(실패 ${s.other_failed})` : ''}(VWorld 호출 수 미제공) · 저장 결과 재사용 ${s.reuse}회${s.blocked ? ` · 한도로 막음 ${s.blocked}회` : ''}`;
 }
 // 전체 필지 지도: 대상 경계가 exact-one으로 확인된 필지만 번호로. 영상 1장, 지적·표준지 조회 없음.
 function renderBundleMapBox(box) {

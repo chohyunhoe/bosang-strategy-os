@@ -31,7 +31,9 @@ export async function bridgeStatus({ fetchImpl, location: loc }) {
   const st = await call(fetchImpl, '/status');
   if (!st.ok) return { status: PD_STATUS.OFFLINE, reason: `로컬 브리지 없음(${st.error_code || '응답 없음'}) — 공적자료 미조회` };
   if (!st.vworld_configured && !st.public_data_configured) return { status: PD_STATUS.NOT_CONFIGURED, reason: '브리지에 API 키 미설정 — 공적자료 미조회' };
-  return { status: PD_STATUS.NOT_QUERIED, vworld: Boolean(st.vworld_configured), public_data: Boolean(st.public_data_configured) };
+  // capabilities: 현장 서버(field_server.js)가 알려 주는 지원 기능 — 없으면 null(일반 로컬 브리지 · 구버전 서버)
+  return { status: PD_STATUS.NOT_QUERIED, vworld: Boolean(st.vworld_configured), public_data: Boolean(st.public_data_configured),
+    capabilities: Array.isArray(st.capabilities) ? st.capabilities.map(String) : st.capabilities && typeof st.capabilities === 'object' ? Object.keys(st.capabilities).filter((k) => st.capabilities[k] === true).map((k) => k.toLowerCase()) : null, server_rev: typeof st.server_rev === 'string' ? st.server_rev : null };
 }
 
 const ERROR_TEXT = {
@@ -39,6 +41,9 @@ const ERROR_TEXT = {
   VWORLD_REVISION_CONFLICT: '같은 연도 자료가 서로 다름(수정본 충돌) — 값 미사용, 원문 확인 필요',
   VWORLD_API_KEY_MISSING: 'VWorld 키 미설정', PUBLIC_DATA_KEY_MISSING: '공공데이터포털 키 미설정',
   BRIDGE_UNREACHABLE: '로컬 브리지 응답 없음', LEGAL_DONG_MULTIPLE_CANDIDATES: '법정동 후보 복수', LEGAL_DONG_NOT_FOUND: '법정동 코드 없음',
+  FIELD_ROUTE_NOT_ALLOWED: '현장 서버가 이 조회를 지원하지 않음(구버전 서버 코드) — 이 화면과 같은 버전의 scripts/field_server.js로 서버 재시작 필요',
+  UNKNOWN_OP: '서버가 이 조회를 지원하지 않음 — 서버 버전 확인 필요', UNSUPPORTED_OPERATION: '서버가 이 조회를 지원하지 않음 — 서버 버전 확인 필요',
+  TOO_MANY_ITEMS: '한 번에 직접조회할 수 있는 표준지 수(4건) 초과', ITEMS_INVALID: '직접조회할 표준지 PNU·공시연도 없음',
   BUNDLE_STD_LIMIT: '상담 묶음의 표준지 조회 한도(3회)에 닿음 — 이 조회에는 저장된 결과 없음(실패·시간 초과한 전송도 한도에 포함) · 이 묶음에서는 재시도 불가', BUNDLE_CAD_LIMIT: '지적 VWorld 호출 한도(40회) — 보내지 않음', CLIENT_TIMEOUT: '응답 시간 초과 — 다시 조회 가능',
 };
 const RESULT_TEXT = {
@@ -146,6 +151,34 @@ export async function queryZoningHistory({ fetchImpl, location: loc, pnu, years 
   const failed = attempts.filter((x) => !x.ok);
   return { status: rows.length ? PD_STATUS.OK : failed.length ? PD_STATUS.FAILED : PD_STATUS.NO_DATA, pnu, rows, attempts, fetched_at: at(),
     reason: failed.length ? `${failed.map((x) => x.year).join('·')}년 조회 실패 — ${errorText(failed[0].code, null)}` : null };
+}
+
+// 표준지 개별 토지특성 직접조회 — 화면에 보이는 후보 ①②③ 또는 지도·목록에서 고른 표준지만(한 번에 최대 4건).
+// 항목마다 그 PNU·공시연도로 조회하고, 응답 항목도 요청 PNU·연도와 같은 것만 받는다(순서·개수에 기대지 않음).
+export const STANDARD_TRAITS_MAX = 4;
+export async function queryStandardTraits({ fetchImpl, location: loc, items, now = () => new Date() }) {
+  const at = now().toISOString();
+  if (!bridgeAllowed(loc)) return { ok: false, error_code: 'OFFLINE', reason: '오프라인 — 직접조회 안 함', fetched_at: at };
+  const list = [];
+  for (const x of items || []) {
+    const pnu = String(x?.pnu ?? ''); const year = Number(x?.year);
+    if (/^\d{19}$/.test(pnu) && Number.isInteger(year) && year >= 2000 && !list.some((o) => o.pnu === pnu && o.year === year)) list.push({ pnu, year });
+  }
+  if (!list.length) return { ok: false, error_code: 'ITEMS_INVALID', reason: errorText('ITEMS_INVALID'), fetched_at: at };
+  if (list.length > STANDARD_TRAITS_MAX) return { ok: false, error_code: 'TOO_MANY_ITEMS', reason: errorText('TOO_MANY_ITEMS'), fetched_at: at };
+  const r = await call(fetchImpl, '/standard_traits', { items: list });
+  if (!r.ok) return { ok: false, error_code: r.error_code || null, reason: errorText(r.error_code, r.error_message), fetched_at: at, request_count: r.request_count || null };
+  const fetched = r._reused_at || at;
+  const got = Array.isArray(r.items) ? r.items : [];
+  const out = list.map(({ pnu, year }) => {
+    const it = got.find((g) => g && String(g.pnu) === pnu && Number(g.year) === year);
+    if (!it) return { pnu, year, status: 'FAILED', code: 'ITEM_MISSING', reason: '응답에 이 표준지 항목 없음', fetched_at: fetched };
+    const reused = Boolean(r._reused_at || it.cache?.reused);
+    return { pnu, year, status: String(it.status || 'FAILED'), record: it.status === 'OK' ? it.record || null : null, rows: Array.isArray(it.rows) ? it.rows : null,
+      code: it.code || null, response_keys: it.response_keys || null, conflict_fields: it.conflict_fields || null,
+      reason: it.status === 'FAILED' ? errorText(it.code, null) : null, fetched_at: it.cache?.stored_at || fetched, reused };
+  });
+  return { ok: true, items: out, request_count: r.request_count || null, cache: r.cache || null, source: r.source || null, fetched_at: fetched, reused: Boolean(r._reused_at) };
 }
 
 // 지도: 같은 PNU의 연속지적 exact-one 경계 + 주변 지적. 항공영상은 화면에서 /__field/aerial로 따로 받는다.

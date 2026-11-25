@@ -1,6 +1,7 @@
 'use strict';
 // BSO 현장 상담 전용 최소 서버 — Fold8·PC가 같은 화면을 쓰되 API 키는 이 PC 프로세스 밖으로 나가지 않는다.
-// - 제공: 현장 상담 HTML 1개 + 허용 목록 연산(status·resolve_pnu·pnu_parcel·vworld_land·parcel_map) + 항공영상 프록시(/__field/aerial).
+// - 제공: 현장 상담 HTML 1개 + 허용 목록 연산(status·resolve_pnu·pnu_parcel·vworld_land·parcel_map·standard_lands·standard_traits) + 항공영상 프록시(/__field/aerial).
+// - standard_traits: 표준지 후보·선택 표준지의 PNU·공시연도 직접조회. 성공 응답만 이 프로세스 메모리에 캐시(재시작 시 비움).
 // - 제공 안 함: Product v2·Release v1·다른 데이터 브리지(rtms·building 등)·파일 목록·정적 디렉터리.
 // - 항상 루프백(127.0.0.1)에만 바인딩한다. 평문 HTTP LAN 바인딩은 없다(GPT 보안검수 2026-11-24).
 //   Fold8 등 다른 기기는 Tailscale Serve(tailnet 전용 HTTPS → 127.0.0.1 프록시)로만 접속. Funnel(인터넷 공개)·포트포워딩·방화벽 변경 없음.
@@ -16,6 +17,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { runWorker } = require('./public_data_bridge.js');
+const { createStandardTraitsCache } = require('./standard_traits_cache.js');
 
 const root = path.resolve(__dirname, '..');
 const arg = (name, fallback = null) => { const i = process.argv.indexOf(`--${name}`); return i > 0 ? process.argv[i + 1] : fallback; };
@@ -38,7 +40,11 @@ function loadEnv(file) {
   return names;
 }
 
-const ALLOWED_OPS = new Map([['resolve_pnu', 'resolve_pnu'], ['pnu_parcel', 'pnu_parcel'], ['vworld_land', 'vworld_land'], ['parcel_map', 'parcel_map'], ['standard_lands', 'standard_lands']]);
+const ALLOWED_OPS = new Map([['resolve_pnu', 'resolve_pnu'], ['pnu_parcel', 'pnu_parcel'], ['vworld_land', 'vworld_land'], ['parcel_map', 'parcel_map'], ['standard_lands', 'standard_lands'], ['standard_traits', 'standard_traits']]);
+// 화면이 이 서버 코드의 기능을 확인하는 표지(구버전 서버 + 신버전 화면 조합을 화면에서 감지).
+const SERVER_REV = 'field-server/std-direct-1';
+const CAPABILITIES = Object.freeze(['standard_lands', 'standard_traits', 'standard_traits_cache']);
+const traitsCache = createStandardTraitsCache();
 const MAX_BODY = 8 * 1024;
 const AERIAL = Object.freeze({ width: 1024, height: 768, minZoom: 12, maxZoom: 18, maxBytes: 6 * 1024 * 1024 });
 const LIMITS = { bridge: 120, aerial: 60 }; // 분당 요청 수(IP별)
@@ -197,7 +203,8 @@ async function route(req, res) {
     const op = url.pathname.slice('/__public_data_bridge/'.length);
     if (op === 'status' && req.method === 'GET') {
       const r = await runWorker({ operation: 'status' });
-      return sendJson(res, r.ok ? 200 : 503, { ok: Boolean(r.ok), vworld_configured: Boolean(r.vworld_configured), public_data_configured: Boolean(r.public_data_configured), aerial: Boolean(secret()), server: 'bso-field-minimal' });
+      return sendJson(res, r.ok ? 200 : 503, { ok: Boolean(r.ok), vworld_configured: Boolean(r.vworld_configured), public_data_configured: Boolean(r.public_data_configured), aerial: Boolean(secret()), server: 'bso-field-minimal',
+        server_rev: SERVER_REV, capabilities: CAPABILITIES, standard_traits_metrics: { ...traitsCache.metrics, cached: traitsCache.size() } });
     }
     if (!ALLOWED_OPS.has(op) || req.method !== 'POST') return sendJson(res, 404, { ok: false, error_code: 'FIELD_ROUTE_NOT_ALLOWED' });
     let payload;
@@ -205,6 +212,10 @@ async function route(req, res) {
       return sendJson(res, e.message === 'REQUEST_TOO_LARGE' ? 413 : 400, { ok: false, error_code: e.message === 'REQUEST_TOO_LARGE' ? 'REQUEST_TOO_LARGE' : 'INVALID_JSON' });
     }
     if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return sendJson(res, 400, { ok: false, error_code: 'INVALID_JSON' });
+    if (op === 'standard_traits') { // 같은 PNU·연도 성공 응답은 서버 메모리 캐시로 재사용, 나머지만 워커로
+      const r = await traitsCache.handle(payload, runWorker);
+      return sendJson(res, r.ok ? 200 : 422, r);
+    }
     const r = await runWorker({ ...payload, operation: ALLOWED_OPS.get(op) });
     return sendJson(res, r.ok ? 200 : 422, r);
   }
@@ -226,4 +237,4 @@ function start() {
 }
 
 if (require.main === module) start();
-module.exports = { start, ALLOWED_OPS, AERIAL };
+module.exports = { start, ALLOWED_OPS, AERIAL, SERVER_REV, CAPABILITIES };

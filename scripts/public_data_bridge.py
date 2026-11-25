@@ -19,7 +19,7 @@ from public_data.work_ops import (
     build_field_candidate_response,
     build_rtms_response,
 )
-from transaction_enrichment.standard_lands import search_standard_lands
+from transaction_enrichment.standard_lands import lookup_standard_traits, search_standard_lands
 from transaction_enrichment.providers import ProviderError, VWorldCadastralGeometryProvider, VWorldCadastralParcelProvider, VWorldLandCharacteristicsProvider, fetch_cadastral_tile
 
 
@@ -59,6 +59,7 @@ def status() -> dict[str, Any]:
         "capabilities": {
             "PNU_RESOLVER": True,
             "VWORLD_LAND_CHARACTERISTICS": vworld.configured,
+            "STANDARD_TRAITS": vworld.configured,
             "FIELD_CANDIDATES": provider.configured,
             "EARLY_SIGNAL": provider.configured,
             "RTMS": provider.configured,
@@ -304,6 +305,8 @@ def main() -> int:
             result = parcel_map(payload)
         elif operation == "standard_lands":
             result = search_standard_lands(payload)
+        elif operation == "standard_traits":
+            result = lookup_standard_traits(payload)
         elif operation == "field_candidates":
             result = build_field_candidate_response(payload)
         elif operation == "early_signals":

@@ -16,6 +16,7 @@ const POST_OPERATIONS = new Map([
   [`${PREFIX}/pnu_parcel`, 'pnu_parcel'],
   [`${PREFIX}/parcel_map`, 'parcel_map'],
   [`${PREFIX}/standard_lands`, 'standard_lands'],
+  [`${PREFIX}/standard_traits`, 'standard_traits'],
   [`${PREFIX}/field_candidates`, 'field_candidates'],
   [`${PREFIX}/early_signals`, 'early_signals'],
   [`${PREFIX}/rtms`, 'rtms'],

@@ -8,6 +8,8 @@
   같은 코드에 다른 명칭이 오면 채우지 않는다.
 - 위치: 표준지 PNU마다 연속지적도 exact-one 경계가 확인된 것만 좌표를 준다. 확인되지 않으면 좌표 없음(지도 미표시).
 - 소유 구분 등 후보 판단에 쓰지 않는 필드는 돌려주지 않는다.
+- 코드 명칭 변환(learn_names)은 '코드 사전' 역할만 한다. 개별 표준지의 토지특성 확인은
+  lookup_standard_traits()가 그 표준지 PNU·공시연도로 직접 조회한 응답(요청 PNU·연도와 정확히 일치하는 행)으로만 한다.
 """
 from __future__ import annotations
 
@@ -24,6 +26,7 @@ from typing import Any, Mapping
 
 from .providers import (
     ProviderError,
+    collapse_identical_revisions,
     VWorldCadastralGeometryProvider,
     VWorldLandCharacteristicsProvider,
     redact_secrets,
@@ -315,3 +318,70 @@ def search_standard_lands(payload: Mapping[str, Any], *, searcher: StandardLandS
         "request_count": used(s),
         "source": "VWorld 국가중점데이터 표준지공시지가(getReferLandPriceAttr) · 연속지적도(LP_PA_CBND_BUBUN) · 리/읍면동 경계(LT_C_ADRI_INFO/LT_C_ADEMD_INFO)",
     }
+
+
+# ── 표준지 개별 토지특성 직접 조회(화면의 후보 ①②③ · 지도에서 고른 표준지만) ──────────────────────
+# 주변 표준지 전수 조회 없음: 한 요청에 최대 MAX_DIRECT_ITEMS건. 각 건은 그 PNU·공시연도로 getLandCharacteristics를 1회 부른다.
+# 응답 행 중 pnu·stdrYear가 요청과 정확히 같은 행만 쓴다. 다른 필지·연도 행만 오면 MISMATCH(값 미사용).
+# 같은 PNU·연도 행끼리 값이 다르면(수정본 충돌) ROW_CONFLICT로 원본 행을 그대로 돌려주고 한 값을 고르지 않는다.
+MAX_DIRECT_ITEMS = 4
+DIRECT_FIELDS = ("pnu", "stdrYear", "ldCodeNm", "mnnmSlno", "lndcgrCode", "lndcgrCodeNm", "lndpclAr", "prposArea1", "prposArea1Nm",
+                 "prposArea2", "prposArea2Nm", "ladUseSittn", "ladUseSittnNm", "roadSideCode", "roadSideCodeNm", "tpgrphFrmCode",
+                 "tpgrphFrmCodeNm", "tpgrphHgCode", "tpgrphHgCodeNm", "pblntfPclnd", "lastUpdtDt")
+DIRECT_SOURCE = "VWorld 국가중점데이터 토지특성(getLandCharacteristics) — 표준지 PNU·공시연도 직접 조회"
+
+
+def _direct_row(r: Mapping[str, Any]) -> dict[str, str]:
+    return {k: _s(r.get(k)) for k in DIRECT_FIELDS}
+
+
+def _direct_one(s: StandardLandSearch, pnu: str, year: int) -> dict[str, Any]:
+    base = {"pnu": pnu, "year": year, "requested": {"pnu": pnu, "year": year}}
+    try:
+        s.count("land_characteristics")
+        rows, _root = _rows_of(s._json(s.land._request_url(pnu, year)))
+    except ProviderError as exc:
+        return {**base, "status": "FAILED", "code": exc.code}
+    if not rows:
+        return {**base, "status": "NOT_FOUND"}
+    exact = [r for r in rows if _s(r.get("pnu")) == pnu and _s(r.get("stdrYear")) == str(year)]
+    if not exact:
+        seen = sorted({f"{_s(r.get('pnu')) or '?'}|{_s(r.get('stdrYear')) or '?'}" for r in rows})
+        return {**base, "status": "MISMATCH", "response_keys": seen[:5], "row_count": len(rows)}
+    kept = [_direct_row(r) for r in exact]
+    chosen, info = collapse_identical_revisions(kept)
+    if chosen is None:
+        return {**base, "status": "ROW_CONFLICT", "rows": kept[:5], "conflict_fields": info.get("conflict_fields", []), "row_count": len(kept)}
+    return {**base, "status": "OK", "record": chosen, "row_count": len(kept),
+            "verified": {"pnu": chosen["pnu"] == pnu, "year": chosen["stdrYear"] == str(year)}}
+
+
+def lookup_standard_traits(payload: Mapping[str, Any], *, searcher: StandardLandSearch | None = None) -> dict[str, Any]:
+    items = payload.get("items")
+    if not isinstance(items, list) or not items:
+        return {"ok": False, "error_code": "ITEMS_INVALID"}
+    if len(items) > MAX_DIRECT_ITEMS:
+        return {"ok": False, "error_code": "TOO_MANY_ITEMS", "max_items": MAX_DIRECT_ITEMS}
+    wanted: list[tuple[str, int]] = []
+    for it in items:
+        if not isinstance(it, Mapping):
+            return {"ok": False, "error_code": "ITEMS_INVALID"}
+        pnu = _s(it.get("pnu"))
+        if not re.fullmatch(r"\d{19}", pnu):
+            return {"ok": False, "error_code": "PNU_INVALID"}
+        try:
+            year = int(it.get("year"))
+        except (TypeError, ValueError):
+            return {"ok": False, "error_code": "YEAR_INVALID"}
+        if not 2000 <= year <= 2100:
+            return {"ok": False, "error_code": "YEAR_INVALID"}
+        if (pnu, year) not in wanted:
+            wanted.append((pnu, year))
+    s = searcher or StandardLandSearch()
+    if not s.land.configured:
+        return {"ok": False, "error_code": "VWORLD_API_KEY_MISSING"}
+    with ThreadPoolExecutor(max_workers=min(MAX_DIRECT_ITEMS, len(wanted))) as pool:
+        results = list(pool.map(lambda w: _direct_one(s, w[0], w[1]), wanted))
+    return {"ok": True, "items": results, "request_count": {"land_characteristics": s.calls.get("land_characteristics", 0),
+                                                              "total": s.calls.get("land_characteristics", 0)},
+            "source": DIRECT_SOURCE, "review_required": True}

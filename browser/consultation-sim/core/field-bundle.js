@@ -48,7 +48,7 @@ const NOT_SENT_UPSTREAM = new Set(['RATE_LIMITED', 'UNAUTHORIZED', 'FIELD_ACCESS
 const countOf = (v) => (typeof v === 'number' && Number.isInteger(v) && v >= 0 ? v : null);
 export function createBridgeCache({ fetchImpl, limits = BUNDLE, timeoutMs = limits.timeoutMs, cache = true, now = () => new Date(), setTimer = setTimeout, clearTimer = clearTimeout }) {
   const done = new Map(); const inflight = new Map(); let caching = cache;
-  const stats = { network: 0, reuse: 0, std_sent: 0, std_ok: 0, std_failed: 0, std_unknown: 0, vworld_std: 0, vworld_cad: 0, cad_unknown: 0, cad_reserved: 0, other_requests: 0, other_failed: 0, blocked: 0 };
+  const stats = { network: 0, reuse: 0, direct_sent: 0, direct_items: 0, vworld_direct: 0, direct_failed: 0, direct_server_reuse: 0, std_sent: 0, std_ok: 0, std_failed: 0, std_unknown: 0, vworld_std: 0, vworld_cad: 0, cad_unknown: 0, cad_reserved: 0, other_requests: 0, other_failed: 0, blocked: 0 };
   const jsonResponse = (text, status = 200, reusedAt = null) => new Response(text, { status, headers: { 'Content-Type': 'application/json', ...(reusedAt ? { 'X-BSO-Reused-At': reusedAt } : {}) } });
   const cadUsed = () => stats.vworld_cad + stats.cad_unknown + stats.cad_reserved;
   // 지금 보낼 수 있는 지적 호출 여유(한 칸 최대 소비보다 작으면 0)
@@ -66,6 +66,14 @@ export function createBridgeCache({ fetchImpl, limits = BUNDLE, timeoutMs = limi
   function settle(op, cost, text) {
     let j = null; try { j = JSON.parse(text); } catch (_e) { /* 형식 오류 = 소비량 미확인 */ }
     const free = j?.ok === false && NOT_SENT_UPSTREAM.has(j.error_code);
+    if (op === 'standard_traits') { // 표준지 개별 직접조회: 서버가 알려 준 실제 VWorld 호출 수 · 서버 캐시 재사용 · 실패 항목
+      const n = countOf(j?.request_count?.land_characteristics);
+      if (n != null) stats.vworld_direct += n;
+      const items = Array.isArray(j?.items) ? j.items : [];
+      stats.direct_items += items.length; stats.direct_server_reuse += items.filter((x) => x?.cache?.reused).length;
+      stats.direct_failed += j?.ok === true ? items.filter((x) => x?.status !== 'OK' && x?.status !== 'NOT_FOUND').length : 1;
+      return j;
+    }
     if (op === 'standard_lands') {
       const n = countOf(j?.request_count?.total);
       if (n != null) stats.vworld_std += n;
@@ -92,8 +100,10 @@ export function createBridgeCache({ fetchImpl, limits = BUNDLE, timeoutMs = limi
     if (cost && cadUsed() + cost > limits.cadCalls) return refuse('BUNDLE_CAD_LIMIT');
     if (caching && op === 'standard_lands' && stats.std_sent >= limits.stdLookups) return refuse('BUNDLE_STD_LIMIT');
     if (op === 'standard_lands') stats.std_sent += 1;
+    if (op === 'standard_traits') stats.direct_sent += 1;
     stats.cad_reserved += cost; stats.network += 1;
-    const p = send(url, init).then((r) => { const j = settle(op, cost, r.text); if (j?.ok === true) done.set(key, { text: r.text, at: now().toISOString() }); return r; });
+    // 직접조회는 모든 항목이 성공(OK)일 때만 저장 — 실패·불일치 항목이 섞인 응답은 '다시 조회'가 실제로 다시 보내지게 한다.
+    const p = send(url, init).then((r) => { const j = settle(op, cost, r.text); if (j?.ok === true && !(op === 'standard_traits' && (!Array.isArray(j.items) || j.items.some((x) => x?.status !== 'OK')))) done.set(key, { text: r.text, at: now().toISOString() }); return r; });
     inflight.set(key, p);
     try { const r = await p; return jsonResponse(r.text, r.status); } finally { if (inflight.get(key) === p) inflight.delete(key); }
   };

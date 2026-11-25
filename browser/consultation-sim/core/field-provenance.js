@@ -43,7 +43,8 @@ export const provArithmetic = (arith) => (!arith || arith.inconsistent ? PROV.UN
 export const provPdValue = (v) => (v && has(v.value) && v.status !== 'NO_DATA' && !v.mismatch ? PROV.RECEIVED : PROV.UNVERIFIED);
 // 표준지·대상 특성 출처 상태(field-standard.js TRAIT_STATUS 키)
 // 명칭이 같은 필지 응답에서 온 것(NAME_SAME_PNU)만 추정. 다른 필지·구분 미제공·코드만·충돌은 미확인.
-export const provTrait = (status) => ({ API_NAME: PROV.RECEIVED, TARGET_LC: PROV.RECEIVED, NAME_SAME_PNU: PROV.ESTIMATED }[status] || PROV.UNVERIFIED);
+// 그 표준지 PNU·공시연도 직접조회로 받은 값(DIRECT_MATCH·DIRECT_ONLY)은 API 수신값 그대로(기재·수신). 코드 불일치(DIRECT_MISMATCH)는 미확인.
+export const provTrait = (status) => ({ API_NAME: PROV.RECEIVED, TARGET_LC: PROV.RECEIVED, DIRECT_MATCH: PROV.RECEIVED, DIRECT_ONLY: PROV.RECEIVED, NAME_SAME_PNU: PROV.ESTIMATED }[status] || PROV.UNVERIFIED);
 // 소유 확인(상담 묶음): 서류 확인도 상담자가 표시한 것이라 진술로 둔다(시스템이 등기부를 대조하지 않음)
 export function provOwnership(o = {}) {
   if (!o || o.basis === 'UNCONFIRMED' || !o.basis) return { tier: PROV.UNVERIFIED, label: '소유 미확인' };

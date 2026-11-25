@@ -296,6 +296,6 @@ test('단일 필지 표준지 특성 표시(묶음 없이): 대상·후보 특�
   await expect(page.locator('[data-f-std-traits] [data-f-std-trait="road_access"] [data-f-trait-target]')).toHaveText('세로(가)');
   await expect(page.locator('[data-f-std-traits] [data-f-std-trait="shape"] [data-f-trait-std]')).toHaveText('부정형');
   await page.locator('[data-f-std-why] summary').click();
-  await expect(page.locator('[data-f-std-d="traits"]')).toContainText('고저: 표준지 코드 + 같은 연도 토지특성 명칭');
+  await expect(page.locator('[data-f-std-d="traits"]')).toContainText('지세: 표준지 코드 + 같은 연도 토지특성 명칭');
   await expect(page.locator('[data-f-bundle-bar]')).toHaveCount(0);
 });

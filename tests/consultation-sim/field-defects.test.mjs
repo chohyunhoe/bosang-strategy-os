@@ -58,7 +58,8 @@ test('표준지 특성: 명칭 출처를 필지별로 구분(같은 필지 · �
   assert.equal(standardTraits(raw('SAME_PNU_LC')).road_access.status, 'NAME_SAME_PNU');
   for (const s of ['OTHER_PNU_LC', 'STANDARD_ROW', 'UNVERIFIED_LC']) assert.equal(standardTraits(raw(s)).road_access.status, 'NAME_OTHER');
   assert.equal(standardTraits(raw(null)).road_access.status, 'NAME_FROM_LC');
-  assert.match(TRAIT_STATUS.NAME_OTHER, /이 필지 값으로 확인 안 됨/);
+  // 코드 사전 명칭은 이 필지 특성 확인이 아님(직접조회 전) — 명칭 변환과 필지 확인을 구분
+  assert.match(TRAIT_STATUS.NAME_OTHER, /코드 사전 명칭/); assert.match(TRAIT_STATUS.NAME_OTHER, /직접조회 전/);
   assert.equal(standardTraits(raw('SAME_PNU_LC')).road_access.value, '세로(불)');
 });
 

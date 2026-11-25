@@ -161,5 +161,76 @@ class StandardLandSearchTest(unittest.TestCase):
         assert search_standard_lands({"pnu": "9999910101100990000", "year": 2026}, searcher=make()[0])["request_count"]["total"] == 1
 
 
+class StandardTraitsDirectTest(unittest.TestCase):
+    """표준지 개별 직접조회(lookup_standard_traits) — 요청 PNU·연도와 일치하는 행만, 전수 조회 없음."""
+
+    A, B, C, D = "9999910101100020000", "9999910102100030000", "9999910101100040000", "9999910102100050000"
+
+    def searcher(self, land_char, fail=()):
+        land = FakeLand({}, land_char)
+        orig = land._transport
+
+        def transport(url, timeout):
+            q = dict(urllib.parse.parse_qsl(urllib.parse.urlparse(url).query))
+            if q.get("pnu") in fail:
+                land.urls.append(url)
+                raise ProviderError("VWORLD_TRANSPORT_ERROR", "synthetic")
+            return orig(url, timeout)
+
+        land._transport = transport
+        return StandardLandSearch(geometry=FakeGeometry({}), land=land), land
+
+    def lc(self, pnu, year="2026", **kw):
+        return {"pnu": pnu, "stdrYear": year, "ladUseSittn": "510", "ladUseSittnNm": "전", "roadSideCode": "05", "roadSideCodeNm": "세로(가)",
+                "tpgrphFrmCode": "05", "tpgrphFrmCodeNm": "부정형", "tpgrphHgCode": "02", "tpgrphHgCodeNm": "평지", "lndpclAr": "1234.5",
+                "lndcgrCode": "01", "lndcgrCodeNm": "전", "prposArea1": "71", "prposArea1Nm": "농림지역", "posesnSeCode": "SECRET", **kw}
+
+    def test_each_item_queried_by_own_pnu_and_year_with_exact_match(self):
+        from transaction_enrichment.standard_lands import lookup_standard_traits
+        s, land = self.searcher({self.A: [self.lc(self.A)], self.B: [self.lc(self.B, roadSideCodeNm="중로한면", roadSideCode="02")],
+                                 self.C: [self.lc(self.C)]})
+        r = lookup_standard_traits({"items": [{"pnu": self.A, "year": 2026}, {"pnu": self.B, "year": 2026}, {"pnu": self.C, "year": 2026}]}, searcher=s)
+        assert r["ok"] and [x["status"] for x in r["items"]] == ["OK", "OK", "OK"]
+        by = {x["pnu"]: x for x in r["items"]}
+        assert by[self.B]["record"]["roadSideCodeNm"] == "중로한면" and by[self.A]["record"]["roadSideCodeNm"] == "세로(가)"
+        assert by[self.A]["verified"] == {"pnu": True, "year": True} and by[self.A]["record"]["lndpclAr"] == "1234.5"
+        assert "posesnSeCode" not in by[self.A]["record"]  # 필요한 특성 필드만
+        # 항목마다 그 PNU·연도로 1회씩만(주변 표준지 전수 조회 없음)
+        asked = sorted(dict(urllib.parse.parse_qsl(urllib.parse.urlparse(u).query))["pnu"] for u in land.urls)
+        assert asked == sorted([self.A, self.B, self.C]) and all("stdrYear=2026" in u for u in land.urls)
+        assert r["request_count"] == {"land_characteristics": 3, "total": 3}
+
+    def test_other_parcel_or_year_rows_are_mismatch_not_values(self):
+        from transaction_enrichment.standard_lands import lookup_standard_traits
+        s, _ = self.searcher({self.A: [self.lc(self.D)], self.B: [self.lc(self.B, year="2025")]})
+        r = lookup_standard_traits({"items": [{"pnu": self.A, "year": 2026}, {"pnu": self.B, "year": 2026}]}, searcher=s)
+        a, b = r["items"]
+        assert a["status"] == "MISMATCH" and "record" not in a and a["response_keys"] == [f"{self.D}|2026"]
+        assert b["status"] == "MISMATCH" and "record" not in b and b["response_keys"] == [f"{self.B}|2025"]
+
+    def test_row_conflict_keeps_both_rows_and_failure_and_not_found(self):
+        from transaction_enrichment.standard_lands import lookup_standard_traits
+        s, _ = self.searcher({self.A: [self.lc(self.A, lastUpdtDt="2026-01-01"), self.lc(self.A, roadSideCodeNm="맹지", roadSideCode="12", lastUpdtDt="2026-02-01")],
+                              self.C: [self.lc(self.C, lastUpdtDt="2026-01-01"), self.lc(self.C, lastUpdtDt="2026-03-01")]}, fail={self.B})
+        r = lookup_standard_traits({"items": [{"pnu": self.A, "year": 2026}, {"pnu": self.B, "year": 2026}, {"pnu": self.C, "year": 2026}, {"pnu": self.D, "year": 2026}]}, searcher=s)
+        a, b, c, d = r["items"]
+        assert a["status"] == "ROW_CONFLICT" and {x["roadSideCodeNm"] for x in a["rows"]} == {"세로(가)", "맹지"} and "roadSideCode" in a["conflict_fields"]
+        assert b["status"] == "FAILED" and b["code"] == "VWORLD_TRANSPORT_ERROR"
+        assert c["status"] == "OK" and c["record"]["lastUpdtDt"] == "2026-03-01"  # 갱신일만 다른 수정본은 최신으로 정리
+        assert d["status"] == "NOT_FOUND"
+        assert r["request_count"]["land_characteristics"] == 4
+
+    def test_input_limits(self):
+        from transaction_enrichment.standard_lands import lookup_standard_traits
+        s, land = self.searcher({})
+        assert lookup_standard_traits({"items": []}, searcher=s)["error_code"] == "ITEMS_INVALID"
+        assert lookup_standard_traits({"items": [{"pnu": self.A, "year": 2026}] * 5}, searcher=s)["error_code"] == "TOO_MANY_ITEMS"
+        assert lookup_standard_traits({"items": [{"pnu": "123", "year": 2026}]}, searcher=s)["error_code"] == "PNU_INVALID"
+        assert lookup_standard_traits({"items": [{"pnu": self.A, "year": "x"}]}, searcher=s)["error_code"] == "YEAR_INVALID"
+        assert land.urls == []
+        r = lookup_standard_traits({"items": [{"pnu": self.A, "year": 2026}, {"pnu": self.A, "year": 2026}]}, searcher=s)
+        assert len(r["items"]) == 1 and len(land.urls) == 1  # 같은 PNU·연도 중복은 1회
+
+
 if __name__ == "__main__":
     unittest.main()

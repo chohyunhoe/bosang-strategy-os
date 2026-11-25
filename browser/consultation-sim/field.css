@@ -504,3 +504,57 @@ body[data-f-focus="1"] .f-std-focus-traits{display:block;margin:8px 0;border:1px
  body[data-f-focus="1"][data-f-focus-step="2"] .f-grid>[data-f-map-panel]{display:block;order:2;width:100%;min-width:0;position:relative;top:auto}
  body[data-f-focus="1"][data-f-focus-step="2"] .f-map-frame{position:relative!important;top:auto!important}
 }
+
+/* ── 현장 실사용: 지도 크기 · 지도 옆 선택 표준지 요약 · 직접조회 상태(2026-11-26) ──
+   4:3 좌표계(.f-map-frame aspect-ratio 4/3, 영상·SVG 같은 상자)는 그대로 두고 상자 크기만 키운다. */
+.f-std-strip{display:none;border:1px solid #cbd5e1;border-radius:9px;background:#fff;padding:6px 8px;min-width:0}
+.f-std-strip-head{display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px;margin-bottom:4px;font-size:13px;color:#173b61}
+.f-std-strip-head .n{display:inline-block;min-width:20px;height:20px;line-height:20px;border-radius:10px;background:#1f6fff;color:#fff;text-align:center;font-size:12px;margin-right:4px}
+.f-std-strip-table{width:100%;border-collapse:collapse;table-layout:fixed}
+.f-std-strip-table th,.f-std-strip-table td{padding:3px 5px;border-bottom:1px solid #eef2f7;text-align:left;vertical-align:top;overflow-wrap:anywhere;font-size:12.5px}
+.f-std-strip-table thead th{font-size:11px;color:#64748b;font-weight:600}
+.f-std-strip-table tbody th{width:68px;color:#475569;font-weight:600}
+.f-std-strip-table td[data-f-tier="UNVERIFIED"]{color:#64748b}
+.f-std-strip-table tr[data-f-strip-diff="1"] td[data-f-strip-std]{background:#fff7ed;box-shadow:inset 3px 0 #d97706}
+.f-direct-chip{font-size:11px;margin:0 2px}
+.f-direct-retry{min-height:44px;padding:2px 10px;font-size:12px}
+.f-direct-mm{margin-top:3px;color:#991b1b}
+.f-std-focus-facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-bottom:6px}
+.f-std-focus-fact{border:1px solid #dbe2eb;background:#fff;border-radius:8px;padding:6px 8px;min-width:0;overflow-wrap:anywhere}
+.f-std-focus-fact>b{font-size:12px;color:#1e3a5f;display:block;margin-bottom:3px}
+.f-std-focus-head [data-f-std-focus-sum]{font-size:12px;color:#1e3a5f;font-weight:650}
+.f-std-focus-src{margin-top:6px}
+@media(max-width:480px){.f-std-focus-facts{grid-template-columns:repeat(3,minmax(0,1fr));gap:4px}.f-std-focus-fact{padding:5px 6px}}
+
+/* PC(≥1200): 기본 지도 600~800px(화면 높이에 맞춤) · 오른쪽 칸에 도구·상태·선택 표준지 요약 */
+@media(min-width:1200px){
+  body:not([data-f-pc-map-expanded="1"]) .f-grid>[data-f-map-panel] .f-map{grid-template-columns:minmax(0,clamp(600px,min(calc((100vh - 300px) * 4 / 3),calc(100% - 290px)),800px)) minmax(0,1fr);grid-template-areas:"frame tools" "frame status" "frame strip" "frame legend" "frame note";grid-template-rows:auto auto auto auto 1fr}
+  body:not([data-f-pc-map-expanded="1"]) .f-map-frame{max-width:800px}
+  body:not([data-f-pc-map-expanded="1"]) .f-std-strip{display:block;grid-area:strip}
+  /* 다필지 묶음으로 가운데 칸이 좁으면(지도 600 + 요약 칸이 안 들어가면) 요약을 지도 아래로 */
+  body:not([data-f-pc-map-expanded="1"]) .f-work:has([data-f-bundle-bar]) .f-grid>[data-f-map-panel] .f-map{grid-template-columns:minmax(0,1fr);grid-template-areas:"frame" "tools" "status" "strip" "legend" "note";grid-template-rows:auto}
+  .f-grid>[data-f-std-section]{max-height:max(340px,calc(100vh - 200px))}
+  body[data-f-pc-map-expanded="1"] .f-std-strip{display:block;margin-top:6px}
+  body[data-f-focus="1"] .f-map{max-width:1100px}
+  body[data-f-focus="1"] .f-grid>[data-f-map-panel] .f-map{display:grid;grid-template-columns:minmax(0,clamp(600px,min(calc((100vh - 300px) * 4 / 3),calc(100% - 290px)),800px)) minmax(260px,1fr);grid-template-areas:"frame tools" "frame status" "frame strip" "frame legend" "frame note";grid-template-rows:auto auto auto auto 1fr;gap:2px 10px;align-items:start}
+  body[data-f-focus="1"] .f-map-frame{grid-area:frame;max-width:800px}
+  body[data-f-focus="1"] .f-map-tools{grid-area:tools;margin:0}body[data-f-focus="1"] .f-map-status{grid-area:status;margin:0}
+  body[data-f-focus="1"] .f-legend{grid-area:legend}body[data-f-focus="1"] .f-map-note{grid-area:note}
+  body[data-f-focus="1"] .f-std-strip{display:block;grid-area:strip}
+}
+/* Fold8 펼침(860~1199): 기본 2열은 지도 칸을 넓게(지도 ≈55%) · 표준지 탭(전체 폭)은 지도 560px + 오른쪽 요약 */
+@media(min-width:860px) and (max-width:1199px){
+  .f-grid{grid-template-columns:minmax(0,1.25fr) minmax(0,1fr)}
+  .f-std-strip{display:block;margin-top:6px}
+  body[data-f-analysis-full="1"] .f-grid{grid-template-columns:minmax(0,1fr)}
+  body[data-f-analysis-full="1"] .f-grid>[data-f-map-panel] .f-map{grid-template-columns:minmax(0,560px) minmax(0,1fr);grid-template-areas:"frame tools" "frame status" "frame strip" "frame legend" "frame note";grid-template-rows:auto auto auto auto 1fr}
+  body[data-f-analysis-full="1"] .f-map-frame{max-width:560px}
+  body[data-f-analysis-full="1"] .f-std-strip{grid-area:strip;margin-top:0}
+  body[data-f-analysis-full="1"] .f-grid>[data-f-map-panel]{position:relative;top:auto}
+}
+/* Fold8 커버(≤859): 지도는 가용 화면 전체 너비(좌우 여백만). 요약은 표준지 칸의 카드가 대신한다. */
+@media(max-width:859px){
+  .f-std-strip{display:none!important}
+  .f-grid>[data-f-map-panel] .f-map-frame{width:100%;max-width:none}
+}
+@media print{.f-std-strip,.f-direct-retry{display:none!important}}

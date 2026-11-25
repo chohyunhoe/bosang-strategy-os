@@ -69,7 +69,8 @@ test('표준지: 다른 필지 응답에서 온 명칭은 확인된 값처럼 �
   await start(page, { stdRows: [stdRow({ roadSideCode: '08', roadSideCodeNm: '세로(불)', name_filled_from_land_characteristics: ['roadSideCodeNm'], name_sources: { roadSideCodeNm: 'OTHER_PNU_LC' } })] });
   await open(page, QS[0]); await lookup(page); await page.locator('[data-f-std-go]').click();
   const cell = page.locator('[data-f-std-trait="road_access"] [data-f-trait-std]');
-  await expect(cell).toContainText('세로(불)'); await expect(cell).toContainText('이 필지 확인 안 됨'); await expect(cell).toHaveAttribute('data-f-trait-status', 'NAME_OTHER');
+  // 직접조회 전(서버 미지원): 표준지 API 코드의 코드 사전 명칭 — 이 필지 확인값으로 표시하지 않음
+  await expect(cell).toContainText('세로(불)'); await expect(cell).toContainText('코드 대응 명칭 · 직접조회 전'); await expect(cell).toHaveAttribute('data-f-trait-status', 'NAME_OTHER');
 });
 
 test('면적: 같은 PNU 두 필지는 통합 요약 합계에서 보류', async ({ page, context }) => {
