@@ -437,19 +437,21 @@ def _clean_geometry(geometry: Any) -> dict[str, Any] | None:
 class VWorldCadastralGeometryProvider(VWorldCadastralParcelProvider):
     """연속지적도 경계(EPSG:4326). 대상 필지는 같은 PNU exact-one일 때만 돌려준다."""
 
-    def _data(self, extra: dict[str, str]) -> list[dict[str, Any]]:
+    def _raw(self, extra: dict[str, str]) -> Any:
         if not self.configured:
             raise ProviderError("VWORLD_API_KEY_MISSING", "VWORLD_API_KEY is not configured")
         params = {"service": "data", "request": "GetFeature", "data": "LP_PA_CBND_BUBUN", "geometry": "true", "attribute": "true",
                   "crs": "EPSG:4326", "format": "json", "key": self._api_key or "", **extra}
         try:
-            payload = self._transport(f"{VWORLD_DATA_ENDPOINT}?{urllib.parse.urlencode(params)}", self._timeout)
+            return self._transport(f"{VWORLD_DATA_ENDPOINT}?{urllib.parse.urlencode(params)}", self._timeout)
         except (TimeoutError, urllib.error.URLError, urllib.error.HTTPError, ssl.SSLError, ConnectionError, http.client.RemoteDisconnected) as exc:
             safe = redact_secrets(exc, (self._api_key or "",))
             raise ProviderError("VWORLD_TRANSPORT_ERROR", f"VWorld request failed safely: {safe}") from None
         except (ValueError, TypeError, json.JSONDecodeError):
             raise ProviderError("VWORLD_RESPONSE_ERROR", "VWorld cadastral response could not be parsed") from None
-        return _vworld_features(payload)
+
+    def _data(self, extra: dict[str, str]) -> list[dict[str, Any]]:
+        return _vworld_features(self._raw(extra))
 
     def target(self, pnu: str) -> dict[str, Any]:
         if not re.fullmatch(r"\d{19}", pnu):
@@ -478,3 +480,66 @@ class VWorldCadastralGeometryProvider(VWorldCadastralParcelProvider):
             if pnu and pnu != exclude_pnu and g:
                 out.append({"pnu": pnu, "jibun": str((f.get("properties") or {}).get("jibun") or "") or None, "geometry": g})
         return out
+
+
+# 0.01° 고정 격자 칸 단위 지적경계(화면 범위 조회용). 칸 크기는 기존 검증된 BBOX 상한(0.01°)과 같다.
+CADASTRAL_TILE_DEG = 0.01
+CADASTRAL_PAGE_SIZE = 1000  # VWorld 데이터 API size 상한(2026-11-25 실측: size=1000 허용, record.total·page.total 응답)
+CADASTRAL_MAX_PAGES = 3
+
+
+def cadastral_tile_bbox(ix: int, iy: int) -> list[float]:
+    if not (12400 <= ix < 13200 and 3300 <= iy < 3950):
+        raise ProviderError("TILE_INVALID", "tile index must be inside Korea")
+    return [ix / 100, iy / 100, (ix + 1) / 100, (iy + 1) / 100]
+
+
+def _int_or_none(value: Any) -> int | None:
+    try:
+        return int(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+
+
+def fetch_cadastral_tile(provider: "VWorldCadastralGeometryProvider", ix: int, iy: int, exclude_pnu: str, *, max_pages: int = CADASTRAL_MAX_PAGES,
+                         call_budget: list[int] | None = None) -> dict[str, Any]:
+    """한 칸의 지적경계를 페이지 단위로 모은다. 전체 건수(record.total)와 받은 건수가 같을 때만 COMPLETE.
+    - 페이지 상한·호출 예산을 넘으면 PARTIAL(남은 건수 명시), 건수 메타가 없으면 COUNT_UNKNOWN(완전하다고 하지 않음)."""
+    bbox = cadastral_tile_bbox(ix, iy)
+    box = f"BOX({bbox[0]:.2f},{bbox[1]:.2f},{bbox[2]:.2f},{bbox[3]:.2f})"
+    features: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    total = None; pages_total = None; calls = 0; raw_count = 0; reason = None
+    for page in range(1, max_pages + 1):
+        if call_budget is not None:
+            if call_budget[0] <= 0:
+                reason = "CALL_BUDGET"; break
+            call_budget[0] -= 1
+        payload = provider._raw({"geomFilter": box, "size": str(CADASTRAL_PAGE_SIZE), "page": str(page)})
+        calls += 1
+        feats = _vworld_features(payload)
+        resp = payload.get("response") if isinstance(payload, Mapping) else {}
+        t = _int_or_none(((resp or {}).get("record") or {}).get("total"))
+        total = t if t is not None else total
+        pages_total = _int_or_none(((resp or {}).get("page") or {}).get("total")) or pages_total
+        raw_count += len(feats)
+        for f in feats:
+            props = f.get("properties") or {}
+            pnu = str(props.get("pnu") or "")
+            g = _clean_geometry(f.get("geometry"))
+            if pnu and pnu != exclude_pnu and pnu not in seen and g:
+                seen.add(pnu)
+                features.append({"pnu": pnu, "jibun": str(props.get("jibun") or "") or None, "geometry": g})
+        if not feats or (total is not None and raw_count >= total) or (pages_total is not None and page >= pages_total) or len(feats) < CADASTRAL_PAGE_SIZE:
+            break
+    else:
+        reason = "PAGE_LIMIT"
+    if calls == 0:
+        status = "NOT_QUERIED"
+    elif total is None:
+        status = "COUNT_UNKNOWN"
+    elif raw_count >= total:
+        status = "COMPLETE"
+    else:
+        status = "PARTIAL"; reason = reason or "PAGE_LIMIT"
+    return {"tile": [ix, iy], "bbox": bbox, "status": status, "total": total, "received": raw_count, "calls": calls, "reason": reason, "features": features}

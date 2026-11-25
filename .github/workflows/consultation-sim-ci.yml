@@ -15,6 +15,7 @@ on:
       - 'tests/consultation-sim/**'
       - 'tests/test_vworld_revisions.py'
       - 'tests/test_standard_lands.py'
+      - 'tests/test_cadastral_tiles.py'
       - 'transaction_enrichment/**'
       - 'transaction_enrichment/providers.py'
       - 'tests/consultation-sim-browser/**'
@@ -44,7 +45,7 @@ jobs:
       - name: Deterministic core (synthetic data only)
         run: npm run consult:test
       - name: VWorld revision rule (Python provider opt-in, Release v1 default unchanged)
-        run: python -m unittest tests.test_vworld_revisions tests.test_vworld_result_code tests.test_standard_lands -v
+        run: python -m unittest tests.test_vworld_revisions tests.test_vworld_result_code tests.test_standard_lands tests.test_cadastral_tiles -v
       - name: Public demo bundle safety checks (synthetic only, no bridge, no network)
         run: |
           node scripts/build_consultation_sim_demo.js --host=claude-artifact

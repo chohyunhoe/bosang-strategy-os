@@ -222,15 +222,30 @@ test('인쇄·PDF: 공적자료 영역 제외(미디어 print + beforeprint) · 
 // ── 지도(항공영상+지적경계) · 기타 자유입력 ───────────────────────────────────────
 const PNG_1PX = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
 const SQ = { type: 'MultiPolygon', coordinates: [[[[127.0, 36.0], [127.001, 36.0], [127.001, 36.001], [127.0, 36.001], [127.0, 36.0]]]] };
+// 화면 범위 지적 칸 조회(parcel_map + tiles) 합성 응답: 각 지적 객체는 첫 좌표가 속한 0.01° 칸에 배정.
+// override(key) → { status, total, received, reason, request_count } 로 칸별 상태를 바꿀 수 있다.
+function tileResponse(req, feats, override = () => null, log = null) {
+  if (log) log.push(req.tiles.map((t) => t.join(':')));
+  const cell = (f) => { const p = f.geometry.coordinates[0][0][0]; return `${Math.floor(p[0] * 100 + 1e-9)}:${Math.floor(p[1] * 100 + 1e-9)}`; };
+  let calls = 0;
+  const tiles = req.tiles.map((t) => {
+    const k = t.join(':'); const o = override(k) || {};
+    const fs_ = o.status === 'FAILED' || o.status === 'NOT_QUERIED' ? [] : feats.filter((f) => cell(f) === k || (o.also || []).includes(f.pnu));
+    calls += o.calls ?? 1;
+    return { tile: t, status: o.status || 'COMPLETE', total: o.total ?? fs_.length, received: o.received ?? fs_.length, reason: o.reason || null, features: fs_ };
+  });
+  return { ok: true, mode: 'TILES', tiles, request_count: calls };
+}
 async function mockMap(page, { target = { status: 'EXACT_ONE', pnu: '9800000000100120003', geometry: SQ, jibun: '12-3 대' } } = {}) {
   const aerial = [];
   await page.route('**/__field/aerial**', (route) => { aerial.push(new URL(route.request().url()).searchParams.get('zoom')); return route.fulfill({ status: 200, contentType: 'image/png', body: PNG_1PX }); });
   await page.route('**/__public_data_bridge/**', async (route) => {
     const op = new URL(route.request().url()).pathname.split('/').pop();
+    const req = route.request().postData() ? JSON.parse(route.request().postData()) : {};
     const body = op === 'status' ? { ok: true, vworld_configured: true, public_data_configured: true }
       : op === 'resolve_pnu' ? { ok: true, candidate: { pnu: '9800000000100120003', legal_dong_name: '가상특별시 누리구 새솔동' } }
         : op === 'pnu_parcel' ? { ok: true, parcel: { pnu: '9800000000100120003', address: '가상특별시 누리구 새솔동 12-3', jibun: '12-3 대' } }
-          : op === 'parcel_map' ? { ok: true, target, neighbors: [{ pnu: '9800000000100130000', jibun: '13 대', geometry: SQ }] }
+          : op === 'parcel_map' ? (req.tiles ? tileResponse(req, [{ pnu: '9800000000100130000', jibun: '13 대', geometry: SQ }]) : { ok: true, target, neighbors: [] })
             : { ok: true, record: { land_category: '대', individual_official_price: 777777, price_year: 2026 } };
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
@@ -460,7 +475,7 @@ const STD_OK = {
   },
   limits: { not_located_by_limit: 0 }, name_resolution: { unresolved: [] }, source: 'VWorld(합성 응답)', request_count: { total: 9 },
 };
-async function mockStandard(page, std = STD_OK) {
+async function mockStandard(page, std = STD_OK, { cadFeats = [], cadOverride = () => null, cadLog = null } = {}) {
   const aerial = []; const calls = [];
   await page.route('**/__field/aerial**', (route) => { aerial.push(new URL(route.request().url()).searchParams.get('zoom')); return route.fulfill({ status: 200, contentType: 'image/png', body: PNG_1PX }); });
   await page.route('**/__public_data_bridge/**', async (route) => {
@@ -470,7 +485,7 @@ async function mockStandard(page, std = STD_OK) {
     const body = op === 'status' ? { ok: true, vworld_configured: true, public_data_configured: true }
       : op === 'resolve_pnu' ? { ok: true, candidate: { pnu: OS_PNU, legal_dong_name: '가상도 연습시 숲내읍 바위리' } }
         : op === 'pnu_parcel' ? { ok: true, parcel: { pnu: OS_PNU, address: '가상도 연습시 숲내읍 바위리 12-3', jibun: '12-3 답' } }
-          : op === 'parcel_map' ? { ok: true, target: { status: 'EXACT_ONE', pnu: OS_PNU, geometry: SQ, jibun: '12-3 답' }, neighbors: [] }
+          : op === 'parcel_map' ? (req.tiles ? tileResponse(req, cadFeats, cadOverride, cadLog) : { ok: true, target: { status: 'EXACT_ONE', pnu: OS_PNU, geometry: SQ, jibun: '12-3 답' }, neighbors: [] })
             : op === 'standard_lands' ? std
               : { ok: true, record: { land_category: '답', land_use: '전', zoning: req.standard_year === 2026 ? '제1종일반주거지역' : '농림지역', individual_official_price: 1000, price_year: req.standard_year } };
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
@@ -508,7 +523,7 @@ test('표준지 지도: 대상 빨간 경계 · 주변 표준지 회색 · 후�
   await expect(page.locator('.f-map')).toHaveAttribute('data-f-map-mode', 'COMPARE');
   await expect(page.locator('[data-f-map-mode-btn="compare"]')).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('[data-f-map-toggle="standards"]')).toHaveAttribute('aria-pressed', 'false');
-  await expect(page.locator('[data-f-std-legend]')).toContainText('주변 표준지(숨김)');
+  await expect(page.locator('[data-f-std-legend]')).toContainText('표준지(숨김)');
   const cand = page.locator(`[data-f-std-pin="${SA}"]`);
   await expect(cand).toHaveAttribute('data-f-std-kind', 'CANDIDATE'); await expect(cand).toHaveText('1');
   await expect(page.locator(`[data-f-std-pin="${SB}"]`)).toHaveCount(0);
@@ -662,4 +677,93 @@ test('표준지 지도: 표준지 129행 밀집 — 겹침은 묶음 표식 · �
   await expect(page.locator('[data-f-std-rest] [data-f-std-item]')).toHaveCount(126);
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(0);
+});
+
+// ── 화면 범위 지적경계(0.01° 칸 · 페이지 조회 · 상한 · 캐시) — 합성 응답 ─────────────────────
+const cadSq = (pnu, lon, lat, jibun) => ({ pnu, jibun, geometry: { type: 'MultiPolygon', coordinates: [[[[lon, lat], [lon + 0.00015, lat], [lon + 0.00015, lat + 0.00015], [lon, lat + 0.00015], [lon, lat]]]] } });
+function cadGrid() {
+  const out = [];
+  for (let i = 0; i < 20; i += 1) for (let j = 0; j < 13; j += 1) out.push(cadSq(`98000000001${String(1000 + i * 13 + j).padStart(4, '0')}0000`, 127.0001 + i * 0.0002, 36.0001 + j * 0.0002, `${100 + i * 13 + j} 답`));
+  out.push(cadSq('9800000000199990000', 127.0091, 36.0012, 'DUP 답')); // 12700:3600 칸 — 12701:3600 응답에도 다시 옴(중복)
+  out.push(cadSq('9800000000188880000', 127.0105, 36.0012, 'EAST 답')); // 12701:3600 칸
+  return out;
+}
+
+test('지적경계: 첫 화면 칸 자동(≤4칸) · 100건 초과 표시 · 줌·보기 전환은 자동 조회 없음 · 버튼으로 화면 칸만 · 일부·실패 빗금 · 캐시·중복 제거', async ({ page }) => {
+  const log = []; let failOnce = true;
+  const override = (k) => {
+    if (k === '12701:3600') return { also: ['9800000000199990000'] };
+    if (k === '12701:3599') return { status: 'PARTIAL', total: 3500, received: 3000, reason: 'PAGE_LIMIT', calls: 3 };
+    if (k === '12699:3600' && failOnce) { failOnce = false; return { status: 'FAILED', reason: 'VWORLD_TRANSPORT_ERROR', calls: 1 }; }
+    return null;
+  };
+  const { aerial } = await mockStandard(page, STD_OK, { cadFeats: cadGrid(), cadOverride: override, cadLog: log });
+  await openOsong(page);
+  // 첫 화면: 화면에 걸친 칸 중 최대 4칸을 한 번에 조회
+  await expect.poll(() => log.length).toBe(1);
+  expect(log[0].length).toBeLessThanOrEqual(4);
+  await expect(page.locator('[data-f-cad-coverage]')).toHaveAttribute('data-f-cad-coverage', /FULL|PARTIAL/);
+  expect(await page.locator('.f-cad').count()).toBeGreaterThan(100); // VWorld 100건 상한에 잘리지 않음(칸당 record.total까지)
+  // 첫 화면에서 실패한 칸은 빗금 + 다시 불러오기 버튼
+  await expect(page.locator('[data-f-cad-gap="FAILED"]')).toHaveCount(1);
+  await expect(page.locator('[data-f-cad-coverage]')).toHaveText(/지적 일부/);
+  await expect(page.locator('[data-f-cad-load]')).toHaveText(/현재 화면 지적 불러오기\(1칸\)/);
+  const z0 = Number(await page.locator('.f-map').getAttribute('data-f-map-zoom'));
+  // 표준지 조회 → 후보 비교 → 필지 중심 → 축소 → 다시 후보 비교: 지적 자동 조회 없음
+  await page.locator('[data-f-std-go]').click();
+  await expect(page.locator('[data-f-std-state="FOUND"]')).toBeVisible();
+  await page.locator('[data-f-map-mode-btn="parcel"]').click();
+  await page.locator('[data-f-map-step="-1"]').click();
+  await page.locator('[data-f-map-mode-btn="compare"]').click();
+  await page.locator('[data-f-map-mode-btn="parcel"]').click();
+  await page.locator('[data-f-map-step="-1"]').click();
+  await page.locator('[data-f-map-step="-1"]').click();
+  await expect(page.locator('.f-map')).toHaveAttribute('data-f-map-zoom', String(z0 - 2));
+  expect(log.length).toBe(1);
+  // 넓은 화면: 미조회 칸이 빗금으로 보이고 버튼은 화면 칸만(실패 칸 재시도 포함, 일부 칸 제외)
+  await expect(page.locator('[data-f-cad-gap="NONE"]').first()).toBeVisible();
+  const btn = page.locator('[data-f-cad-load]');
+  const need = Number(await btn.getAttribute('data-need'));
+  expect(need).toBeGreaterThan(0); expect(need).toBeLessThanOrEqual(9);
+  await btn.click();
+  await expect(page.locator('[data-f-cad-load]')).toHaveCount(0);
+  const reqs = log.slice(1);
+  expect(reqs.length).toBe(Math.ceil(need / 4));
+  expect(reqs.every((r) => r.length <= 4)).toBe(true);
+  const asked = reqs.flat();
+  expect(new Set(asked).size).toBe(asked.length); // 같은 칸 두 번 요청 안 함
+  expect(asked).toContain('12699:3600'); // 실패 칸 재시도
+  expect(asked).not.toContain('12700:3600'); // 받은 칸은 캐시
+  expect(asked).toContain('12701:3599');
+  // 건수 상한 칸은 끝까지 '일부'로 남고 빗금 유지 — 완전한 지적이라 표시하지 않음
+  await expect(page.locator('[data-f-cad-coverage]')).toHaveText(/지적 일부/);
+  await expect(page.locator('[data-f-cad-gap="PARTIAL"]')).toHaveCount(1);
+  await page.locator('[data-f-map-note] summary').click();
+  await expect(page.locator('[data-f-cad-detail]')).toContainText('127.01,35.99 일부(건수 상한)(3000/3500건) PAGE_LIMIT');
+  // 일부 칸은 버튼으로 반복 호출하지 않음(같은 화면에서 버튼 없음)
+  await page.locator('[data-f-map-step="1"]').click(); await page.locator('[data-f-map-step="-1"]').click();
+  await expect(page.locator('[data-f-cad-load]')).toHaveCount(0);
+  expect(log.length).toBe(1 + reqs.length);
+  // 칸 경계 중복 필지는 한 번만
+  await expect(page.locator('.f-cad title', { hasText: 'DUP 답' })).toHaveCount(1);
+  await expect(page.locator('.f-cad title', { hasText: 'EAST 답' })).toHaveCount(1);
+  // 대상 경계·영상 정합 유지 · 후보 클릭은 영상 재요청 없음
+  await expect(page.locator('[data-f-map-target]')).toHaveCount(1);
+  const before = aerial.length;
+  await page.locator(`[data-f-std-item="${SA}"]`).click();
+  expect(aerial.length).toBe(before);
+});
+
+test('지적경계: 상담당 VWorld 호출 상한에 닿으면 더 부르지 않고 한도 표시', async ({ page }) => {
+  const log = [];
+  await mockStandard(page, STD_OK, { cadFeats: cadGrid(), cadOverride: () => ({ calls: 10 }), cadLog: log });
+  await openOsong(page);
+  await expect.poll(() => log.length).toBe(1); // 첫 4칸 × 10회 = 40회 → 상한
+  await page.locator('[data-f-map-step="-1"]').click();
+  await page.locator('[data-f-map-step="-1"]').click();
+  await expect(page.locator('[data-f-cad-load]')).toHaveText('지적 조회 한도(이번 상담)');
+  await expect(page.locator('[data-f-cad-load]')).toBeDisabled();
+  await page.locator('[data-f-map-note] summary').click();
+  await expect(page.locator('[data-f-cad-detail]')).toContainText('지적 VWorld 호출 40회(상한 40회)');
+  expect(log.length).toBe(1);
 });

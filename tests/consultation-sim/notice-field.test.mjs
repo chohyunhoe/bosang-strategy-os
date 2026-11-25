@@ -781,7 +781,7 @@ test('표준지 지도 표식: 후보는 번호 버튼 · 일반 표준지는 �
   // 일반 표준지 숨김이어도 선택된 표준지는 표시
   const selHidden = fmap.renderStandardPins(fit, { markers: r.markers, selected: SB, showStandards: false, showCandidates: true }).pins;
   assert.match(selHidden, new RegExp(`data-f-std-pin="${SB}" data-f-std-kind="STANDARD"`)); assert.match(selHidden, /class="f-std-pin std sel"/);
-  assert.match(html, /비교표준지 후보\(감정평가사 선정 아님\)/);
+  assert.match(html, /후보\(감정평가사 선정 아님\)/);
 });
 
 test('표준지 조회 요청: 확인된 PNU·기준연도만 · 오프라인·PNU 미확인이면 호출 안 함', async () => {
@@ -812,4 +812,47 @@ test('표준지 표식 묶음: 화면에서 겹치는 일반 표준지는 개수
   const html = fmap.renderFieldMap({ status: 'EXACT_ONE', pnu: 'P', target: { geometry: { type: 'Polygon', coordinates: [[[127.0, 36.0], [127.001, 36.0], [127.001, 36.001], [127.0, 36.0]]] }, jibun: '320-1 답' },
     neighbors: [], view: v, mode: 'PARCEL', showTarget: true, showNeighbors: true, aerial: 'OK' });
   assert.match(html, /data-f-target-label[^>]*>대상 320-1</); assert.match(html, /data-f-map-mode="PARCEL"/); assert.doesNotMatch(html, /data-f-map-mode-btn="compare"/);
+});
+test('현장 요약본: 12줄 이하 · 소재지·지목·면적·편입률·쟁점·다음 조치·미확인 개수 · 메모·공적자료 값 없음 · 상세본은 그대로', () => {
+  const idx = load(); const profile = profileForIndex(idx);
+  const card = buildFieldCard({ profile, index: idx, row: idx.rows[1], selectedIssueIds: ['obstacle', 'remainder'], memo: '현장 메모', now: new Date('2000-01-02T03:04:00Z') });
+  const lines = card.summary.split('\n');
+  assert.ok(lines.length >= 8 && lines.length <= 12, `lines=${lines.length}`);
+  assert.match(card.summary, /PDF 1쪽 원문확인 필요/); assert.match(card.summary, /\[산술\] 편입률 40%\(일부 편입으로 보임\)/);
+  assert.match(card.summary, /쟁점: .+ · .+/); assert.match(card.summary, /다음 조치: 받은 통지문 원문으로 현재 절차 단계 확인 외 \d+건/);
+  assert.match(card.summary, new RegExp(`미확인 ${card.unverified.length}건\\(.*상세 검토본 참조`)); assert.match(card.summary, new RegExp(`확보할 문서: ${card.documents.length}건 — `));
+  assert.match(card.summary, /증액 약속 없음/);
+  assert.doesNotMatch(card.summary, /현장 메모|PNU|공시지가\s*\d/);
+  // 상세본은 기존 근거·미확인 전부 보존
+  for (const u of card.unverified) assert.ok(card.text.includes(u));
+  assert.match(card.text, /제73조·제74조 구별/);
+});
+
+test('화면 범위 지적 칸: 0.01° 격자 · 중심 칸 우선 · 미완료 칸 빗금 · 불러오기 버튼 상태(한도·확대 필요)', () => {
+  const geom = { type: 'Polygon', coordinates: [[[127.315, 36.625], [127.316, 36.625], [127.316, 36.626], [127.315, 36.625]]] };
+  const v = fmap.fitView(geom);
+  assert.deepEqual(fmap.tilesForView(v), [[12731, 3662]]);
+  const v16 = { ...v, zoom: 16 }; const t16 = fmap.tilesForView(v16);
+  assert.ok(t16.length <= 9 && t16.length >= 4); assert.deepEqual(t16[0], [12731, 3662]);
+  const [w, s, e, n] = fmap.viewBounds(v16); assert.ok(w < 127.315 && e > 127.316 && s < 36.625 && n > 36.626);
+  const tiles = Object.fromEntries(t16.map((t, i) => [fmap.tileKey(t), { status: i === 0 ? 'COMPLETE' : i === 1 ? 'PARTIAL' : 'FAILED', total: 10, received: i === 1 ? 5 : 10 }]));
+  const cad = { tiles, features: [], calls: 3, busy: false };
+  const cov = fmap.cadCoverage(v16, cad);
+  assert.equal(cov.full, false); assert.equal(cov.complete, 1); assert.equal(cov.partial, 1); assert.equal(cov.missing.length, t16.length - 2);
+  const model = { status: 'EXACT_ONE', pnu: '9999910101100010000', target: { geometry: geom, jibun: '320-1 답' }, view: v16, mode: null, showTarget: true, showNeighbors: true, aerial: 'OK', cad };
+  const html = fmap.renderFieldMap(model);
+  assert.equal((html.match(/data-f-cad-gap=/g) || []).length, t16.length - 1); // 완전 칸 1개만 빗금 없음
+  assert.match(html, /data-f-cad-coverage="PARTIAL"/); assert.match(html, new RegExp(`현재 화면 지적 불러오기\\(${t16.length - 2}칸\\)`));
+  assert.match(html, /일부\(건수 상한\)\(5\/10건\)/); assert.match(html, /사업 편입선이 아닙니다/);
+  // 한도 소진 · 확대 필요 · 전부 완료
+  assert.match(fmap.renderFieldMap({ ...model, cad: { ...cad, calls: fmap.CAD.sessionCalls } }), /지적 조회 한도\(이번 상담\)<\/button>/);
+  const v14 = { ...v, zoom: 14 };
+  assert.match(fmap.renderFieldMap({ ...model, view: v14, cad: { ...cad, tiles: {} } }), /확대 후 지적 불러오기\(\d+칸\)[^<]*<\/button>/);
+  const done = Object.fromEntries(t16.map((t) => [fmap.tileKey(t), { status: 'COMPLETE', total: 0, received: 0 }]));
+  const ok = fmap.renderFieldMap({ ...model, cad: { ...cad, tiles: done } });
+  assert.match(ok, /data-f-cad-coverage="FULL"/); assert.doesNotMatch(ok, /data-f-cad-load/); assert.doesNotMatch(ok, /data-f-cad-gap=/);
+  // 화면 밖 지적 객체는 그리지 않음
+  const far = { pnu: 'X', geometry: { type: 'Polygon', coordinates: [[[127.5, 36.9], [127.501, 36.9], [127.501, 36.901], [127.5, 36.9]]] } };
+  far.bb = fmap.featureBounds(far.geometry);
+  assert.doesNotMatch(fmap.renderFieldMap({ ...model, cad: { ...cad, tiles: done, features: [far] } }), /class="f-cad"/);
 });

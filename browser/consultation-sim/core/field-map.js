@@ -124,8 +124,46 @@ function targetLabel(v, model) {
   return `<span class="f-target-label" data-f-target-label style="left:${x.toFixed(2)}%;top:${y.toFixed(2)}%">대상${lot ? ` ${esc(lot)}` : ' 필지'}</span>`;
 }
 
-// model: { status, pnu, target:{geometry,jibun}, neighbors:[{pnu,geometry}], view, mode:'PARCEL'|'COMPARE'|null, showTarget, showNeighbors,
-//          aerial:'LOADING'|'OK'|'FAILED', reason, fetched_at, std?: { markers, selected, showStandards, showCandidates } }
+// ── 화면 범위 지적경계(0.01° 고정 격자 칸) ─────────────────────────────────────
+// 서버가 칸마다 record.total까지 페이지 조회하고 COMPLETE/PARTIAL/COUNT_UNKNOWN/FAILED/NOT_QUERIED를 돌려준다.
+// 화면에 걸친 칸 중 COMPLETE가 아닌 칸은 빗금으로 '미조회·일부'를 표시한다(지적선을 지어내지 않음).
+export const CAD = Object.freeze({ tileDeg: 0.01, perRequest: 4, perClick: 9, sessionCalls: 40, autoTiles: 4 });
+export const CAD_LABEL = Object.freeze({ COMPLETE: '전체', PARTIAL: '일부(건수 상한)', COUNT_UNKNOWN: '건수 미확인', FAILED: '조회 실패', NOT_QUERIED: '미조회(한도)', LOADING: '조회 중' });
+
+export function viewBounds(view) {
+  const s = 256 * 2 ** view.zoom; const [cx, cy] = view.center;
+  const [w, n] = inverseMercator([cx - MAP.width / 2 / s, cy - MAP.height / 2 / s]);
+  const [e, so] = inverseMercator([cx + MAP.width / 2 / s, cy + MAP.height / 2 / s]);
+  return [w, so, e, n];
+}
+export const tileKey = (t) => `${t[0]}:${t[1]}`;
+export function tilesForView(view) {
+  const [w, s, e, n] = viewBounds(view); const out = [];
+  const fx = (x) => Math.floor(x * 100 + 1e-9);
+  for (let ix = fx(w); ix <= fx(e - 1e-9); ix += 1) for (let iy = fx(s); iy <= fx(n - 1e-9); iy += 1) out.push([ix, iy]);
+  // 화면 중심에서 가까운 칸부터(한도 안에서 중심부 먼저 채움)
+  const c = view.centerLonLat;
+  return out.sort((a, b) => Math.hypot(a[0] / 100 + 0.005 - c[0], a[1] / 100 + 0.005 - c[1]) - Math.hypot(b[0] / 100 + 0.005 - c[0], b[1] / 100 + 0.005 - c[1]));
+}
+export function featureBounds(geometry) {
+  const pts = allPoints(geometry); if (!pts.length) return null;
+  const xs = pts.map((p) => p[0]); const ys = pts.map((p) => p[1]);
+  return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+}
+// cad: { tiles: { 'ix:iy': { status, total, received, reason } }, features: [{pnu,jibun,geometry,bb}], busy, calls }
+export function cadCoverage(view, cad) {
+  const tiles = tilesForView(view);
+  const st = tiles.map((t) => ({ t, s: cad?.tiles?.[tileKey(t)] || null }));
+  const complete = st.filter((x) => x.s?.status === 'COMPLETE').length;
+  const loading = st.filter((x) => x.s?.status === 'LOADING').length;
+  const missing = st.filter((x) => !x.s || ['FAILED', 'NOT_QUERIED'].includes(x.s.status)).map((x) => x.t);
+  const partial = st.filter((x) => ['PARTIAL', 'COUNT_UNKNOWN'].includes(x.s?.status)).length;
+  const full = complete === tiles.length;
+  return { tiles, states: st, complete, partial, loading, missing, full, label: full ? '지적 전체(화면)' : loading ? '지적 조회 중' : '지적 일부' };
+}
+
+// model: { status, pnu, target:{geometry,jibun}, neighbors?, cad?, view, mode:'PARCEL'|'COMPARE'|null, showTarget, showNeighbors,
+//          aerial:'LOADING'|'OK'|'FAILED', reason, fetched_at, std?: { markers, selected, showStandards, showCandidates, summary? } }
 export function renderFieldMap(model) {
   if (!model) return '';
   if (model.status === 'LOADING') return '<p class="small muted" data-f-map-state="LOADING">지도 불러오는 중…</p>';
@@ -133,16 +171,35 @@ export function renderFieldMap(model) {
     return `<div data-f-map-state="${esc(model.status)}"><p class="small"><span class="chip bad">지도 미표시</span> ${esc(model.reason || '대상 필지 경계를 확정하지 못했습니다.')} 합성·추정 경계로 대체하지 않습니다. 상담카드는 그대로 씁니다.</p></div>`;
   }
   const v = model.view;
-  const neighbors = model.showNeighbors ? (model.neighbors || []).map((n) => `<path class="f-cad" d="${svgPath(v, n.geometry)}"><title>${esc(n.jibun || n.pnu)}</title></path>`).join('') : '';
+  const [w, s, e, n] = viewBounds(v);
+  const inView = (bb) => !bb || (bb[2] >= w && bb[0] <= e && bb[3] >= s && bb[1] <= n);
+  const feats = model.cad ? model.cad.features : (model.neighbors || []);
+  const neighbors = model.showNeighbors ? feats.filter((f) => inView(f.bb)).map((f) => `<path class="f-cad" d="${svgPath(v, f.geometry)}"><title>${esc(f.jibun || f.pnu)}</title></path>`).join('') : '';
+  const cov = model.cad ? cadCoverage(v, model.cad) : null;
+  const gaps = cov && model.showNeighbors ? cov.states.filter((x) => x.s?.status !== 'COMPLETE').map(({ t, s: ts }) => {
+    const [x0, y0] = project(v, [t[0] / 100, (t[1] + 1) / 100]); const [x1, y1] = project(v, [(t[0] + 1) / 100, t[1] / 100]);
+    const status = ts?.status || 'NONE';
+    return `<rect class="f-cad-gap" data-f-cad-gap="${status}" x="${x0.toFixed(1)}" y="${y0.toFixed(1)}" width="${(x1 - x0).toFixed(1)}" height="${(y1 - y0).toFixed(1)}"/>`;
+  }).join('') : '';
   const target = model.showTarget ? `<path class="f-target" data-f-map-target d="${svgPath(v, model.target.geometry)}" fill-rule="evenodd"/>` : '';
   const std = renderStandardPins(v, model.std);
   const hasCands = Boolean(model.std && std.candidates_total);
   const pressed = (b) => `aria-pressed="${b ? 'true' : 'false'}"`;
   const layer = (k, on, text) => `<button type="button" class="f-layer" data-f-map-toggle="${k}" ${pressed(on)}>${text}</button>`;
+  const cadBtn = cov && !cov.full ? (() => {
+    const left = Math.max(0, CAD.sessionCalls - (model.cad.calls || 0));
+    const need = cov.missing.length;
+    const label = model.cad.busy ? '지적 불러오는 중…' : !need ? '' : left <= 0 ? '지적 조회 한도(이번 상담)' : need > CAD.perClick ? `확대 후 지적 불러오기(${need}칸)` : `현재 화면 지적 불러오기(${need}칸)`;
+    return label ? `<button type="button" class="f-cad-load" data-f-cad-load data-need="${need}" ${model.cad.busy || left <= 0 || need > CAD.perClick ? 'disabled' : ''}>${label}</button>` : '';
+  })() : '';
+  const aerialChip = `<span class="chip ${model.aerial === 'FAILED' ? 'bad' : model.aerial === 'OK' ? 'ok' : ''}" data-f-map-aerial="${esc(model.aerial)}">${model.aerial === 'FAILED' ? '영상 미수신' : model.aerial === 'OK' ? '영상' : '영상 수신 중'}</span>`;
+  const cadChip = cov ? `<span class="chip ${cov.full ? 'ok' : 'warn'}" data-f-cad-coverage="${cov.full ? 'FULL' : cov.loading ? 'LOADING' : 'PARTIAL'}">${esc(cov.label)}${cov.full ? '' : ` · ${cov.complete}/${cov.tiles.length}칸`}</span>` : '';
+  const stdSum = model.std?.summary ? `<span class="small" data-f-std-sum>${esc(model.std.summary)}</span>` : '';
+  const cadDetail = cov ? `<p data-f-cad-detail>지적 조회 칸(0.01° 격자, 화면 ${cov.tiles.length}칸): ${cov.states.map(({ t, s: ts }) => `${t[0] / 100},${t[1] / 100} ${ts ? `${CAD_LABEL[ts.status] || ts.status}${ts.total != null ? `(${ts.received ?? 0}/${ts.total}건)` : ''}${ts.reason && ts.status !== 'COMPLETE' ? ` ${esc(ts.reason)}` : ''}` : '미조회'}`).join(' · ')} · 이번 상담 지적 VWorld 호출 ${model.cad.calls || 0}회(상한 ${CAD.sessionCalls}회). 빗금 = 지적 미조회·일부 구역(지적선이 없어도 필지가 없는 것이 아님).</p>` : '';
   return `<div class="f-map" data-f-map-state="EXACT_ONE" data-f-map-pnu="${esc(model.pnu)}" data-f-map-zoom="${v.zoom}" data-f-map-mode="${esc(model.mode || 'CUSTOM')}">
     <div class="f-map-frame">
       <img class="f-map-img" data-f-map-img src="${esc(aerialUrl(v))}" width="${MAP.width}" height="${MAP.height}" alt="항공영상(VWorld PHOTO)" referrerpolicy="no-referrer">
-      <svg class="f-map-svg" viewBox="0 0 ${MAP.width} ${MAP.height}" preserveAspectRatio="none" aria-label="지적경계">${neighbors}${std.outlines}${target}</svg>
+      <svg class="f-map-svg" viewBox="0 0 ${MAP.width} ${MAP.height}" preserveAspectRatio="none" aria-label="지적경계"><defs><pattern id="f-hatch" width="12" height="12" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="12" stroke="rgba(255,255,255,.45)" stroke-width="3"/></pattern></defs>${gaps}${neighbors}${std.outlines}${target}</svg>
       ${std.pins ? `<div class="f-std-layer" data-f-std-layer>${std.pins}</div>` : ''}
       <div class="f-label-layer">${targetLabel(v, model)}</div>
     </div>
@@ -153,10 +210,13 @@ export function renderFieldMap(model) {
       <button type="button" data-f-map-step="1" ${v.zoom >= MAP.maxZoom ? 'disabled' : ''} aria-label="확대">＋</button>
       ${layer('target', model.showTarget, '대상')}${layer('neighbors', model.showNeighbors, '지적')}
       ${model.std ? `${hasCands ? layer('candidates', model.std.showCandidates !== false, '후보') : ''}${layer('standards', model.std.showStandards, `표준지 ${std.standards_total}`)}` : ''}
-      <span class="chip ${model.aerial === 'FAILED' ? 'bad' : model.aerial === 'OK' ? 'ok' : ''}" data-f-map-aerial="${esc(model.aerial)}">${model.aerial === 'FAILED' ? '항공영상 미수신' : model.aerial === 'OK' ? '항공영상 수신' : '영상 수신 중'}</span>
     </div>
-    ${model.std ? `<p class="small f-legend" data-f-std-legend><span><i class="f-key red"></i>대상 필지</span>${hasCands ? '<span><i class="f-key blue">1</i>비교표준지 후보(감정평가사 선정 아님)</span>' : ''}<span><i class="f-key gray"></i>주변 표준지${model.std.showStandards ? '' : '(숨김)'}</span>${std.offscreen ? `<span data-f-std-offscreen>화면 밖 ${std.offscreen}곳${std.offscreen_candidates ? `(후보 ${std.offscreen_candidates})` : ''}</span>` : ''}</p>` : ''}
-    <details class="f-map-note" data-f-map-note><summary>빨간 선 = 지적경계(사업 편입선 아님) · 화면 열람 전용</summary><p>빨간 선은 지적경계(연속지적도)이며 사업 편입선이 아닙니다. 편입선·사업경계는 이 지도에 연결되지 않았습니다. 지도·영상은 화면 열람용이며 저장·인쇄에서 제외됩니다.</p></details>
-    <p class="small muted" data-f-map-meta>지적: VWorld 연속지적도 exact-one(PNU ${esc(model.pnu)}${model.target.jibun ? ` · ${esc(model.target.jibun)}` : ''}) · 영상: VWorld 영상지도(PHOTO) · <b>촬영일 미확인</b> · 줌 ${v.zoom} · 조회 ${esc(model.fetched_at || '')}</p>
+    <div class="f-map-status small" data-f-map-status>${cadChip}${aerialChip}${stdSum}${std.offscreen ? `<span data-f-std-offscreen>화면 밖 ${std.offscreen}곳${std.offscreen_candidates ? `(후보 ${std.offscreen_candidates})` : ''}</span>` : ''}${cadBtn}</div>
+    ${model.std ? `<p class="small f-legend" data-f-std-legend><span><i class="f-key red"></i>대상</span>${hasCands ? '<span><i class="f-key blue">1</i>후보(감정평가사 선정 아님)</span>' : ''}<span><i class="f-key gray"></i>표준지${model.std.showStandards ? '' : '(숨김)'}</span>${cov && !cov.full ? '<span><i class="f-key hatch"></i>지적 미조회</span>' : ''}</p>` : ''}
+    <details class="f-map-note" data-f-map-note><summary>빨간 선 = 지적경계(사업 편입선 아님) · 출처·검증 상세</summary><div class="f-note-body">
+      <p>빨간 선은 지적경계(연속지적도)이며 사업 편입선이 아닙니다. 편입선·사업경계는 이 지도에 연결되지 않았습니다. 지도·영상은 화면 열람용이며 저장·인쇄에서 제외됩니다.</p>
+      <p data-f-map-meta>지적: VWorld 연속지적도 exact-one(PNU ${esc(model.pnu)}${model.target.jibun ? ` · ${esc(model.target.jibun)}` : ''}) · 영상: VWorld 영상지도(PHOTO) · <b>촬영일 미확인</b> · 줌 ${v.zoom} · 조회 ${esc(model.fetched_at || '')}</p>
+      ${cadDetail}
+    </div></details>
   </div>`;
 }

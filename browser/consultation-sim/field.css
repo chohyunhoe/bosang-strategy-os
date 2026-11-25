@@ -86,3 +86,18 @@ button:disabled{opacity:.45;cursor:not-allowed}
 .f-std-item.std .n{background:#9aa0a6}.f-std-detail{border-left:3px solid #1f6fff;padding:6px 10px;margin:8px 0}
 .f-std-detail dl{display:grid;grid-template-columns:max-content 1fr;gap:2px 10px;margin:4px 0}
 @media (max-width:480px){.f-std-pin.cand .f-pin-dot{width:28px;height:28px;line-height:24px;font-size:15px}.f-std-detail dl{grid-template-columns:1fr}}
+/* 지도 아래 간결한 상태줄 · 지적 미조회 빗금 · 접힘 영역 */
+.f-map-svg .f-cad-gap{fill:url(#f-hatch);stroke:rgba(255,214,0,.85);stroke-width:1.5;stroke-dasharray:6 4;vector-effect:non-scaling-stroke}
+.f-map-svg .f-cad-gap[data-f-cad-gap="LOADING"]{fill:rgba(255,255,255,.08);stroke-dasharray:2 4}
+.f-map-status{display:flex;flex-wrap:wrap;gap:4px 8px;align-items:center;margin:4px 0}
+.f-map-status .chip{margin:0}
+.f-map-tools .f-cad-load,.f-map-status .f-cad-load{min-height:36px;padding:2px 10px;font-size:12.5px;border-radius:8px;border:1px solid #1f6fff;background:#fff;color:#1f4fbf;font-weight:650}
+.f-map-status .f-cad-load:disabled{border-color:#c7ccd2;color:#777}
+.f-key.hatch{border-radius:2px;width:12px;height:10px;background:repeating-linear-gradient(45deg,#c9a600 0 2px,transparent 2px 5px);border:1px dashed #c9a600}
+.f-fold{margin:4px 0}.f-fold>summary{cursor:pointer;color:var(--muted);padding:6px 0;min-height:32px;display:list-item}
+.f-note-body{background:var(--warn-bg);color:#5c3d00;border-radius:0 0 8px 8px;padding:4px 9px 8px;font-size:12px}.f-note-body p{margin:4px 0;background:none;padding:0}
+.f-map-note[open] summary{border-radius:8px 8px 0 0}
+.f-std-item.compact{padding:6px 8px;display:flex;align-items:center;gap:4px;flex-wrap:wrap}
+.f-std-line{margin:2px 0}
+/* 좁은 화면: 이름/값 2열 표를 위아래로(값 칸이 좁아 세로로 길어지는 문제) */
+@media (max-width:600px){.f-kv{grid-template-columns:1fr;gap:0}.f-kv dt{margin-top:6px}.f-kv dd{margin-left:0}}

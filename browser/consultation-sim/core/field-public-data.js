@@ -146,7 +146,8 @@ export async function queryZoningHistory({ fetchImpl, location: loc, pnu, years 
 // 지도: 같은 PNU의 연속지적 exact-one 경계 + 주변 지적. 항공영상은 화면에서 /__field/aerial로 따로 받는다.
 export async function queryParcelMap({ fetchImpl, location: loc, pnu, now = () => new Date() }) {
   if (!bridgeAllowed(loc)) return { status: 'OFFLINE', pnu, reason: '오프라인 — 지도 미조회' };
-  const r = await call(fetchImpl, '/parcel_map', { pnu, neighbors: true });
+  // 주변 지적은 화면 범위 칸 단위로 따로 조회(queryCadastralTiles) — 여기서는 대상 경계만.
+  const r = await call(fetchImpl, '/parcel_map', { pnu });
   const at = now().toISOString();
   if (!r.ok) return { status: 'FAILED', pnu, code: r.error_code, reason: errorText(r.error_code, r.error_message), fetched_at: at };
   const t = r.target || {};
@@ -157,6 +158,16 @@ export async function queryParcelMap({ fetchImpl, location: loc, pnu, now = () =
     return { status, pnu, reason: status === 'MISMATCH' ? '요청 PNU와 응답 PNU가 다릅니다.' : why, fetched_at: at };
   }
   return { status: 'EXACT_ONE', pnu, target: { geometry: t.geometry, jibun: t.jibun || null }, neighbors: Array.isArray(r.neighbors) ? r.neighbors : [], source: r.source, fetched_at: at };
+}
+
+// 화면 범위 지적경계: 0.01° 격자 칸 [ix, iy] 최대 4개(서버 상한과 같음). 칸별 상태·전체 건수는 서버 응답 그대로.
+export async function queryCadastralTiles({ fetchImpl, location: loc, pnu, tiles }) {
+  if (!bridgeAllowed(loc)) return { ok: false, error_code: 'OFFLINE' };
+  if (!/^\d{19}$/.test(String(pnu || ''))) return { ok: false, error_code: 'PNU_INVALID' };
+  if (!Array.isArray(tiles) || !tiles.length || tiles.length > 4 || !tiles.every((t) => Array.isArray(t) && t.length === 2 && t.every(Number.isInteger))) return { ok: false, error_code: 'TILES_INVALID' };
+  const r = await call(fetchImpl, '/parcel_map', { pnu, tiles });
+  if (!r.ok) return { ...r, reason: errorText(r.error_code, r.error_message) };
+  return { ok: true, tiles: Array.isArray(r.tiles) ? r.tiles : [], request_count: Number(r.request_count) || 0 };
 }
 
 // 주변 표준지(비교표준지 후보 검토용) — 상담자가 누를 때만. 확인된 PNU·기준연도만 보낸다(개인정보 없음).

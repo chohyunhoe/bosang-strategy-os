@@ -3,7 +3,25 @@
 // - 법률판단·보상액·기간을 만들지 않는다.
 import { noticeFacts } from './notice-index.js';
 import { issuesFor, issueLabel } from './field-issues.js';
-import { zoningCardLines } from './zoning-basis.js';
+import { zoningCardLines, ZONING_STATUS, ZONING_STATUS_LABEL } from './zoning-basis.js';
+
+// 현장 요약본(복사용 8~12줄): 확인된 소재지·지목·면적/편입률·평가 기준 후보·쟁점·다음 조치·미확인 개수만.
+// 근거·원문 위치·법령·검증기록·미확인 목록 전체는 상세 검토본(text)에 그대로 둔다. 공적자료 실조회 값은 넣지 않는다.
+function summaryText({ head, place, area, zoning, chosen, otherText, documents, next, unverified }) {
+  const zLine = zoning === undefined ? null : !zoning ? '평가 기준 용도지역: 공적자료 미조회 — 확인 필요'
+    : `평가 기준 용도지역(검토 후보): ${ZONING_STATUS_LABEL[zoning.status] || zoning.status}${zoning.status === ZONING_STATUS.NOTICE_PROJECT_REASON && zoning.evidence?.from ? ` — ${zoning.evidence.from}` : ''} · 전문가 검증 전`;
+  return [
+    head,
+    place,
+    ...(area ? [area] : []),
+    ...(zLine ? [zLine] : []),
+    `쟁점: ${chosen.length ? chosen.map((it) => issueLabel(it, otherText)).join(' · ') : '(선택 없음)'}`,
+    `확보할 문서: ${documents.length ? `${documents.length}건 — ${documents.slice(0, 2).join(' · ')}${documents.length > 2 ? ' 외' : ''}` : '(쟁점 선택 후)'}`,
+    `다음 조치: ${next[0]}${next.length > 1 ? ` 외 ${next.length - 1}건` : ''}`,
+    `미확인 ${unverified.length}건(소유·지분·조서 반영·이용상황·절차 단계 등) — 상세 검토본 참조`,
+    '※ 검토 보조 — 보상액·법률 결론·기간 없음 · 증액 약속 없음',
+  ].join('\n');
+}
 
 const fmt = (n) => (typeof n === 'number' ? n.toLocaleString('ko-KR', { maximumFractionDigits: 1 }) : '—');
 
@@ -39,7 +57,9 @@ export function buildDirectCard({ profile, target, selectedIssueIds = [], memo =
     ...(memoText ? ['', '■ 상담 메모', memoText] : []),
     '', '※ 보상액·법률 결론·기간을 정하지 않으며 증액을 약속하지 않습니다. 공적자료 실조회 값은 이용조건 확인 전이라 이 카드에 넣지 않았습니다.',
   ].join('\n');
-  return { address: target.address || null, confirmed, unverified, chosen, documents, next, memo: memoText, text };
+  const summary = summaryText({ head: `[BSO 현장 요약 · 검토 보조 · 고시 색인 밖 필지] ${now.toISOString().slice(0, 10)}`, place: confirmed[0], area: '사업 편입 여부·면적: 고시 색인에 없음(미편입 판정 아님)',
+    zoning, chosen, otherText, documents, next, unverified });
+  return { address: target.address || null, confirmed, unverified, chosen, documents, next, memo: memoText, text, summary };
 }
 
 export function buildFieldCard({ profile, index, row, selectedIssueIds = [], memo = '', otherText = '', zoning = undefined, now = new Date() }) {
@@ -79,5 +99,10 @@ export function buildFieldCard({ profile, index, row, selectedIssueIds = [], mem
     ...(memoText ? ['', '■ 상담 메모', memoText] : []),
     '', '※ 보상액·법률 결론·기간을 정하지 않으며 증액을 약속하지 않습니다. 공적자료 실조회 값은 이용조건 확인 전이라 이 카드에 넣지 않았습니다.',
   ].join('\n');
-  return { address, facts, confirmed, arithmetic, unverified, chosen, documents, next, memo: memoText, text };
+  const ratio = facts.arithmetic ? ` · [산술] 편입률 ${facts.arithmetic.incorporated_ratio_pct}%${facts.arithmetic.partial ? '(일부 편입으로 보임)' : ''}` : '';
+  const summary = summaryText({ head: `[BSO 현장 요약 · 검토 보조 · ${notice.notice_no || '고시'} 일련 ${row.serial}] ${now.toISOString().slice(0, 10)}`,
+    place: `소재지: ${address} — 고시 기재 · PDF ${row.pdf_page}쪽 원문확인 필요`,
+    area: `지목 ${facts.jimok || '—'} · 공부 ${fmt(facts.ledger_area_m2)}㎡ · 편입 ${fmt(facts.incorporated_area_m2)}㎡${ratio}`,
+    zoning, chosen, otherText, documents, next, unverified });
+  return { address, facts, confirmed, arithmetic, unverified, chosen, documents, next, memo: memoText, text, summary };
 }

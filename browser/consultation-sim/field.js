@@ -4,8 +4,8 @@ import { validateNoticeIndex, searchNoticeIndex, SEARCH_STATUS, noticeFacts } fr
 import { issuesFor } from './core/field-issues.js';
 import { buildFieldCard, buildDirectCard } from './core/field-card.js';
 import { directLookupTarget } from './core/field-direct.js';
-import { bridgeStatus, queryPublicData, queryParcelMap, queryZoningHistory, queryStandardLands, TRACE_YEARS, PD_STATUS, PD_STAGE } from './core/field-public-data.js';
-import { fitView, withZoom, renderFieldMap, mercator, MAP, project, aerialUrl } from './core/field-map.js';
+import { bridgeStatus, queryPublicData, queryParcelMap, queryCadastralTiles, queryZoningHistory, queryStandardLands, TRACE_YEARS, PD_STATUS, PD_STAGE } from './core/field-public-data.js';
+import { fitView, withZoom, renderFieldMap, mercator, MAP, project, aerialUrl, tilesForView, tileKey, featureBounds, cadCoverage, CAD } from './core/field-map.js';
 import { buildStandardReview, STD_LABEL } from './core/field-standard.js';
 import { evaluateZoningBasis, RELATION_OPTIONS, ZONING_STATUS, ZONING_STATUS_LABEL } from './core/zoning-basis.js';
 import { EVIDENCE_STATUS_LABEL } from './core/zoning-trace.js';
@@ -124,8 +124,43 @@ async function loadMap(pnu, epoch, subject) {
   if (epoch !== st.epoch || subject !== active()) return;
   if (res.status !== 'EXACT_ONE') { st.map = res; renderMap(); return; }
   const view = fitView(res.target.geometry);
-  st.map = { ...res, view, mode: 'PARCEL', showTarget: true, showNeighbors: true, aerial: 'LOADING', fetched_at: new Date(res.fetched_at).toLocaleString('ko-KR', { hour12: false }) };
+  st.map = { ...res, view, mode: 'PARCEL', showTarget: true, showNeighbors: true, aerial: 'LOADING', fetched_at: new Date(res.fetched_at).toLocaleString('ko-KR', { hour12: false }),
+    cad: { tiles: {}, features: [], seen: new Set(), calls: 0, busy: false, v: 0 } };
   renderMap();
+  // 첫 화면은 화면 중심 칸부터 최대 CAD.autoTiles칸만 자동 조회. 그 밖은 '현재 화면 지적 불러오기'로(자동 무제한 호출 없음).
+  loadCad(st.map, tilesForView(view).slice(0, CAD.autoTiles));
+}
+
+// 화면 범위 지적경계 칸 조회(요청당 4칸 · 상담당 VWorld 호출 상한). 받은 칸은 캐시(같은 상담 안에서 다시 부르지 않음).
+async function loadCad(m, tiles) {
+  const cad = m?.cad; if (!cad || cad.busy || !tiles.length) return;
+  const epoch = st.epoch;
+  cad.busy = true;
+  tiles.forEach((t) => { cad.tiles[tileKey(t)] = { status: 'LOADING' }; });
+  cad.v += 1; renderMap();
+  for (let i = 0; i < tiles.length; i += CAD.perRequest) {
+    const batch = tiles.slice(i, i + CAD.perRequest);
+    if (cad.calls >= CAD.sessionCalls) { batch.forEach((t) => { cad.tiles[tileKey(t)] = { status: 'NOT_QUERIED', reason: 'SESSION_LIMIT' }; }); continue; }
+    const r = await queryCadastralTiles({ fetchImpl: (...a) => fetch(...a), location, pnu: m.pnu, tiles: batch });
+    if (epoch !== st.epoch || st.map !== m) return; // 새 상담·다른 필지면 폐기
+    if (!r.ok) { batch.forEach((t) => { cad.tiles[tileKey(t)] = { status: 'FAILED', reason: r.error_code || 'FAILED' }; }); }
+    else {
+      cad.calls += r.request_count;
+      const got = new Set();
+      for (const t of r.tiles) {
+        if (!Array.isArray(t.tile)) continue;
+        const k = tileKey(t.tile); got.add(k);
+        cad.tiles[k] = { status: t.status, total: t.total ?? null, received: t.received ?? null, reason: t.reason || null };
+        for (const f of t.features || []) {
+          if (!f?.pnu || !f.geometry || cad.seen.has(f.pnu)) continue; // 칸 경계에 걸친 필지 중복 제거
+          cad.seen.add(f.pnu); cad.features.push({ pnu: f.pnu, jibun: f.jibun || null, geometry: f.geometry, bb: featureBounds(f.geometry) });
+        }
+      }
+      batch.forEach((t) => { if (!got.has(tileKey(t))) cad.tiles[tileKey(t)] = { status: 'FAILED', reason: 'NO_RESPONSE' }; });
+    }
+    cad.v += 1; renderMap();
+  }
+  cad.busy = false; cad.v += 1; renderMap();
 }
 
 let lastMapKey = '';
@@ -137,8 +172,9 @@ function renderMap() {
   const m = st.map;
   // 같은 화면 상태면 다시 그리지 않는다(영상 재요청 방지). 영상 수신 상태는 칩만 바꾼다.
   const sr = m.status === 'EXACT_ONE' ? stdReview() : null;
-  m.std = sr && sr.markers ? { markers: sr.markers, selected: st.std.selected, showStandards: st.std.showStandards, showCandidates: st.std.showCandidates } : null;
-  const key = JSON.stringify([st.epoch, m.status, m.pnu, m.view?.zoom, m.view?.center, m.mode, m.showTarget, m.showNeighbors, st.std?.status, st.std?.selected, st.std?.showStandards, st.std?.showCandidates, stdReviewKey, st.std ? st.zoningConfirm.valuation_date : '']);
+  m.std = sr && sr.markers ? { markers: sr.markers, selected: st.std.selected, showStandards: st.std.showStandards, showCandidates: st.std.showCandidates,
+    summary: `후보 ${sr.list.filter((x) => x.kind === 'CANDIDATE').length}곳 · 표준지 위치확인 ${sr.meta.located}곳` } : null;
+  const key = JSON.stringify([st.epoch, m.status, m.pnu, m.view?.zoom, m.view?.center, m.mode, m.cad?.v, m.showTarget, m.showNeighbors, st.std?.status, st.std?.selected, st.std?.showStandards, st.std?.showCandidates, stdReviewKey, st.std ? st.zoningConfirm.valuation_date : '']);
   if (key === lastMapKey) return;
   lastMapKey = key;
   // 같은 영상 주소(중심·줌 동일)면 이미 받은 영상 요소를 그대로 옮겨 붙인다 — 후보 선택·표시 전환 때 항공영상 재요청 없음.
@@ -148,13 +184,16 @@ function renderMap() {
   let html = renderFieldMap(m);
   // 새 <img>를 만들지 않도록(만드는 순간 요청이 시작될 수 있음) 자리표시로 바꾼 뒤 기존 요소를 넣는다.
   if (keepImg) html = html.replace(/<img class="f-map-img"[^>]*>/, '<i data-f-map-img-slot hidden></i>');
+  // 펼쳐 둔 상세(출처·검증, 후보 근거 등)는 다시 그려도 펼친 채로 둔다.
+  const openKeys = [...box.querySelectorAll('details[open]')].map((d) => [...d.attributes].find((a) => a.name.startsWith('data-f-'))?.name).filter(Boolean);
   box.innerHTML = html + (m.status === 'EXACT_ONE' ? renderStdPanel(sr) : '');
+  openKeys.forEach((k) => { const d = box.querySelector(`details[${k}]`); if (d) d.open = true; });
   let img = $('[data-f-map-img]', box);
   const slot = $('[data-f-map-img-slot]', box);
   if (keepImg && slot) { slot.replaceWith(keepImg); img = null; }
   else if (img) img.dataset.fMapFor = m.pnu;
   if (img) {
-    const mark = (state) => { if (st.map !== m) return; m.aerial = state; const chip = $('[data-f-map-aerial]', box); if (chip) { chip.dataset.fMapAerial = state; chip.className = `chip ${state === 'OK' ? 'ok' : 'bad'}`; chip.textContent = state === 'OK' ? '항공영상 수신' : '항공영상 미수신'; } };
+    const mark = (state) => { if (st.map !== m) return; m.aerial = state; const chip = $('[data-f-map-aerial]', box); if (chip) { chip.dataset.fMapAerial = state; chip.className = `chip ${state === 'OK' ? 'ok' : 'bad'}`; chip.textContent = state === 'OK' ? '영상' : '영상 미수신'; } };
     img.addEventListener('load', () => mark('OK'));
     img.addEventListener('error', () => mark('FAILED'));
   }
@@ -173,6 +212,7 @@ function renderMap() {
   box.querySelectorAll('[data-f-std-pin]').forEach((b) => b.addEventListener('click', () => selectStandard(b.dataset.fStdPin, false)));
   box.querySelectorAll('[data-f-std-item]').forEach((b) => b.addEventListener('click', () => selectStandard(b.dataset.fStdItem, true)));
   box.querySelectorAll('[data-f-std-go]').forEach((b) => b.addEventListener('click', runStandard));
+  box.querySelectorAll('[data-f-cad-load]').forEach((b) => b.addEventListener('click', () => loadCad(m, cadCoverage(m.view, m.cad).missing.slice(0, CAD.perClick))));
 }
 
 // ── 주변 표준지 · 비교표준지 후보(검토 보조, 화면 열람 전용 — 카드·인쇄 제외) ─────────────────────
@@ -239,10 +279,10 @@ const dist = (d) => (d == null ? '거리 미산출' : d >= 1000 ? `${(d / 1000).
 function renderStdPanel(sr) {
   const s = st.std;
   const canQuery = st.pd?.status === PD_STATUS.OK && pdValue('zoning')?.base_year;
-  const head = `<div class="f-std-panel" data-f-std-panel><h3 class="small"><b>주변 표준지 · 비교표준지 후보</b> <span class="muted">검토 보조 · 화면 열람 전용(카드·인쇄 제외)</span></h3>`;
+  const head = `<div class="f-std-panel" data-f-std-panel><h3 class="small"><b>비교표준지 후보</b> <span class="muted">검토 보조 · 화면 열람 전용(카드·인쇄 제외)</span></h3>`;
   if (!s) {
     return `${head}<button type="button" class="secondary" data-f-std-go ${canQuery ? '' : 'disabled'}>주변 표준지 조회</button>
-    <p class="small muted">대상 중심 반경 1km에 걸친 법정동(인접 법정동 포함)의 ${esc(pdValue('zoning')?.base_year || '')}년 표준지를 VWorld에서 조회합니다. 위치가 공식 지적경계로 확인된 표준지만 지도에 표시합니다.</p></div>`;
+    <details class="f-fold" data-f-std-howto><summary class="small">조회 범위 안내</summary><p class="small muted">대상 중심 반경 1km에 걸친 법정동(인접 법정동 포함)의 ${esc(pdValue('zoning')?.base_year || '')}년 표준지를 VWorld에서 조회합니다. 위치가 공식 지적경계로 확인된 표준지만 지도에 표시합니다.</p></details></div>`;
   }
   if (s.status === 'LOADING') return `${head}<p class="small muted" data-f-std-state="LOADING">표준지 조회 중…</p></div>`;
   if (s.status === 'FAILED') {
@@ -252,28 +292,35 @@ function renderStdPanel(sr) {
     return `${head}<p class="small" data-f-std-state="${esc(sr?.status || 'FAILED')}"><span class="chip bad">후보 판정 안 함</span> ${esc((sr?.notes || []).join(' '))}</p></div>`;
   }
   const sel = sr.list.find((x) => x.pnu === s.selected) || null;
-  const item = (x) => `<li><button type="button" class="f-std-item ${x.kind === 'CANDIDATE' ? 'cand' : 'std'}${x.pnu === s.selected ? ' sel' : ''}" data-f-std-item="${esc(x.pnu)}" data-f-std-item-kind="${x.kind}">
-      ${x.kind === 'CANDIDATE' ? `<span class="n">${x.rank}</span>` : ''}<b>${esc(x.label)}</b> <span class="small">${esc(won(x.price))} · ${esc(x.zoning || '용도지역 미기재')} · ${esc(x.land_use || '이용상황 미기재')} · ${esc(dist(x.distance_m))}</span>
-      <span class="small muted">${esc(x.status_label)}${x.located ? '' : ' · 지도 미표시'}${x.kind !== 'CANDIDATE' && x.reasons?.length ? ` — ${esc(x.reasons[0])}` : ''}</span></button></li>`;
+  const short = (label) => String(label || '').trim().split(/\s+/).slice(-2).join(' ');
+  // 후보 3건은 한 줄 요약(지번·거리·원/㎡·용도지역), 나머지는 기존 상세 줄
+  const item = (x) => (x.kind === 'CANDIDATE'
+    ? `<li><button type="button" class="f-std-item cand compact${x.pnu === s.selected ? ' sel' : ''}" data-f-std-item="${esc(x.pnu)}" data-f-std-item-kind="${x.kind}"><span class="n">${x.rank}</span><b>${esc(short(x.label))}</b> <span class="small">${esc(dist(x.distance_m))} · ${esc(won(x.price))} · ${esc(x.zoning || '용도지역 미기재')}</span></button></li>`
+    : `<li><button type="button" class="f-std-item std${x.pnu === s.selected ? ' sel' : ''}" data-f-std-item="${esc(x.pnu)}" data-f-std-item-kind="${x.kind}">
+      <b>${esc(x.label)}</b> <span class="small">${esc(won(x.price))} · ${esc(x.zoning || '용도지역 미기재')} · ${esc(x.land_use || '이용상황 미기재')} · ${esc(dist(x.distance_m))}</span>
+      <span class="small muted">${esc(x.status_label)}${x.located ? '' : ' · 지도 미표시'}${x.reasons?.length ? ` — ${esc(x.reasons[0])}` : ''}</span></button></li>`);
   const cands = sr.list.filter((x) => x.kind === 'CANDIDATE'); const rest = sr.list.filter((x) => x.kind !== 'CANDIDATE');
   const statusChip = { FOUND: `<span class="chip warn">후보 ${cands.length}건 — 확정 아님</span>`, NONE: '<span class="chip bad">조건에 맞는 후보 없음</span>',
     SCHEMA_UNMAPPED: '<span class="chip bad">필드 해석 불가 — 판정 보류</span>', INSUFFICIENT_TARGET: '<span class="chip bad">대상 용도지역·이용상황 미확보 — 판정 보류</span>' }[sr.status] || '';
   return `${head}<div data-f-std-state="${esc(sr.status)}">
-    <p class="small">${statusChip} <span data-f-std-review-zoning="${esc(sr.review.basis)}">후보 검토 용도지역: <b>${esc(sr.review.label)}</b></span></p>
-    <p class="small muted" data-f-std-scope>조회 범위: ${esc(sr.scope.label)} · 표준지 ${sr.meta.total_rows}행 · 위치 확인 ${sr.meta.located}곳(반경 안 ${sr.meta.in_radius}행) · 조회 ${esc(new Date(s.fetched_at).toLocaleString('ko-KR', { hour12: false }))}${sr.meta.request_count != null ? ` · VWorld 호출 ${sr.meta.request_count}회` : ''}</p>
-    <p class="small" data-f-std-basis-date>표준지 공시연도 <b>${esc(sr.meta.year)}년</b>(${esc(sr.meta.year)}-01-01 공시 기준) · ${esc(currentZoning()?.valuation_date_label || '감정평가 기준시점 미확인')} — 적용할 표준지 공시연도는 기준시점에 따라 달라지므로 별도 확인(전문가 검토)</p>
-    ${sel ? `<div class="f-std-detail" data-f-std-detail="${esc(sel.pnu)}"><b>${sel.kind === 'CANDIDATE' ? `${STD_LABEL.CANDIDATE} ${sel.rank}` : esc(sel.status_label)}</b> <span class="chip warn">${esc(STD_LABEL.NOT_SELECTED)}</span>
+    <p class="small">${statusChip} <span data-f-std-review-zoning="${esc(sr.review.basis)}">검토 용도지역: <b>${esc(sr.review.label)}</b></span></p>
+    ${cands.length ? `<ol class="f-std-list" data-f-std-list>${cands.map(item).join('')}</ol>` : ''}
+    ${sel ? `<div class="f-std-detail" data-f-std-detail="${esc(sel.pnu)}"><b>${sel.kind === 'CANDIDATE' ? `${STD_LABEL.CANDIDATE} ${sel.rank}` : esc(sel.status_label)} · ${esc(short(sel.label))}</b> <span class="chip warn">${esc(STD_LABEL.NOT_SELECTED)}</span>
+      <p class="small f-std-line">${esc(won(sel.price))} · ${esc(sel.zoning || '용도지역 미기재')} · ${esc(sel.land_use || '이용상황 미기재')} · 직선 ${esc(dist(sel.distance_m))}${sel.kind !== 'CANDIDATE' && sel.reasons?.length ? ` · ${esc(sel.reasons[0])}` : ''}</p>
+      <details class="f-fold" data-f-std-why><summary class="small">근거·출처</summary>
       <dl class="small"><dt>지번</dt><dd data-f-std-d="lot">${esc(sel.label)}</dd><dt>PNU</dt><dd data-f-std-d="pnu">${esc(sel.pnu)}</dd>
       <dt>공시지가</dt><dd data-f-std-d="price">${esc(won(sel.price))}</dd><dt>공시연도</dt><dd data-f-std-d="year">${esc(sel.year || '미상')}년</dd>
       <dt>용도지역</dt><dd data-f-std-d="zoning">${esc(sel.zoning || '미기재')}</dd><dt>이용상황</dt><dd data-f-std-d="land_use">${esc(sel.land_use || '미기재')}</dd>
       <dt>지목</dt><dd>${esc(sel.land_category || '미기재')}</dd><dt>거리</dt><dd data-f-std-d="distance">대상 필지 중심↔표준지 중심 직선 ${esc(dist(sel.distance_m))}</dd>
       <dt>위치</dt><dd>${sel.located ? '연속지적도 exact-one 경계로 확인' : '위치 미확인 — 지도 미표시'}</dd>
       <dt>검토 근거</dt><dd data-f-std-d="reasons">${(sel.reasons || []).map((r) => `<div>${esc(r)}</div>`).join('')}${(sel.review || []).map((r) => `<div class="muted">${esc(r)}</div>`).join('')}</dd>
-      <dt>출처</dt><dd class="muted">VWorld 표준지공시지가(getReferLandPriceAttr)${sel.names_from_land_characteristics.length ? ' · 코드 명칭은 같은 연도 토지특성 응답으로 채움' : ''} · 감정평가서 선정 여부 미확인</dd></dl></div>` : ''}
-    ${cands.length ? `<ol class="f-std-list" data-f-std-list>${cands.map(item).join('')}</ol>` : ''}
-    ${rest.length ? `<details data-f-std-rest><summary class="small">제외·반경 밖·위치 미확인 ${rest.length}건</summary><ul class="f-std-list">${rest.map(item).join('')}</ul></details>` : ''}
+      <dt>출처</dt><dd class="muted">VWorld 표준지공시지가(getReferLandPriceAttr)${sel.names_from_land_characteristics.length ? ' · 코드 명칭은 같은 연도 토지특성 응답으로 채움' : ''} · 감정평가서 선정 여부 미확인</dd></dl></details></div>` : ''}
+    ${rest.length ? `<details class="f-fold" data-f-std-rest><summary class="small">제외·반경 밖·위치 미확인 ${rest.length}건</summary><ul class="f-std-list">${rest.map(item).join('')}</ul></details>` : ''}
+    <details class="f-fold" data-f-std-more><summary class="small">조회 범위·기준시점·유의사항</summary>
+    <p class="small muted" data-f-std-scope>조회 범위: ${esc(sr.scope.label)} · 표준지 ${sr.meta.total_rows}행 · 위치 확인 ${sr.meta.located}곳(반경 안 ${sr.meta.in_radius}행) · 조회 ${esc(new Date(s.fetched_at).toLocaleString('ko-KR', { hour12: false }))}${sr.meta.request_count != null ? ` · VWorld 호출 ${sr.meta.request_count}회` : ''}</p>
+    <p class="small" data-f-std-basis-date>표준지 공시연도 <b>${esc(sr.meta.year)}년</b>(${esc(sr.meta.year)}-01-01 공시 기준) · ${esc(currentZoning()?.valuation_date_label || '감정평가 기준시점 미확인')} — 적용할 표준지 공시연도는 기준시점에 따라 달라지므로 별도 확인(전문가 검토)</p>
     ${sr.notes.map((n) => `<p class="small warn-note">${esc(n)}</p>`).join('')}
-    <button type="button" class="ghost" data-f-std-go>다시 조회</button></div></div>`;
+    <button type="button" class="ghost" data-f-std-go>다시 조회</button></details></div></div>`;
 }
 
 function renderCard() {
@@ -364,10 +411,17 @@ function renderZoningResult() {
   const box = $('[data-f-zoning-result]'); if (!box) return;
   const z = currentZoning(); if (!z) { box.innerHTML = ''; return; }
   const t = z.trace;
+  const wasOpen = Boolean(box.querySelector('details[data-f-zoning-more]')?.open);
+  // 현장 기본 화면: 상태·평가 검토 후보·기준시점·검증 상태만. 근거·법령·대조 문서·미확인 전체는 펼침(내용 삭제 없음).
   box.innerHTML = `<div data-f-zoning-status="${esc(z.status)}">
     <p class="small"><span class="chip ${ZCHIP[z.status]}">${esc(ZONING_STATUS_LABEL[z.status])}</span></p>
     <dl class="f-kv">
       <dt>사업 영향 제외 평가 검토 후보</dt><dd data-f-zoning-basis>${z.basis_label ? `${esc(z.basis_label)} <span class="chip warn">확정 아님 · 전문가 검증 전</span>` : '<span class="chip bad">확인 필요 — 임의 추정 안 함</span>'}</dd>
+      <dt>감정평가 기준시점</dt><dd data-f-zoning-valuation>${esc(z.valuation_date_label)}</dd>
+      <dt>검증 상태</dt><dd data-f-zoning-verification>${z.verification_label ? esc(z.verification_label) : { UNVERIFIED_BY_EXPERT: '미검증(자동 판정 없음)', NOTICE_REASON_CONFIRMED_PARCEL_MAP_PENDING_UNVERIFIED_BY_EXPERT: '고시 사유서 확인 · 필지별 변경도면 대조 전 · 전문가 검증 전', COUNSELOR_MARKED_UNVERIFIED_BY_EXPERT: '상담자 표시 · 전문가 검증 전' }[z.verification] || esc(z.verification)}</dd>
+    </dl>
+    <details class="f-fold" data-f-zoning-more${wasOpen ? ' open' : ''}><summary class="small">근거·법령·대조 문서·검증 기록${t.unverified.length ? ` · 미확인 ${t.unverified.length}건` : ''}</summary>
+    <dl class="f-kv">
       ${z.evidence ? `<dt>근거자료</dt><dd data-f-zoning-evidence><div class="small">${esc(z.evidence.source)}</div><div class="small">${esc(z.evidence.from)} → ${esc(z.evidence.to)}${z.evidence.area_m2 ? ` ${Number(z.evidence.area_m2).toLocaleString('ko-KR')}㎡` : ''} · ${esc(z.evidence.reason)}</div><div class="small muted">${esc(z.evidence.verified || '')} · <b>${esc(z.evidence.parcel_level || '필지별 변경도면 대조 필요')}</b></div></dd>` : ''}
       <dt>과거 기준일</dt><dd data-f-zoning-past>${t.past_basis ? `${esc(t.past_basis.zoning)} <span class="small muted">${esc(t.past_basis.label)}</span>` : '<span class="chip">사업 유발 변경 미확인 — 과거 기준일 없음</span>'}</dd>
       <dt data-f-zoning-trigger-h>${esc(t.trigger_heading)}</dt><dd data-f-zoning-trigger>${t.trigger ? `${esc(t.trigger.event.notice_no)} · 고시일 ${esc(t.trigger.event.notice_date || '미상')} · ${t.trigger.event.effective_date ? `효력 ${esc(t.trigger.event.effective_date)}` : `<span class="chip warn">효력 기준일 미확인</span>`}
@@ -383,10 +437,8 @@ function renderZoningResult() {
       ${t.cross_check.length ? `<dt>교차 대조</dt><dd data-f-zoning-cross>${t.cross_check.map((c) => `<div class="small">${esc(c)}</div>`).join('')}</dd>` : ''}
       <dt>미확인</dt><dd data-f-zoning-unverified><ul class="small">${t.unverified.map((u) => `<li>${esc(u)}</li>`).join('')}</ul></dd>
       <dt>조회 기준</dt><dd data-f-zoning-query>${esc(z.query_basis?.label || '—')}</dd>
-      <dt>감정평가 기준시점</dt><dd data-f-zoning-valuation>${esc(z.valuation_date_label)}</dd>
-      <dt>검증 상태</dt><dd data-f-zoning-verification>${z.verification_label ? esc(z.verification_label) : { UNVERIFIED_BY_EXPERT: '미검증(자동 판정 없음)', NOTICE_REASON_CONFIRMED_PARCEL_MAP_PENDING_UNVERIFIED_BY_EXPERT: '고시 사유서 확인 · 필지별 변경도면 대조 전 · 전문가 검증 전', COUNSELOR_MARKED_UNVERIFIED_BY_EXPERT: '상담자 표시 · 전문가 검증 전' }[z.verification] || esc(z.verification)}</dd>
     </dl>
-    ${z.notes.map((n) => `<p class="small warn-note">${esc(n)}</p>`).join('')}</div>`;
+    ${z.notes.map((n) => `<p class="small warn-note">${esc(n)}</p>`).join('')}</details></div>`;
 }
 function renderZoning() {
   const wrap = $('[data-f-zoning]'); const h2 = $('[data-f-zoning-h2]');
@@ -407,9 +459,12 @@ function renderZoning() {
             : st.zoningExtra ? `<span data-f-zoning-trace-state="${esc(st.zoningExtra.status)}">이전 연도 ${TRACE_YEARS[TRACE_YEARS.length - 1]}~${TRACE_YEARS[0]} 조회: ${st.zoningExtra.rows.length}개 연도 응답${st.zoningExtra.reason ? ` · ${esc(st.zoningExtra.reason)}` : ''}</span>`
               : st.pd.pnu && st.pd.stage === PD_STAGE.LIVE_DATA ? `<button type="button" class="secondary" data-f-zoning-trace>용도지역 이력 역추적 — ${TRACE_YEARS[TRACE_YEARS.length - 1]}~${TRACE_YEARS[0]}년 추가 조회</button>` : ''}</div></dd>
         ${z.change ? `<dt>변경 관찰</dt><dd data-f-zoning-change>변경 전 <b>${esc(z.change.before)}</b> → 변경 후 <b>${esc(z.change.after)}</b> <span class="small muted">(${esc(z.change.window)}년 기준 사이)</span></dd>` : ''}
+      </dl>
+      <details class="f-fold" data-f-zoning-src><summary class="small">확인 대상 고시·적용 근거</summary>
+      <dl class="f-kv">
         <dt>확인 대상</dt><dd data-f-zoning-project>${proj?.notice_no ? `${esc(proj.notice_no)} · 고시일 ${esc(proj.notice_date || '미상')}${proj.zoning_check ? `<div class="small">${esc(proj.zoning_check)}</div>` : ''}${proj.source_url ? `<div class="small mono">${esc(proj.source_url)}</div>` : ''}` : '이 필지에 연결된 사업 고시 없음 — 사업 관련성 확인 불가'}</dd>
         <dt>적용 근거</dt><dd data-f-zoning-rules>${z.rules.map((r) => `<div class="small">${esc(r.label)} — ${esc(r.note)}</div>`).join('')}</dd>
-      </dl>
+      </dl></details>
       ${z.change ? `<div class="f-zoning-confirm">
         <label class="small">사업 관련성(상담자 확인) <select data-f-zoning-relation>${RELATION_OPTIONS.map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join('')}</select></label>
         <label class="small">근거 문서(필수) <input data-f-zoning-doc maxlength="200" placeholder="예: 고시 제2025-456호 ○쪽 도시관리계획 결정(변경)조서"></label>
@@ -430,17 +485,20 @@ function renderZoning() {
 
 function render() { renderResult(); renderCard(); renderPublicData(); renderZoning(); renderMap(); }
 
-const currentCardText = () => (st.row ? buildFieldCard({ profile: st.profile, index: st.index, row: st.row, selectedIssueIds: [...st.issues], memo: st.memo, otherText: st.other, zoning: currentZoning() }).text
-  : st.direct ? buildDirectCard({ profile: st.profile, target: st.direct, selectedIssueIds: [...st.issues], memo: st.memo, otherText: st.other, zoning: currentZoning() }).text : '');
+const currentCard = () => (st.row ? buildFieldCard({ profile: st.profile, index: st.index, row: st.row, selectedIssueIds: [...st.issues], memo: st.memo, otherText: st.other, zoning: currentZoning() })
+  : st.direct ? buildDirectCard({ profile: st.profile, target: st.direct, selectedIssueIds: [...st.issues], memo: st.memo, otherText: st.other, zoning: currentZoning() }) : null);
+// 상세 검토본(고시·도면·법령·시점·미확인 전부) — 저장(.txt)·인쇄도 이 본문. 현장 요약은 복사 전용 짧은 본.
+const currentCardText = () => currentCard()?.text || '';
 
-async function copyCard() {
-  const text = currentCardText(); if (!text) return;
-  const out = $('[data-f-out]');
-  try { await navigator.clipboard.writeText(text); out.textContent = '상담카드를 복사했습니다.'; out.dataset.result = 'copied'; }
+async function copyCard(kind = 'detail') {
+  const card = currentCard(); const text = kind === 'summary' ? card?.summary : card?.text; if (!text) return;
+  const label = kind === 'summary' ? '현장 요약' : '상세 검토본';
+  const out = $('[data-f-out]'); out.dataset.kind = kind;
+  try { await navigator.clipboard.writeText(text); out.textContent = `${label}을 복사했습니다.`; out.dataset.result = 'copied'; }
   catch (_e) {
     const ta = document.createElement('textarea'); ta.value = text; ta.setAttribute('readonly', ''); ta.style.position = 'fixed'; ta.style.opacity = '0';
     document.body.appendChild(ta); ta.select(); const ok = document.execCommand && document.execCommand('copy'); ta.remove();
-    out.textContent = ok ? '상담카드를 복사했습니다.' : '복사하지 못했습니다. 저장(.txt)을 쓰세요.'; out.dataset.result = ok ? 'copied' : 'copy-failed';
+    out.textContent = ok ? `${label}을 복사했습니다.` : '복사하지 못했습니다. 저장(.txt)을 쓰세요.'; out.dataset.result = ok ? 'copied' : 'copy-failed';
   }
 }
 function saveCard() {
@@ -466,7 +524,8 @@ function init() {
   });
   $('[data-f-new]').addEventListener('click', newConsultation);
   $('[data-f-memo]').addEventListener('input', (e) => { st.memo = e.target.value; $('[data-f-out]').textContent = ''; });
-  $('[data-f-copy]').addEventListener('click', copyCard);
+  $('[data-f-copy]').addEventListener('click', () => copyCard('detail'));
+  $('[data-f-copy-summary]').addEventListener('click', () => copyCard('summary'));
   $('[data-f-save]').addEventListener('click', saveCard);
   $('[data-f-print]').addEventListener('click', () => window.print());
   // 인쇄·PDF 저장(버튼·브라우저 메뉴·window.print 모두): 공적자료 영역은 CSS로 숨기고, 인쇄 직전 DOM에서도 비운다.

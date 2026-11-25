@@ -20,7 +20,7 @@ from public_data.work_ops import (
     build_rtms_response,
 )
 from transaction_enrichment.standard_lands import search_standard_lands
-from transaction_enrichment.providers import ProviderError, VWorldCadastralGeometryProvider, VWorldCadastralParcelProvider, VWorldLandCharacteristicsProvider
+from transaction_enrichment.providers import ProviderError, VWorldCadastralGeometryProvider, VWorldCadastralParcelProvider, VWorldLandCharacteristicsProvider, fetch_cadastral_tile
 
 
 LOT_TAIL = re.compile(r"(?P<mountain>산\s*)?(?P<bun>\d{1,4})(?:-(?P<ji>\d{1,4}))?(?:번지)?\s*$")
@@ -218,14 +218,51 @@ def pnu_parcel(payload: dict[str, Any]) -> dict[str, Any]:
     return {"ok": True, "status": "FOUND_REVIEW_REQUIRED", "parcel": parcel, "review_required": True}
 
 
+# 화면 범위 지적경계: 요청당 칸 4개·VWorld 호출 8회·응답 6MB(브리지 출력 상한 8MB 안) 상한.
+TILE_REQUEST_MAX = 4
+TILE_CALL_BUDGET = 8
+TILE_BYTES_BUDGET = 6 * 1024 * 1024
+
+
+def parcel_map_tiles(pnu: str, tiles: Any, provider: Any) -> dict[str, Any]:
+    if not isinstance(tiles, list) or not tiles or len(tiles) > TILE_REQUEST_MAX:
+        return {"ok": False, "error_code": "TILES_INVALID", "error_message": f"tiles must be 1..{TILE_REQUEST_MAX} [ix, iy] pairs"}
+    keys = []
+    for t in tiles:
+        if not (isinstance(t, list) and len(t) == 2 and all(isinstance(v, int) and not isinstance(v, bool) for v in t)):
+            return {"ok": False, "error_code": "TILES_INVALID"}
+        if tuple(t) not in keys:
+            keys.append(tuple(t))
+    budget = [TILE_CALL_BUDGET]; used_bytes = 0; out = []
+    for ix, iy in keys:
+        if budget[0] <= 0 or used_bytes >= TILE_BYTES_BUDGET:
+            out.append({"tile": [ix, iy], "status": "NOT_QUERIED", "reason": "CALL_BUDGET" if budget[0] <= 0 else "BYTES_BUDGET", "features": []})
+            continue
+        try:
+            r = fetch_cadastral_tile(provider, ix, iy, pnu, call_budget=budget)
+        except ProviderError as exc:
+            r = {"tile": [ix, iy], "status": "FAILED", "reason": exc.code, "features": []}
+        size = len(json.dumps(r["features"], ensure_ascii=False))
+        if used_bytes + size > TILE_BYTES_BUDGET:
+            r = {**r, "status": "NOT_QUERIED", "reason": "BYTES_BUDGET", "features": []}
+        else:
+            used_bytes += size
+        out.append(r)
+    calls = sum(int(t.get("calls") or 0) for t in out)
+    return {"ok": True, "mode": "TILES", "pnu": pnu, "tiles": out, "request_count": calls, "source": "VWorld 연속지적도(LP_PA_CBND_BUBUN)", "review_required": True}
+
+
 def parcel_map(payload: dict[str, Any]) -> dict[str, Any]:
-    """대상 PNU의 지적경계(exact-one)와 선택적으로 주변 지적경계. 소유 정보 없음."""
+    """대상 PNU의 지적경계(exact-one)와 선택적으로 주변 지적경계. 소유 정보 없음.
+    tiles가 있으면 대상 조회 없이 0.01° 격자 칸 단위 지적경계만(화면 범위 조회)."""
     pnu = str(payload.get("pnu") or "").strip()
     if len(pnu) != 19 or not pnu.isdigit():
         return {"ok": False, "error_code": "PNU_INVALID"}
     provider = VWorldCadastralGeometryProvider()
     if not provider.configured:
         return {"ok": False, "error_code": "VWORLD_API_KEY_MISSING"}
+    if "tiles" in payload:
+        return parcel_map_tiles(pnu, payload.get("tiles"), provider)
     try:
         target = provider.target(pnu)
         neighbors = []
