@@ -43,7 +43,11 @@
     "release:v1:e2e": "playwright test -c playwright.release-v1.config.js",
     "release:v1:gate": "npm run parser:test && node tests/privacy_purge_guard.test.js && npm run release:v1:test && npm run release:v1:e2e",
     "consult:build": "node scripts/build_consultation_sim.js",
-    "consult:test": "npm run consult:build && node --test tests/consultation-sim/core.test.mjs tests/consultation-sim/standard.test.mjs tests/consultation-sim/manual-pack.test.mjs tests/consultation-sim/consult-report.test.mjs tests/consultation-sim/consult-record.test.mjs tests/consultation-sim/output-binding.test.mjs tests/consultation-sim/case-tracks.test.mjs",
+    "consult:test": "npm run consult:build && node --test tests/consultation-sim/core.test.mjs tests/consultation-sim/standard.test.mjs tests/consultation-sim/manual-pack.test.mjs tests/consultation-sim/consult-report.test.mjs tests/consultation-sim/consult-record.test.mjs tests/consultation-sim/output-binding.test.mjs tests/consultation-sim/case-tracks.test.mjs tests/consultation-sim/notice-field.test.mjs",
+    "notice:import": "node scripts/notice_index/import_notice_pdf.mjs",
+    "notice:field:build": "node scripts/build_notice_field.js",
+    "notice:field:serve": "node scripts/serve_product_v2.js dist/notice-field 4180",
+    "notice:field:server": "node scripts/field_server.js --page dist/notice-field/field-empty.html",
     "consult:e2e": "playwright test -c playwright.consultation-sim.config.js",
     "consult:gate": "npm run consult:test && npm run consult:e2e",
     "consult:demo:build": "node scripts/build_consultation_sim_demo.js"

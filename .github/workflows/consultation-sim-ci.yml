@@ -6,10 +6,17 @@ on:
       - 'browser/consultation-sim/**'
       - 'scripts/build_consultation_sim.js'
       - 'scripts/build_consultation_sim_demo.js'
+      - 'scripts/build_notice_field.js'
+      - 'scripts/notice_index/**'
+      - 'scripts/field_server.js'
+      - 'tests/test_vworld_result_code.py'
       - 'scripts/serve_product_v2.js'
       - 'scripts/public_data_bridge.*'
       - 'tests/consultation-sim/**'
       - 'tests/test_vworld_revisions.py'
+      - 'tests/test_standard_lands.py'
+      - 'tests/test_cadastral_tiles.py'
+      - 'transaction_enrichment/**'
       - 'transaction_enrichment/providers.py'
       - 'tests/consultation-sim-browser/**'
       - 'playwright.consultation-sim.config.js'
@@ -38,7 +45,7 @@ jobs:
       - name: Deterministic core (synthetic data only)
         run: npm run consult:test
       - name: VWorld revision rule (Python provider opt-in, Release v1 default unchanged)
-        run: python -m unittest tests.test_vworld_revisions -v
+        run: python -m unittest tests.test_vworld_revisions tests.test_vworld_result_code tests.test_standard_lands tests.test_cadastral_tiles -v
       - name: Public demo bundle safety checks (synthetic only, no bridge, no network)
         run: |
           node scripts/build_consultation_sim_demo.js --host=claude-artifact

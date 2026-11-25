@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="referrer" content="no-referrer">
+  <meta name="robots" content="noindex,nofollow">
+  <title>BSO 현장 지번 상담 · 고시 세목 색인</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="field.css">
+</head>
+<body>
+  <header class="f-top">
+    <span class="eyebrow" data-f-project>BSO · 현장 지번 상담</span>
+    <h1>지번 한 칸 상담 <small>검토 보조 · 감정평가·법률자문 아님</small></h1>
+    <div class="f-badges"><span class="badge" data-f-notice-badge>고시 색인 없음</span><span class="badge" data-f-pd-badge>공적자료 확인 중…</span></div>
+  </header>
+
+  <section class="f-loader" data-f-loader hidden>
+    <p><b>고시 세목 색인을 불러오세요.</b> 이 기기에서만 읽고 어디에도 보내지 않습니다.</p>
+    <label>색인 파일(JSON) <input type="file" accept=".json,application/json" data-f-index-file></label>
+    <p class="error small" data-f-index-error hidden></p>
+  </section>
+
+  <form class="f-search" data-f-form autocomplete="off" novalidate>
+    <label for="f-q">지번 <span class="hint" data-f-hint>예: 320-1 · 궁평리 320-1 · 전체 주소</span></label>
+    <div class="f-row">
+      <input id="f-q" data-f-q inputmode="text" enterkeyhint="search" placeholder="지번 입력" disabled>
+      <button type="submit" class="primary" data-f-go disabled>찾기</button>
+      <button type="button" class="secondary" data-f-new>새 상담</button>
+    </div>
+  </form>
+
+  <section data-f-result aria-live="polite"></section>
+
+  <main class="f-grid" data-f-card hidden>
+    <section class="f-panel f-map-panel" data-f-map-panel aria-label="지도" hidden>
+      <h2>지도 <span class="sub">VWorld 항공영상 + 연속지적 경계 · 화면 열람 전용</span></h2>
+      <div data-f-map></div>
+    </section>
+    <section class="f-panel" aria-label="확인 사실">
+      <h2>확인 사실 <span class="sub">고시 기재값 · 원문확인 필요</span></h2>
+      <div data-f-facts></div>
+      <h2 class="f-h2-gap" data-f-pd-h2>공적자료 <span class="sub">승인된 로컬 경로만 · 값별 출처</span></h2>
+      <div data-f-pd></div>
+      <h2 class="f-h2-gap" data-f-zoning-h2 hidden>용도지역 · 보상평가 기준 검토 <span class="sub">현재값과 평가 기준 분리 · 확정 아님</span></h2>
+      <div data-f-zoning hidden></div>
+      <p class="f-print-only small" data-f-print-note>공적자료 실조회 값은 이용조건 확인 전이라 인쇄에서 제외했습니다.</p>
+      <h2 class="f-h2-gap">미확인</h2>
+      <ul class="f-list" data-f-unverified></ul>
+    </section>
+    <section class="f-panel" aria-label="상담">
+      <h2>상담 쟁점 <span class="sub">상담자가 선택 · 판단 아님</span></h2>
+      <div data-f-issues></div>
+      <h2 class="f-h2-gap">확보할 문서</h2><ul class="f-list" data-f-docs></ul>
+      <h2 class="f-h2-gap">후속조치</h2><ul class="f-list" data-f-next></ul>
+      <label class="f-memo">상담 메모 <span class="hint">실명·전화번호는 적지 마세요 · 이 화면 메모리에만</span>
+        <textarea data-f-memo rows="3"></textarea></label>
+      <div class="f-actions">
+        <button type="button" class="primary" data-f-copy-summary>현장 요약 복사</button>
+        <button type="button" class="secondary" data-f-copy>상세 검토본 복사</button>
+        <button type="button" class="secondary" data-f-save>상세본 저장(.txt)</button>
+        <button type="button" class="ghost" data-f-print>인쇄</button>
+      </div>
+      <p class="small" data-f-out aria-live="polite"></p>
+    </section>
+  </main>
+
+  <footer class="f-foot"><ul data-f-warnings></ul></footer>
+
+  <script type="module" src="field.js"></script>
+</body>
+</html>

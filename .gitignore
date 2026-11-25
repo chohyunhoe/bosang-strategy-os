@@ -80,3 +80,6 @@ n8n-private/
 
 # Desktop Drive transport machine configuration
 .bso-transport.json
+
+# 로컬 전용 실데이터(고시 세목 색인 등) — 저장소·CI·공개 빌드에 올리지 않는다.
+local-data/

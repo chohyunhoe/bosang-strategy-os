@@ -19,7 +19,8 @@ from public_data.work_ops import (
     build_field_candidate_response,
     build_rtms_response,
 )
-from transaction_enrichment.providers import ProviderError, VWorldLandCharacteristicsProvider
+from transaction_enrichment.standard_lands import search_standard_lands
+from transaction_enrichment.providers import ProviderError, VWorldCadastralGeometryProvider, VWorldCadastralParcelProvider, VWorldLandCharacteristicsProvider, fetch_cadastral_tile
 
 
 LOT_TAIL = re.compile(r"(?P<mountain>산\s*)?(?P<bun>\d{1,4})(?:-(?P<ji>\d{1,4}))?(?:번지)?\s*$")
@@ -200,6 +201,86 @@ def vworld_land(payload: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+def pnu_parcel(payload: dict[str, Any]) -> dict[str, Any]:
+    """PNU 직접입력 검증: 연속지적도에 그 PNU 필지가 있는지와 지번주소만 돌려준다(도형·소유 정보 없음)."""
+    pnu = str(payload.get("pnu") or "").strip()
+    if len(pnu) != 19 or not pnu.isdigit():
+        return {"ok": False, "error_code": "PNU_INVALID", "parcel": None}
+    provider = VWorldCadastralParcelProvider()
+    if not provider.configured:
+        return {"ok": False, "error_code": "VWORLD_API_KEY_MISSING", "parcel": None}
+    try:
+        parcel = provider.get_by_pnu(pnu)
+    except ProviderError as exc:
+        return {"ok": False, "error_code": exc.code, "error_message": str(exc), "parcel": None}
+    if parcel is None:
+        return {"ok": True, "status": "NOT_FOUND", "parcel": None, "review_required": True}
+    return {"ok": True, "status": "FOUND_REVIEW_REQUIRED", "parcel": parcel, "review_required": True}
+
+
+# 화면 범위 지적경계: 요청당 칸 4개·VWorld 호출 8회·응답 6MB(브리지 출력 상한 8MB 안) 상한.
+TILE_REQUEST_MAX = 4
+TILE_CALL_BUDGET = 8
+TILE_BYTES_BUDGET = 6 * 1024 * 1024
+
+
+def parcel_map_tiles(pnu: str, tiles: Any, provider: Any) -> dict[str, Any]:
+    if not isinstance(tiles, list) or not tiles or len(tiles) > TILE_REQUEST_MAX:
+        return {"ok": False, "error_code": "TILES_INVALID", "error_message": f"tiles must be 1..{TILE_REQUEST_MAX} [ix, iy] pairs"}
+    keys = []
+    for t in tiles:
+        if not (isinstance(t, list) and len(t) == 2 and all(isinstance(v, int) and not isinstance(v, bool) for v in t)):
+            return {"ok": False, "error_code": "TILES_INVALID"}
+        if tuple(t) not in keys:
+            keys.append(tuple(t))
+    budget = [TILE_CALL_BUDGET]; used_bytes = 0; out = []
+    for ix, iy in keys:
+        if budget[0] <= 0 or used_bytes >= TILE_BYTES_BUDGET:
+            out.append({"tile": [ix, iy], "status": "NOT_QUERIED", "reason": "CALL_BUDGET" if budget[0] <= 0 else "BYTES_BUDGET", "features": []})
+            continue
+        try:
+            r = fetch_cadastral_tile(provider, ix, iy, pnu, call_budget=budget)
+        except ProviderError as exc:
+            r = {"tile": [ix, iy], "status": "FAILED", "reason": exc.code, "features": []}
+        size = len(json.dumps(r["features"], ensure_ascii=False))
+        if used_bytes + size > TILE_BYTES_BUDGET:
+            r = {**r, "status": "NOT_QUERIED", "reason": "BYTES_BUDGET", "features": []}
+        else:
+            used_bytes += size
+        out.append(r)
+    calls = sum(int(t.get("calls") or 0) for t in out)
+    return {"ok": True, "mode": "TILES", "pnu": pnu, "tiles": out, "request_count": calls, "source": "VWorld 연속지적도(LP_PA_CBND_BUBUN)", "review_required": True}
+
+
+def parcel_map(payload: dict[str, Any]) -> dict[str, Any]:
+    """대상 PNU의 지적경계(exact-one)와 선택적으로 주변 지적경계. 소유 정보 없음.
+    tiles가 있으면 대상 조회 없이 0.01° 격자 칸 단위 지적경계만(화면 범위 조회)."""
+    pnu = str(payload.get("pnu") or "").strip()
+    if len(pnu) != 19 or not pnu.isdigit():
+        return {"ok": False, "error_code": "PNU_INVALID"}
+    provider = VWorldCadastralGeometryProvider()
+    if not provider.configured:
+        return {"ok": False, "error_code": "VWORLD_API_KEY_MISSING"}
+    if "tiles" in payload:
+        return parcel_map_tiles(pnu, payload.get("tiles"), provider)
+    try:
+        target = provider.target(pnu)
+        neighbors = []
+        bbox = payload.get("neighbors_bbox")
+        if target["status"] == "EXACT_ONE" and payload.get("neighbors") is True and not bbox:
+            # 대상 경계 범위에서 0.002° 여유(최대 0.01°) — 화면 영상 범위와 비슷한 주변만
+            pts = [pt for poly in target["geometry"]["coordinates"] for ring in poly for pt in ring]
+            xs = [pt[0] for pt in pts]; ys = [pt[1] for pt in pts]
+            cx, cy = (min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2
+            hx = min(0.005, (max(xs) - min(xs)) / 2 + 0.002); hy = min(0.005, (max(ys) - min(ys)) / 2 + 0.0016)
+            bbox = [cx - hx, cy - hy, cx + hx, cy + hy]
+        if target["status"] == "EXACT_ONE" and isinstance(bbox, list) and len(bbox) == 4:
+            neighbors = provider.neighbors(bbox, pnu)
+    except ProviderError as exc:
+        return {"ok": False, "error_code": exc.code, "error_message": str(exc)}
+    return {"ok": True, "target": target, "neighbors": neighbors, "source": "VWorld 연속지적도(LP_PA_CBND_BUBUN)", "review_required": True}
+
+
 def main() -> int:
     load_env_file()
     try:
@@ -217,6 +298,12 @@ def main() -> int:
             result = resolve_pnu(payload)
         elif operation == "vworld_land":
             result = vworld_land(payload)
+        elif operation == "pnu_parcel":
+            result = pnu_parcel(payload)
+        elif operation == "parcel_map":
+            result = parcel_map(payload)
+        elif operation == "standard_lands":
+            result = search_standard_lands(payload)
         elif operation == "field_candidates":
             result = build_field_candidate_response(payload)
         elif operation == "early_signals":

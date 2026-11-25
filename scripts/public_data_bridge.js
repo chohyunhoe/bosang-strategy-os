@@ -13,6 +13,9 @@ const POST_OPERATIONS = new Map([
   [`${PREFIX}/legal_dong`, 'legal_dong'],
   [`${PREFIX}/resolve_pnu`, 'resolve_pnu'],
   [`${PREFIX}/vworld_land`, 'vworld_land'],
+  [`${PREFIX}/pnu_parcel`, 'pnu_parcel'],
+  [`${PREFIX}/parcel_map`, 'parcel_map'],
+  [`${PREFIX}/standard_lands`, 'standard_lands'],
   [`${PREFIX}/field_candidates`, 'field_candidates'],
   [`${PREFIX}/early_signals`, 'early_signals'],
   [`${PREFIX}/rtms`, 'rtms'],
@@ -106,4 +109,4 @@ function handlePublicDataBridgeRequest(request, response, pathname) {
   return true;
 }
 
-module.exports = { PREFIX, POST_OPERATIONS, handlePublicDataBridgeRequest };
+module.exports = { PREFIX, POST_OPERATIONS, handlePublicDataBridgeRequest, runWorker };
