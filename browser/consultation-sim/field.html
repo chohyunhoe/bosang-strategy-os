@@ -9,10 +9,10 @@
   <link rel="icon" href="data:,">
   <link rel="stylesheet" href="field.css">
 </head>
-<body>
+<body data-f-focus="1" data-f-focus-step="1">
   <header class="f-top">
     <span class="eyebrow" data-f-project>BSO · 현장 지번 상담</span>
-    <h1>지번 한 칸 상담 <small>검토 보조 · 감정평가·법률자문 아님</small></h1>
+    <h1>지번 한 칸 상담 <small>검토 보조 · 감정평가·법률자문 아님</small><button type="button" class="f-focus-toggle" data-f-focus-toggle aria-pressed="true" title="지번·지도·상담을 한 단계씩 표시하거나 전체 자료를 볼 수 있습니다">전체 정보</button></h1>
     <div class="f-badges"><span class="badge" data-f-notice-badge>고시 색인 없음</span><span class="badge" data-f-pd-badge>공적자료 확인 중…</span>
       <button type="button" class="ghost f-client" data-f-client-toggle aria-pressed="false" title="메모·내부 입력란을 숨기고 지도·특성만 보여 줍니다(입력 내용은 보존)">고객설명 모드</button></div>
   </header>
@@ -72,9 +72,15 @@
     <section class="f-panel" data-f-consult-panel data-f-step-sec="3" aria-label="상담">
       <h2>상담 쟁점 <span class="sub">상담자가 선택 · 판단 아님</span></h2>
       <p class="small f-client-note" data-f-client-note hidden>고객설명 모드 — 메모·내부 입력란을 숨겼습니다(입력 내용은 그대로 보존).</p>
-      <div data-f-issues></div>
-      <h2 class="f-h2-gap">확보할 문서</h2><ul class="f-list" data-f-docs></ul>
-      <h2 class="f-h2-gap">후속조치</h2><ul class="f-list" data-f-next></ul>
+      <details class="f-issues-fold" data-f-issues-fold open>
+        <summary>상담 쟁점 선택 <span class="f-issues-selected" data-f-issues-selected>0개 선택</span></summary>
+        <div data-f-issues></div>
+      </details>
+      <details class="f-followup" data-f-followup open>
+        <summary>필요 서류·후속조치 보기</summary>
+        <h2 class="f-h2-gap">확보할 문서</h2><ul class="f-list" data-f-docs></ul>
+        <h2 class="f-h2-gap">후속조치</h2><ul class="f-list" data-f-next></ul>
+      </details>
       <label class="f-memo">상담 메모 <span class="hint">실명·전화번호는 적지 마세요 · 이 화면 메모리에만</span>
         <textarea data-f-memo rows="3"></textarea></label>
       <div class="f-actions">

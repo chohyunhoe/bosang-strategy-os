@@ -53,10 +53,12 @@ function bridge(page) {
   return { ready, log, stdPnu: sp, count: (op) => log.filter((l) => l.op === op).length };
 }
 
-async function loadIndex(page, mutate = null) {
+async function loadIndex(page, mutate = null, { focus = false } = {}) {
   const idx = JSON.parse(fs.readFileSync(FIXTURE, 'utf8'));
   if (mutate) mutate(idx);
   await page.goto('/field.html');
+  // 기존 E2E는 전체 정보 보기 계약을 검증. 신규 집중모드 E2E는 focus:true로 기본 화면을 검증.
+  if (!focus) await page.locator('[data-f-focus-toggle]').click();
   await page.locator('[data-f-index-file]').setInputFiles({ name: 'layout-synthetic.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(idx)) });
   await expect(page.locator('[data-f-loader]')).toBeHidden();
 }
@@ -722,5 +724,147 @@ test('원문주석 정돈: 화면에서 접어도 인쇄에는 고시 출처·�
   await expect(facts).not.toHaveAttribute('open','');
   await expect(footer).not.toHaveAttribute('open','');
   await expect(page.locator('[data-f-warnings]')).toBeHidden();
+  expect(b.log).toEqual([]);
+});
+
+
+// 현장 집중모드 기본 화면은 고시·지도의 핵심만 보여주고, 기존 전체 화면은 별도 토글로 제공.
+test('현장 집중: 기본은 필지·지도만, 표준지/메모는 단계별로 표시되고 값·조회량 보존', async ({page},testInfo)=>{
+  const b=bridge(page); await b.ready; await loadIndex(page,null,{focus:true});
+  await open(page,'바위리 12-3');
+  await expect(page.locator('body')).toHaveAttribute('data-f-focus','1');
+  await expect(page.locator('body')).toHaveAttribute('data-f-focus-step','1');
+  await expect(page.locator('[data-f-focus-toggle]')).toHaveText('전체 정보');
+  await expect(page.locator('[data-f-kpi]')).toBeVisible();
+  await expect(page.locator('[data-f-facts-panel]')).toBeHidden();
+  await expect(page.locator('[data-f-std-section]')).toBeHidden();
+  await expect(page.locator('[data-f-consult-panel]')).toBeHidden();
+  await expect(page.locator('[data-f-focus-summary]')).toContainText('고시 원문 미대조');
+  await expect(page.locator('[data-f-kpi-status] .prov-pending')).toBeHidden();
+  await expect(page.locator('[data-f-focus-pd]')).toBeEnabled();
+  await shot(page,testInfo,'focus-initial');
+  await page.locator('[data-f-focus-pd]').click();
+  await expect(page.locator('.f-map-frame')).toBeVisible();
+  await expect(page.locator('[data-f-pd-state="OK"]')).toBeAttached();
+  await shot(page,testInfo,'focus-map');
+  const before=b.log.length;
+  await page.locator('[data-f-step-go="2"]').click();
+  await expect(page.locator('body')).toHaveAttribute('data-f-focus-step','2');
+  await expect(page.locator('[data-f-kpi]')).toBeHidden();
+  await expect(page.locator('[data-f-std-section]')).toBeVisible();
+  await expect(page.locator('[data-f-consult-panel]')).toBeHidden();
+  await page.locator('[data-f-std-go]').click();
+  await expect(page.locator('[data-f-std-state="FOUND"]')).toBeVisible();
+  await page.locator('[data-f-step-go="3"]').click();
+  await expect(page.locator('body')).toHaveAttribute('data-f-focus-step','3');
+  await expect(page.locator('[data-f-consult-panel]')).toBeVisible();
+  await expect(page.locator('[data-f-std-section]')).toBeHidden();
+  await expect(page.locator('[data-f-issues-fold]')).not.toHaveAttribute('open','');
+  await expect(page.locator('[data-f-issues] .f-issue').first()).toBeHidden();
+  await shot(page,testInfo,'focus-consult-compact');
+  await page.locator('[data-f-issues-fold] > summary').click();
+  await expect(page.locator('[data-f-issues] .f-issue').first()).toBeVisible();
+  await expect(page.locator('[data-f-issues] .f-issue .q').first()).toBeHidden();
+  await expect(page.locator('[data-f-followup]')).not.toHaveAttribute('open','');
+  const memoBox=await page.locator('[data-f-memo]').boundingBox();
+  const firstIssue=await page.locator('[data-f-issues] .f-issue').first().boundingBox();
+  expect(memoBox.y).toBeLessThan(firstIssue.y);
+  await page.locator('[data-f-issue]').first().check();
+  await expect(page.locator('[data-f-issues-selected]')).toContainText('1개 선택');
+  await page.locator('[data-f-memo]').fill('현장 집중 메모 유지');
+  const after=b.log.length;
+  await page.locator('[data-f-step-go="1"]').click();
+  await expect(page.locator('[data-f-kpi]')).toBeVisible();
+  await page.locator('[data-f-step-go="3"]').click();
+  await expect(page.locator('[data-f-memo]')).toHaveValue('현장 집중 메모 유지');
+  expect(after).toBe(before+1);
+  expect(b.log.length).toBe(after);
+  expect(await overflowX(page)).toBeLessThanOrEqual(0);
+  await shot(page,testInfo,'focus-consult');
+});
+
+test('현장 집중: 전체 정보 전환 시 원문·공적자료·원본 체크리스트 즉시 복원', async ({page})=>{
+  const b=bridge(page);await b.ready;await loadIndex(page,null,{focus:true});
+  await open(page,'새솔리 40'); // 합성 색인의 리 이어받음 추정 원본 경고 유지
+  await expect(page.locator('[data-f-focus-summary]')).toContainText('리 명칭 보완값');
+  await expect(page.locator('[data-f-facts-panel]')).toBeHidden();
+  const n=b.log.length;
+  await page.locator('[data-f-focus-toggle]').click();
+  await expect(page.locator('body')).not.toHaveAttribute('data-f-focus','1');
+  await expect(page.locator('[data-f-focus-toggle]')).toHaveText('간편 상담');
+  await expect(page.locator('[data-f-facts-panel]')).toBeVisible();
+  await expect(page.locator('[data-f-carried]')).toBeVisible();
+  await expect(page.locator('[data-f-std-section]')).toBeVisible();
+  await expect(page.locator('[data-f-consult-panel]')).toBeVisible();
+  await expect(page.locator('[data-f-followup]')).toHaveAttribute('open','');
+  await expect(page.locator('[data-f-issues-fold]')).toHaveAttribute('open','');
+  await expect(page.locator('[data-f-issues] .f-issue .q').first()).toBeVisible();
+  await page.locator('[data-f-focus-toggle]').click();
+  await expect(page.locator('[data-f-facts-panel]')).toBeHidden();
+  await expect(page.locator('[data-f-focus-summary]')).toContainText('리 명칭 보완값');
+  expect(b.log.length).toBe(n);
+});
+
+test('현장 집중: 인쇄 전에는 전체 자료 복원, 인쇄 종료 시 집중단계와 접힘 상태 보존',async({page})=>{
+  const b=bridge(page);await b.ready;await loadIndex(page,null,{focus:true});
+  await open(page,'바위리 12-3');
+  await page.locator('[data-f-step-go="3"]').click();
+  await page.locator('[data-f-memo]').fill('인쇄 후에도 보존');
+  await expect(page.locator('[data-f-facts-panel]')).toBeHidden();
+  await expect(page.locator('[data-f-followup]')).not.toHaveAttribute('open','');
+  await page.evaluate(()=>window.dispatchEvent(new Event('beforeprint')));
+  await expect(page.locator('body')).not.toHaveAttribute('data-f-focus','1');
+  await expect(page.locator('[data-f-facts-panel]')).toBeVisible();
+  await expect(page.locator('[data-f-followup]')).toHaveAttribute('open','');
+  await expect(page.locator('[data-f-footer-notes]')).toHaveAttribute('open','');
+  await expect(page.locator('[data-f-issues-fold]')).toHaveAttribute('open','');
+  await page.evaluate(()=>window.dispatchEvent(new Event('afterprint')));
+  await expect(page.locator('body')).toHaveAttribute('data-f-focus','1');
+  await expect(page.locator('body')).toHaveAttribute('data-f-focus-step','3');
+  await expect(page.locator('[data-f-facts-panel]')).toBeHidden();
+  await expect(page.locator('[data-f-followup]')).not.toHaveAttribute('open','');
+  await expect(page.locator('[data-f-issues-fold]')).not.toHaveAttribute('open','');
+  await expect(page.locator('[data-f-memo]')).toHaveValue('인쇄 후에도 보존');
+  expect(b.log).toEqual([]);
+});
+
+test('현장 집중: 커버↔펼침 회전·메모/필지상태·중요 경고 유지',async({page})=>{
+  test.skip(width(page)!==412,'Fold8 커버에서 접기·펼치기 전환 검증');
+  const b=bridge(page);await b.ready;await loadIndex(page,null,{focus:true});
+  await open(page,'바위리 12-3');
+  await page.locator('[data-f-step-go="3"]').click();
+  await page.locator('[data-f-memo]').fill('접고 펼쳐도 기억');
+  const n=b.log.length;
+  await page.setViewportSize({width:884,height:1104});
+  await expect(page.locator('body')).toHaveAttribute('data-f-focus-step','3');
+  await expect(page.locator('[data-f-consult-panel]')).toBeVisible();
+  await expect(page.locator('[data-f-memo]')).toHaveValue('접고 펼쳐도 기억');
+  await page.locator('[data-f-step-go="2"]').click();
+  await expect(page.locator('[data-f-std-section]')).toBeVisible();
+  await page.setViewportSize({width:412,height:915});
+  await expect(page.locator('[data-f-std-section]')).toBeVisible();
+  await page.locator('[data-f-step-go="1"]').click();
+  await expect(page.locator('[data-f-kpi]')).toBeVisible();
+  await expect(page.locator('[data-f-focus-summary]')).toContainText('원문 미대조');
+  await page.locator('[data-f-step-go="3"]').click();
+  await expect(page.locator('[data-f-memo]')).toHaveValue('접고 펼쳐도 기억');
+  expect(b.log.length).toBe(n);
+  expect(await overflowX(page)).toBeLessThanOrEqual(0);
+});
+
+
+test('현장 집중: 면적 충돌은 간편 화면에도 즉시 경고, 전체 자료 복원 시 계산 원본 유지', async ({page})=>{
+  const b=bridge(page);await b.ready;
+  await loadIndex(page,(idx)=>{idx.rows[1].incorporated_area_m2=600;},{focus:true});
+  await open(page,'새솔리 12-3');
+  await expect(page.locator('[data-f-focus-summary]')).toContainText('면적 충돌');
+  await expect(page.locator('[data-f-focus-summary]')).toContainText('고시 원문 미대조');
+  await expect(page.locator('[data-f-kpi-cell="편입면적"]')).toContainText('600㎡');
+  await expect(page.locator('[data-f-kpi-cell="편입률"]')).toContainText('120%');
+  await expect(page.locator('[data-f-facts-panel]')).toBeHidden();
+  await page.locator('[data-f-focus-more]').click();
+  await expect(page.locator('[data-f-facts-panel]')).toBeVisible();
+  await expect(page.locator('[data-f-area-conflict]')).toContainText('자동 보정 안 함');
+  await expect(page.locator('[data-f-ratio]')).toContainText('120%');
   expect(b.log).toEqual([]);
 });
