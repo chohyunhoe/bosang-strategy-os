@@ -626,3 +626,29 @@ test('FastFlow: 5열에서 동일 API 항목만 접고 차이·추정·가격은
   expect(b.log.length).toBe(n);
   expect(await overflowX(page)).toBeLessThanOrEqual(0);
 });
+
+
+test('FastFlow: 초기 브리지 연결 확인 중 지도 바로가기는 상태영역 안내, 연결 후 조회버튼 이동', async ({ page }) => {
+  const b=bridge(page); await b.ready;
+  let release;
+  const held=new Promise((resolve)=>{ release=resolve; });
+  await page.route('**/__public_data_bridge/status', async (route) => {
+    await held;
+    await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({
+      ok:true,vworld_configured:true,public_data_configured:true,
+    })});
+  });
+  try {
+    await loadIndex(page);
+    await open(page,'바위리 12-3');
+    await expect(page.locator('[data-f-pd-go]')).toHaveCount(0);
+    await page.locator('[data-f-quick-map]').click();
+    await expect(page.locator('[data-f-quick-hint]')).toContainText('공적자료 연결 확인 중');
+    await expect(page.locator('[data-f-pd-state="CHECKING"]')).toBeVisible();
+    expect(b.log).toEqual([]);
+  } finally { release(); }
+  await expect(page.locator('[data-f-pd-go]')).toBeVisible();
+  await page.locator('[data-f-quick-map]').click();
+  await expect(page.locator('[data-f-pd-go]')).toBeFocused();
+  expect(b.log).toEqual([]);
+});
