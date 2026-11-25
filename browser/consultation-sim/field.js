@@ -10,9 +10,10 @@ import { buildStandardReview, STD_LABEL } from './core/field-standard.js';
 import { evaluateZoningBasis, RELATION_OPTIONS, ZONING_STATUS, ZONING_STATUS_LABEL } from './core/zoning-basis.js';
 import { EVIDENCE_STATUS_LABEL } from './core/zoning-trace.js';
 import { profileForIndex } from './profiles/index.js';
-import { BUNDLE, OWNERSHIP_BASIS, CO_OWNERSHIP, ownershipNeedsWarning, parcelKey, parcelLabel, circled, pnuConflicts, createBridgeCache, buildBundleSummary, buildBundleDetail } from './core/field-bundle.js';
+import { BUNDLE, OWNERSHIP_BASIS, CO_OWNERSHIP, ownershipNeedsWarning, parcelKey, parcelLabel, circled, pnuConflicts, createBridgeCache, AREA_BASIS_SOURCES, AREA_BASIS_CHECKS, areaBasisState, buildBundleSummary, buildBundleDetail } from './core/field-bundle.js';
 import { renderBundleMap } from './core/field-map.js';
-import { TRAIT_FIELDS, TRAIT_STATUS, targetTraits } from './core/field-standard.js';
+import { TRAIT_FIELDS, TRAIT_STATUS, buildStdMatrix } from './core/field-standard.js';
+import { PROV, NOTICE_LABEL, API_LABEL, originPending, provBadge, provLegend, provNoticeValue, provRi, provArithmetic, provPdValue, provOwnership, provZoningBasis, provMap, diffTag } from './core/field-provenance.js';
 
 const $ = (s, r = document) => r.querySelector(s);
 const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -92,7 +93,7 @@ function addToBundle({ force = false } = {}) {
   if (dup && dup.pid !== st.pid && draftDirty() && !force) { askDraft(() => addToBundle({ force: true }), { canKeep: false }); return; }
   if (dup) { st.bundle.note = `이미 담긴 필지입니다 — ${circled(st.bundle.slots.indexOf(dup) + 1)}로 전환`; if (dup.pid !== st.pid) switchTo(dup.pid); else render(); return; }
   if (st.bundle.slots.length >= BUNDLE.maxParcels) { st.bundle.note = `한 묶음은 ${BUNDLE.maxParcels}필지까지입니다`; render(); return; }
-  const slot = { pid: st.pid, key, label: parcelLabel({ row: st.row, direct: st.direct }), ownership: { basis: 'UNCONFIRMED', coown: 'UNKNOWN' }, area_basis_date: '' };
+  const slot = { pid: st.pid, key, label: parcelLabel({ row: st.row, direct: st.direct }), ownership: { basis: 'UNCONFIRMED', coown: 'UNKNOWN' }, area_basis: { date: '', source: '', check: 'UNCHECKED' } };
   st.bundle.slots.push(slot); st.slotId = st.pid; st.bundle.note = '';
   saveSlot(); render();
 }
@@ -117,7 +118,9 @@ function switchTo(pid) {
   PARCEL_KEYS.forEach((k) => { st[k] = slot[k]; });
   st.pid = slot.pid; st.slotId = slot.pid; st.epoch += 1; st.search = null; st.directOffer = null;
   $('[data-f-memo]').value = st.memo || ''; $('[data-f-out]').textContent = '';
+  const y = window.scrollY; // 필지 전환은 화면 위치를 옮기지 않는다(단계·스크롤 유지)
   render();
+  if (window.scrollY !== y) window.scrollTo(0, y);
   // 다른 필지에 있는 동안 표준지 응답이 왔으면 지금 첫 후보를 고르고 후보 비교로 맞춘다(재조회 없음)
   if (st.std?.pendingSelect) { st.std.pendingSelect = false; const sr = stdReview(); st.std.selected = sr?.list?.find((x) => x.kind === 'CANDIDATE')?.pnu || null; st.std.selectedYear = null; if (sr?.markers?.some((x) => x.kind === 'CANDIDATE') && st.map?.status === 'EXACT_ONE') fitStandard(st.map, sr); else renderMap(); }
 }
@@ -172,14 +175,15 @@ function renderPublicData() {
     $('[data-f-pd-go]', box).addEventListener('click', runPublicData);
     return;
   }
-  box.innerHTML = `<div data-f-pd-state="OK" data-f-pd-stage="LIVE_DATA"><p class="small"><span class="chip ok">실조회 응답</span> PNU <span class="mono">${esc(pd.pnu)}</span>${pd.legal_dong_name ? ` · 법정동 ${esc(pd.legal_dong_name)}` : ''} <span class="chip warn">검토 필요</span></p>
+  box.innerHTML = `<div data-f-pd-state="OK" data-f-pd-stage="LIVE_DATA"><p class="small"><span class="chip">API 응답 수신</span> ${originPending()} PNU <span class="mono">${esc(pd.pnu)}</span>${pd.legal_dong_name ? ` · 법정동 ${esc(pd.legal_dong_name)}` : ''} <span class="chip warn">검토 필요</span></p>
     ${pd.parcel_address ? `<p class="small" data-f-pd-parcel>연속지적도 확인: ${esc(pd.parcel_address)}</p>` : ''}${(pd.notes || []).map((n) => `<p class="small warn-note">${esc(n)}</p>`).join('')}
-    ${pd.values.map((v) => `<div class="f-pd-row" data-f-pd-key="${esc(v.key)}"><b>${esc(v.label)}</b> ${v.value == null ? '<span class="chip">값 없음</span>' : esc(typeof v.value === 'number' ? fmt(v.value) : v.value)}
+    ${pd.values.map((v) => `<div class="f-pd-row" data-f-pd-key="${esc(v.key)}"><b>${esc(v.label)}</b> ${v.mismatch ? provBadge(provPdValue(v), { label: '불일치·확인 필요' }) : provBadge(provPdValue(v), { label: v.value == null ? '' : API_LABEL })} ${v.value == null ? '<span class="chip">값 없음</span>' : esc(typeof v.value === 'number' ? fmt(v.value) : v.value)}
       ${v.mismatch ? `<span class="chip bad" data-f-pd-mismatch>불일치</span> <span class="small">${esc(v.mismatch)}</span>` : ''}
       <div class="src">${esc(v.source)} · 기준 ${esc(v.base_year)} · ${esc(fmtTime(v.fetched_at))}</div></div>`).join('')}
     <p class="warn-note">공적자료 값은 이용조건 확인 전이라 화면 열람만 합니다. 카드 복사·저장·인쇄에는 넣지 않습니다.</p></div>`;
 }
 
+const noticeBadge = (value) => { const t = provNoticeValue(value); return provBadge(t, { label: t === PROV.RECEIVED ? NOTICE_LABEL : '' }); };
 const repaint = (t, fn = render) => { if (t === st) fn(); else renderBundle(); };
 
 async function runPublicData() {
@@ -254,11 +258,11 @@ async function loadCad(m, tiles, owner = ownerNow()) {
 
 let lastMapKey = '';
 function renderMap() {
-  const panel = $('[data-f-map-panel]'); const box = $('[data-f-map]');
-  if (!panel || !box) return;
+  const panel = $('[data-f-map-panel]'); const box = $('[data-f-map]'); const sbox = $('[data-f-std]');
+  if (!panel || !box || !sbox) return;
   renderBundle(); // 묶음 막대(조회 중 표시·호출 집계)도 같이 갱신 — 바뀐 것이 없으면 다시 그리지 않음
   panel.hidden = !active() || !st.map;
-  if (panel.hidden) { box.innerHTML = ''; lastMapKey = ''; return; }
+  if (panel.hidden) { box.innerHTML = ''; lastMapKey = ''; sbox.innerHTML = active() ? STD_WAIT : ''; return; }
   const m = st.map;
   // 같은 화면 상태면 다시 그리지 않는다(영상 재요청 방지). 영상 수신 상태는 칩만 바꾼다.
   const sr = m.status === 'EXACT_ONE' ? stdReview() : null;
@@ -276,9 +280,11 @@ function renderMap() {
   // 새 <img>를 만들지 않도록(만드는 순간 요청이 시작될 수 있음) 자리표시로 바꾼 뒤 기존 요소를 넣는다.
   if (keepImg) html = html.replace(/<img class="f-map-img"[^>]*>/, '<i data-f-map-img-slot hidden></i>');
   // 펼쳐 둔 상세(출처·검증, 후보 근거 등)는 다시 그려도 펼친 채로 둔다.
-  const openKeys = [...box.querySelectorAll('details[open]')].map((d) => [...d.attributes].find((a) => a.name.startsWith('data-f-'))?.name).filter(Boolean);
-  box.innerHTML = html + (m.status === 'EXACT_ONE' ? renderStdPanel(sr) : '');
-  openKeys.forEach((k) => { const d = box.querySelector(`details[${k}]`); if (d) d.open = true; });
+  const openKeys = [...box.querySelectorAll('details[open]'), ...sbox.querySelectorAll('details[open]')].map((d) => [...d.attributes].find((a) => a.name.startsWith('data-f-'))?.name).filter(Boolean);
+  // 표준지 비교는 지도와 따로 둔 칸(펼침·PC에서 오른쪽/아래 배치)에 그린다 — 지도 표식과 같은 선택 상태(st.std.selected)를 쓴다.
+  box.innerHTML = html;
+  sbox.innerHTML = m.status === 'EXACT_ONE' ? renderStdPanel(sr) : STD_WAIT;
+  openKeys.forEach((k) => { const d = box.querySelector(`details[${k}]`) || sbox.querySelector(`details[${k}]`); if (d) d.open = true; });
   let img = $('[data-f-map-img]', box);
   const slot = $('[data-f-map-img-slot]', box);
   if (keepImg && slot) { slot.replaceWith(keepImg); img = null; }
@@ -301,8 +307,9 @@ function renderMap() {
     m.view = withZoom({ ...m.view, center: mercator(ll), centerLonLat: ll }, m.view.zoom + 2); m.mode = null; m.aerial = 'LOADING'; renderMap();
   }));
   box.querySelectorAll('[data-f-std-pin]').forEach((b) => b.addEventListener('click', () => selectStandard(b.dataset.fStdPin, false)));
-  box.querySelectorAll('[data-f-std-item]').forEach((b) => b.addEventListener('click', () => selectStandard(b.dataset.fStdItem, true, b.dataset.fStdItemYear)));
-  box.querySelectorAll('[data-f-std-go]').forEach((b) => b.addEventListener('click', runStandard));
+  sbox.querySelectorAll('[data-f-std-item]').forEach((b) => b.addEventListener('click', () => selectStandard(b.dataset.fStdItem, true, b.dataset.fStdItemYear)));
+  sbox.querySelectorAll('[data-f-std-col]').forEach((b) => b.addEventListener('click', () => selectStandard(b.dataset.fStdCol, true)));
+  sbox.querySelectorAll('[data-f-std-go]').forEach((b) => b.addEventListener('click', runStandard));
   box.querySelectorAll('[data-f-cad-load]').forEach((b) => b.addEventListener('click', () => loadCad(m, cadCoverage(m.view, m.cad).missing.slice(0, CAD.perClick))));
 }
 
@@ -371,17 +378,35 @@ function fitStandard(m, sr) {
   const same = m.view && aerialUrl(m.view) === aerialUrl(view);
   m.view = view; m.mode = cands.length ? 'COMPARE' : null; if (!same) m.aerial = 'LOADING'; renderMap();
 }
-// 대상 필지 ↔ 선택 표준지 특성(이용상황·도로접면·형상·고저). 필지 슬롯의 공적자료·표준지 응답 그대로(필지마다 독립).
-// API 속성 텍스트이며 토지특성현황도(도면) 원문이 아님. 값이 없으면 '미확인'(추정 없음).
-function traitTable(sel) {
-  const tt = targetTraits(st.pd?.values || []);
-  const stdCell = (b) => (b?.value ? `${esc(b.value)}${b.status === 'NAME_OTHER' ? ' <span class="muted">(명칭만 참고 · 이 필지 확인 안 됨)</span>' : ''}` : b?.status === 'CONFLICT' ? `값 충돌·확인 필요(${esc(b.values.join(' / '))})` : b?.status === 'CODE_ONLY' ? `코드 ${esc(b.code)}(명칭 미확인)` : '미확인');
-  const ty = TRAIT_FIELDS.map((f) => tt[f.key].year).find(Boolean); const sy = sel.year || TRAIT_FIELDS.map((f) => sel.traits?.[f.key]?.year).find(Boolean);
-  return `<table class="f-traits small" data-f-std-traits="${esc(sel.pnu)}"><thead><tr><th>특성</th><th>대상 필지</th><th>${sel.kind === 'CANDIDATE' ? `후보 ${sel.rank}` : '표준지'}</th></tr></thead><tbody>
-    ${TRAIT_FIELDS.map((f) => { const a = tt[f.key]; const b = sel.traits?.[f.key];
-      return `<tr data-f-std-trait="${f.key}"><th>${f.label}</th><td data-f-trait-target data-f-trait-status="${a.status}">${a.value ? esc(a.value) : '미확인'}</td><td data-f-trait-std data-f-trait-status="${esc(b?.status || 'MISSING')}">${stdCell(b)}</td></tr>`; }).join('')}
+// 대상 필지 ↔ 선택 표준지 특성(용도지역·지목·이용상황·도로접면·형상·고저·공시지가·거리). 필지 슬롯의 공적자료·표준지 응답 그대로(필지마다 독립).
+// API 속성 텍스트이며 토지특성현황도(도면) 원문이 아님. 값이 없으면 '미확인'(추정 없음). 동일/상이는 명칭 일치 여부만(우열 판정 없음).
+const STD_WAIT = '<p class="small muted" data-f-std-wait>공적자료 조회로 대상 경계(연속지적도 exact-one)가 확인되면 주변 표준지를 조회할 수 있습니다. 후보를 임의로 만들거나 다른 필지에서 가져오지 않습니다.</p>';
+const shortLabel = (label) => String(label || '').trim().split(/\s+/).slice(-2).join(' ');
+const mxVal = (c) => (c?.text ? esc(c.text) : c?.value == null ? '미확인' : esc(c.value));
+const mxBadge = (c) => (c.tier ? provBadge(c.tier, { label: c.label && c.value != null || c.status === 'CONFLICT' ? c.label : '', note: c.note || '' }) : '');
+const pdYear = () => [...TRAIT_FIELDS.map((f) => f.key), 'zoning', 'land_category'].map((k) => (st.pd?.values || []).find((v) => v.key === k)?.base_year).find(Boolean);
+function traitTable(sel, review, dup = false) {
+  const mx = buildStdMatrix({ pdValues: st.pd?.values || [], columns: [sel], review });
+  const ty = pdYear();
+  const sy = sel.year || TRAIT_FIELDS.map((f) => sel.traits?.[f.key]?.year).find(Boolean);
+  return `<table class="f-traits small${dup ? ' f-traits-dup' : ''}" data-f-std-traits="${esc(sel.pnu)}"><thead><tr><th>특성</th><th>대상 필지</th><th>${sel.kind === 'CANDIDATE' ? `후보 ${sel.rank}` : '표준지'}</th><th>비교</th></tr></thead><tbody>
+    ${mx.rows.map((r) => { const a = r.target; const b = r.cells[0];
+      return `<tr data-f-std-trait="${r.key}"><th>${esc(r.label)}</th>
+        <td><span data-f-trait-target data-f-trait-status="${esc(a.status || (a.value == null ? 'MISSING' : 'API_NAME'))}">${mxVal(a)}</span>${a.tier ? ` ${mxBadge(a)}` : ''}</td>
+        <td><span data-f-trait-std data-f-trait-status="${esc(b.status || (b.value == null ? 'MISSING' : 'API_NAME'))}">${mxVal(b)}</span> ${mxBadge(b)}</td>
+        <td>${b.diff ? diffTag(b.diff, b.diff_reason) : ''}</td></tr>`; }).join('')}
     </tbody></table>
     <p class="small muted" data-f-trait-note>대상: 공적자료 토지특성 ${esc(ty || '연도 미상')}년 · ${sel.kind === 'CANDIDATE' ? '후보' : '표준지'}: 표준지 ${esc(sy || '연도 미상')}년 공시 속성${ty && sy && String(ty) !== String(sy) ? ' · <b>기준연도 다름</b>' : ''} — API 텍스트 값, 토지특성현황도(도면) 원문 아님 · 검토 보조</p>`;
+}
+// 5열 비교표(구분 | 대상 | 후보①②③): 펼침·PC 화면. 열 머리를 누르면 지도 표식·상세와 같이 선택된다.
+function stdMatrix(sr, cols, selected) {
+  if (!cols.length) return '';
+  const mx = buildStdMatrix({ pdValues: st.pd?.values || [], columns: cols, review: sr.review });
+  const isSel = (c) => c.pnu === selected;
+  return `<div class="f-mx-wrap" data-f-std-matrix-wrap><table class="f-mx small" data-f-std-matrix data-cols="${cols.length}">
+    <thead><tr><th scope="col">구분</th><th scope="col">대상 필지<br><span class="muted" data-f-mx-year="target">${esc(pdYear() || '연도 미상')}${pdYear() ? '년' : ''} · 토지특성 API</span></th>${mx.columns.map((c) => `<th scope="col"${isSel(c) ? ' class="sel"' : ''}><button type="button" class="f-mx-col${isSel(c) ? ' sel' : ''}" data-f-std-col="${esc(c.pnu)}" aria-pressed="${isSel(c)}"><span class="n">${esc(c.rank ?? '·')}</span>${esc(shortLabel(c.label))}</button><span class="muted" data-f-mx-year="${esc(c.pnu)}">${esc(c.year || '연도 미상')}${c.year ? '년' : ''} 공시 · 표준지 API</span></th>`).join('')}</tr></thead>
+    <tbody>${mx.rows.map((r) => `<tr data-f-mx-row="${r.key}"><th scope="row">${esc(r.label)}</th><td data-f-mx-target>${mxVal(r.target)}${r.target.tier ? ` ${mxBadge(r.target)}` : ''}</td>${r.cells.map((c, i) => `<td data-f-mx-cell="${esc(mx.columns[i].pnu)}"${isSel(mx.columns[i]) ? ' class="sel"' : ''}>${mxVal(c)} ${mxBadge(c)}${c.diff ? ` ${diffTag(c.diff, c.diff_reason)}` : ''}</td>`).join('')}</tr>`).join('')}</tbody></table>
+    <ul class="small muted f-mx-notes" data-f-mx-notes>${mx.notes.map((n) => `<li>${esc(n)}</li>`).join('')}</ul></div>`;
 }
 const won = (n) => (n == null ? '미기재' : `${Number(n).toLocaleString('ko-KR')}원/㎡`);
 const dist = (d) => (d == null ? '거리 미산출' : d >= 1000 ? `${(d / 1000).toFixed(2)}km` : `${Math.round(d)}m`);
@@ -402,7 +427,7 @@ function renderStdPanel(sr) {
     return `${head}<p class="small" data-f-std-state="${esc(sr?.status || 'FAILED')}"><span class="chip bad">후보 판정 안 함</span> ${esc((sr?.notes || []).join(' '))}</p></div>`;
   }
   const sel = (s.selectedYear != null && sr.list.find((x) => x.pnu === s.selected && String(x.year) === String(s.selectedYear))) || sr.list.find((x) => x.pnu === s.selected) || null;
-  const short = (label) => String(label || '').trim().split(/\s+/).slice(-2).join(' ');
+  const short = shortLabel;
   // 후보 3건은 한 줄 요약(지번·거리·원/㎡·용도지역), 나머지는 기존 상세 줄
   const item = (x) => (x.kind === 'CANDIDATE'
     ? `<li><button type="button" class="f-std-item cand compact${x === sel ? ' sel' : ''}" data-f-std-item="${esc(x.pnu)}" data-f-std-item-kind="${x.kind}"><span class="n">${x.rank}</span><b>${esc(short(x.label))}</b> <span class="small">${esc(dist(x.distance_m))} · ${esc(won(x.price))} · ${esc(x.zoning || '용도지역 미기재')}</span></button></li>`
@@ -416,9 +441,10 @@ function renderStdPanel(sr) {
     ${s.retryFailed ? `<p class="small warn-note" data-f-std-retry-failed>다시 조회 실패 — ${esc(s.retryFailed)} · 아래는 앞서 받은 결과(조회 ${esc(fmtTime(s.fetched_at))})</p>` : ''}
     <p class="small">${statusChip} <span data-f-std-review-zoning="${esc(sr.review.basis)}">검토 용도지역: <b>${esc(sr.review.label)}</b></span></p>
     ${cands.length ? `<ol class="f-std-list" data-f-std-list>${cands.map(item).join('')}</ol>` : ''}
+    ${stdMatrix(sr, cands, s.selected)}
     ${sel ? `<div class="f-std-detail" data-f-std-detail="${esc(sel.pnu)}"><b>${sel.kind === 'CANDIDATE' ? `${STD_LABEL.CANDIDATE} ${sel.rank}` : esc(sel.status_label)} · ${esc(short(sel.label))}</b> <span class="chip warn">${esc(STD_LABEL.NOT_SELECTED)}</span>
       <p class="small f-std-line">${esc(cf(sel, 'price', won(sel.price)))} · ${esc(cf(sel, 'zoning', sel.zoning || '용도지역 미기재'))} · ${esc(cf(sel, 'land_use', sel.land_use || '이용상황 미기재'))} · 직선 ${esc(dist(sel.distance_m))}${sel.kind !== 'CANDIDATE' && sel.reasons?.length ? ` · ${esc(sel.reasons[0])}` : ''}</p>
-      ${traitTable(sel)}
+      ${traitTable(sel, sr.review, sel.kind === 'CANDIDATE')}
       <details class="f-fold" data-f-std-why><summary class="small">근거·출처</summary>
       <dl class="small"><dt>지번</dt><dd data-f-std-d="lot">${esc(sel.label)}</dd><dt>PNU</dt><dd data-f-std-d="pnu">${esc(sel.pnu)}</dd>
       <dt>공시지가</dt><dd data-f-std-d="price">${esc(cf(sel, 'price', won(sel.price)))}</dd><dt>공시연도</dt><dd data-f-std-d="year">${esc(sel.year || '미상')}년</dd>
@@ -444,15 +470,17 @@ function renderCard() {
   const card = buildFieldCard({ profile: st.profile, index: st.index, row: st.row, selectedIssueIds: [...st.issues], memo: st.memo, otherText: st.other, zoning: currentZoning() });
   const r = st.row; const f = noticeFacts(r);
   $('[data-f-facts]').innerHTML = `<div class="f-head" data-f-parcel="${r.serial}">${esc(r.ri)} ${esc(r.lot_label)} <span class="chip warn">원문확인 필요</span></div>
+    ${originPending('고시 원본 PDF 대조 전')}
+    ${provLegend()}
     <dl class="f-kv">
-      <dt>고시</dt><dd>${esc(st.index.notice?.notice_no || '')} (${esc(st.index.notice?.notice_date || '')})</dd>
+      <dt>고시 ${provBadge(PROV.RECEIVED, { label: NOTICE_LABEL })}</dt><dd>${esc(st.index.notice?.notice_no || '')} (${esc(st.index.notice?.notice_date || '')})</dd>
       <dt>일련번호</dt><dd data-f-serial>${r.serial} · 원본 PDF ${r.pdf_page}쪽</dd>
-      <dt>소재지</dt><dd>${esc(card.address)}</dd>
-      <dt>지목</dt><dd data-f-jimok>${esc(f.jimok || '—')}</dd>
-      <dt>공부면적</dt><dd data-f-ledger>${fmt(f.ledger_area_m2)}㎡</dd>
-      <dt>편입면적</dt><dd data-f-incorporated>${fmt(f.incorporated_area_m2)}㎡</dd>
-      ${f.arithmetic ? `<dt>편입률</dt><dd data-f-ratio>${f.arithmetic.incorporated_ratio_pct}% <span class="chip calc">산술</span></dd>
-      <dt>공부−편입</dt><dd data-f-remainder>${fmt(f.arithmetic.remainder_area_m2)}㎡ <span class="chip calc">산술</span>${f.arithmetic.partial ? ' <span class="chip warn">일부 편입 · 잔여지 확인</span>' : ''}</dd>` : ''}
+      <dt>소재지 ${provBadge(provRi(r), { label: r.ri_source === 'CARRIED' ? '추정(리 이어받음)' : NOTICE_LABEL })}</dt><dd>${esc(card.address)}</dd>
+      <dt>지목 ${noticeBadge(f.jimok)}</dt><dd data-f-jimok>${esc(f.jimok || '—')}</dd>
+      <dt>공부면적 ${noticeBadge(f.ledger_area_m2)}</dt><dd data-f-ledger>${fmt(f.ledger_area_m2)}㎡</dd>
+      <dt>편입면적 ${noticeBadge(f.incorporated_area_m2)}</dt><dd data-f-incorporated>${fmt(f.incorporated_area_m2)}㎡</dd>
+      ${f.arithmetic ? `<dt>편입률 ${provBadge(provArithmetic(f.arithmetic))}</dt><dd data-f-ratio>${f.arithmetic.incorporated_ratio_pct}% <span class="chip calc">산술</span></dd>
+      <dt>공부−편입 ${provBadge(provArithmetic(f.arithmetic))}</dt><dd data-f-remainder>${fmt(f.arithmetic.remainder_area_m2)}㎡ <span class="chip calc">산술</span>${f.arithmetic.partial ? ' <span class="chip warn">일부 편입 · 잔여지 확인</span>' : ''}${f.arithmetic.inconsistent ? ' <span class="chip bad" data-f-area-conflict>편입면적 &gt; 공부면적 · 고시 기재값 그대로(자동 보정 안 함) · 원문 대조</span>' : ''}</dd>` : ''}
     </dl>
     ${r.ri_source === 'CARRIED' ? `<p class="warn-note" data-f-carried>리 이름은 원본 표의 반복 셀에서 이어받았습니다 — PDF ${r.pdf_page}쪽 원문 재확인.</p>` : ''}
     <p class="small muted">2025 고시 기록입니다. 현재 조서·현황·사업변경과 다를 수 있습니다.</p>`;
@@ -463,7 +491,7 @@ function renderCard() {
 function renderDirectFacts() {
   const card = buildDirectCard({ profile: st.profile, target: st.direct, selectedIssueIds: [...st.issues], memo: st.memo, otherText: st.other, zoning: currentZoning() });
   $('[data-f-facts]').innerHTML = `<div class="f-head" data-f-direct="${esc(st.direct.scope)}">${esc(st.direct.leaf)} ${esc(st.direct.lot_label)} <span class="chip bad">고시 색인 밖 · 편입 여부 미확인</span></div>
-    <dl class="f-kv">${st.direct.scope === 'PNU' ? `<dt>입력 PNU</dt><dd data-f-direct-pnu class="mono">${esc(st.direct.pnu)} <span class="chip warn">검증 전</span></dd>` : `<dt>입력 주소</dt><dd data-f-direct-address>${esc(card.address)}</dd>`}<dt>고시 기재값</dt><dd>없음 — 미편입 판정 아님</dd></dl>
+    <dl class="f-kv">${st.direct.scope === 'PNU' ? `<dt>입력 PNU</dt><dd data-f-direct-pnu class="mono">${esc(st.direct.pnu)} <span class="chip warn">검증 전</span></dd>` : `<dt>입력 주소</dt><dd data-f-direct-address>${esc(card.address)}</dd>`}<dt>고시 기재값 ${provBadge(PROV.UNVERIFIED)}</dt><dd>없음 — 미편입 판정 아님</dd></dl>
     <p class="small muted">법정동은 공적자료 조회 때 행정안전부 법정동코드로 다시 확인하며, 후보가 여럿이면 조회하지 않습니다.</p>`;
   $('[data-f-unverified]').innerHTML = card.unverified.map((u) => `<li>${esc(u)}</li>`).join('');
   return card;
@@ -532,7 +560,7 @@ function renderZoningResult() {
   box.innerHTML = `<div data-f-zoning-status="${esc(z.status)}">
     <p class="small"><span class="chip ${ZCHIP[z.status]}">${esc(ZONING_STATUS_LABEL[z.status])}</span></p>
     <dl class="f-kv">
-      <dt>사업 영향 제외 평가 검토 후보</dt><dd data-f-zoning-basis>${z.basis_label ? `${esc(z.basis_label)} <span class="chip warn">확정 아님 · 전문가 검증 전</span>` : '<span class="chip bad">확인 필요 — 임의 추정 안 함</span>'}</dd>
+      <dt>사업 영향 제외 평가 검토 후보 ${provBadge(provZoningBasis(z))}</dt><dd data-f-zoning-basis>${z.basis_label ? `${esc(z.basis_label)} <span class="chip warn">확정 아님 · 전문가 검증 전</span>` : '<span class="chip bad">확인 필요 — 임의 추정 안 함</span>'}</dd>
       <dt>감정평가 기준시점</dt><dd data-f-zoning-valuation>${esc(z.valuation_date_label)}</dd>
       <dt>검증 상태</dt><dd data-f-zoning-verification>${z.verification_label ? esc(z.verification_label) : { UNVERIFIED_BY_EXPERT: '미검증(자동 판정 없음)', NOTICE_REASON_CONFIRMED_PARCEL_MAP_PENDING_UNVERIFIED_BY_EXPERT: '고시 사유서 확인 · 필지별 변경도면 대조 전 · 전문가 검증 전', COUNSELOR_MARKED_UNVERIFIED_BY_EXPERT: '상담자 표시 · 전문가 검증 전' }[z.verification] || esc(z.verification)}</dd>
     </dl>
@@ -612,11 +640,31 @@ function bundleParcels() {
     const card = s.row ? buildFieldCard({ profile: st.profile, index: st.index, row: s.row, selectedIssueIds: [...s.issues], memo: s.memo, otherText: s.other, zoning: currentZoning(s) })
       : buildDirectCard({ profile: st.profile, target: s.direct, selectedIssueIds: [...s.issues], memo: s.memo, otherText: s.other, zoning: currentZoning(s) });
     return { n: i + 1, pid: s.pid, label: s.label, kind: s.row ? 'ROW' : 'DIRECT', notice: s.row ? (st.index?.notice || null) : null,
-      pnu: s.pd?.pnu || s.direct?.pnu || null, lot_key: s.row ? `${s.row.eupmyeon || ''}|${rowKey(s.row)}` : null, area_basis_date: s.area_basis_date || '', // 세목표 면적 기준일(감정평가 가격시점 아님)
+      pnu: s.pd?.pnu || s.direct?.pnu || null, lot_key: s.row ? `${s.row.eupmyeon || ''}|${rowKey(s.row)}` : null, area_basis: s.area_basis, // 세목표 면적 기준일·출처·확인 상태(감정평가 가격시점 아님)
       facts: s.row ? noticeFacts(s.row) : null, ownership: s.ownership, card };
   });
 }
+// 세목표 면적 기준일: 날짜 · 출처 · 확인 상태를 따로 받는다. 날짜나 출처를 바꾸면 확인 표시는 풀린다(다른 값에 확인이 남지 않게).
+function areaBasisForm(v) {
+  const x = areaBasisState(v); const opt = (list, cur) => list.map(([k, l]) => `<option value="${k}"${k === cur ? ' selected' : ''}>${esc(l)}</option>`).join('');
+  return `<details class="f-area-box" data-f-area-basis-box${areaBoxOpen ? ' open' : ''}><summary class="small">세목표 면적 기준일 <span class="hint">고시일·감정평가 가격시점 아님</span> <span class="prov ${AREA_TONE[x.status]}" data-f-area-basis-state="${x.status}">${esc(x.label)}</span></summary><div class="f-area-basis small">
+    <label>날짜 <input type="date" min="1900-01-01" data-f-area-basis value="${esc(v?.date || '')}"></label>
+    <label>출처 <select data-f-area-basis-source>${opt(AREA_BASIS_SOURCES, v?.source || '')}</select></label>
+    <label>확인 <select data-f-area-basis-check>${opt(AREA_BASIS_CHECKS, v?.check || 'UNCHECKED')}</select></label></div></details>`;
+}
+let areaBoxOpen = window.innerWidth >= 860; // 커버에서는 접어 지도를 밀어내지 않는다(펼침 여부 유지)
+const AREA_TONE = { NONE: 'prov-unverified', INPUT_ONLY: 'prov-estimated', CHECKED: 'prov-statement' };
+function bindAreaBasis(box, act) {
+  const d = $('[data-f-area-basis]', box); const src = $('[data-f-area-basis-source]', box); const chk = $('[data-f-area-basis-check]', box); if (!d) return;
+  // 날짜 입력 중에는 다시 그리지 않는다(연도 입력이 끊김) — 상태 표시만 바꾼다.
+  const paint = () => { act.area_basis = { date: d.value, source: src.value, check: chk.value }; const x = areaBasisState(act.area_basis); const tag = $('[data-f-area-basis-state]', box); tag.dataset.fAreaBasisState = x.status; tag.className = `prov ${AREA_TONE[x.status]}`; tag.textContent = x.label; };
+  $('[data-f-area-basis-box]', box).addEventListener('toggle', (e) => { areaBoxOpen = e.target.open; });
+  d.addEventListener('input', () => { chk.value = 'UNCHECKED'; paint(); });
+  src.addEventListener('change', () => { chk.value = 'UNCHECKED'; paint(); });
+  chk.addEventListener('change', paint);
+}
 function renderBundle() {
+  renderKpi(); renderDock();
   const box = $('[data-f-bundle]'); if (!box) return;
   const b = st.bundle;
   box.hidden = !b && !active();
@@ -633,14 +681,16 @@ function renderBundle() {
     const own = act ? `<div class="f-own" data-f-own><span class="small">${circled(b.slots.indexOf(act) + 1)} 소유 확인</span>
       <select data-f-own-basis aria-label="소유 확인 근거">${OWNERSHIP_BASIS.map(([k, l]) => `<option value="${k}"${act.ownership.basis === k ? ' selected' : ''}>${l}</option>`).join('')}</select>
       <select data-f-own-coown aria-label="공동소유 여부">${CO_OWNERSHIP.map(([k, l]) => `<option value="${k}"${act.ownership.coown === k ? ' selected' : ''}>${l}</option>`).join('')}</select>
+      ${(() => { const o = provOwnership(act.ownership); return provBadge(o.tier, { label: o.label }); })()}
       ${ownershipNeedsWarning(act.ownership) ? '<span class="chip warn" data-f-own-warn>본인 몫 면적 아님</span>' : ''}
-      ${act.row ? `<label class="small f-area-basis">세목표 면적 기준일(원문에 적힌 날짜만 · 감정평가 가격시점 아님) <input type="date" min="1900-01-01" data-f-area-basis value="${esc(act.area_basis_date || '')}"></label>` : ''}</div>` : '';
+      ${act.row ? areaBasisForm(act.area_basis) : ''}</div>` : '';
     const html = `<div class="f-bundle-bar" data-f-bundle-bar data-count="${b.slots.length}">
       <div class="f-bundle-head"><b>상담 묶음 #${b.no}</b> <span class="small">${b.slots.length}필지</span>
         ${active() && !act ? `<button type="button" class="secondary f-bundle-add" data-f-bundle-add ${b.slots.length >= BUNDLE.maxParcels ? 'disabled' : ''}>＋ 이 필지 담기</button>` : ''}
         ${b.slots.length >= 2 ? `<button type="button" class="ghost" data-f-bundle-map-btn aria-pressed="${b.mapOpen}">전체 필지 지도</button>` : ''}</div>
       <div class="f-bundle-chips" role="tablist" aria-label="묶음 필지">${b.slots.map((s, i) => `<button type="button" role="tab" class="f-chip${s.pid === st.slotId ? ' sel' : ''}" aria-selected="${s.pid === st.slotId}" data-f-bundle-pick="${s.pid}"${slotBusy(s) ? ' data-f-bundle-busy' : ''}>${circled(i + 1)} ${esc(s.label)}${slotBusy(s) ? ' <i class="f-dot" aria-label="조회 중"></i>' : ''}</button>`).join('')}
         ${active() && !act ? '<span class="f-chip draft" data-f-bundle-draft>담지 않은 필지 열림</span>' : ''}</div>
+      <p class="small f-own-banner" data-f-own-banner>필지를 묶어도 같은 소유자로 확정하지 않습니다 — 필지별 등기부·지분 확인 필요</p>
       ${b.note ? `<p class="small warn-note" data-f-bundle-note>${esc(b.note)}</p>` : ''}
       ${b.pending ? `<div class="warn-note f-draft-guard" data-f-draft-guard role="alert"><p class="small"><b>담지 않은 필지에 입력한 내용(메모·쟁점 등)이 있습니다.</b> ${b.pending.canKeep ? '담고 이동하면 보존되고, ' : '이 필지는 이미 담겨 있거나 묶음이 가득 차 새로 담을 수 없습니다. '}버리면 되돌릴 수 없습니다.</p>
         <div class="f-actions">${b.pending.canKeep ? '<button type="button" class="primary" data-f-draft-keep>담고 이동</button>' : ''}<button type="button" class="secondary" data-f-draft-stay>머무르기</button><button type="button" class="ghost" data-f-draft-drop>버리고 이동</button></div></div>` : ''}
@@ -655,8 +705,7 @@ function renderBundle() {
     box.querySelectorAll('[data-f-bundle-pick]').forEach((el) => el.addEventListener('click', () => leaveDraft(() => switchTo(Number(el.dataset.fBundlePick)))));
     $('[data-f-bundle-map-btn]', box)?.addEventListener('click', () => { b.mapOpen = !b.mapOpen; renderBundle(); });
     $('[data-f-own-basis]', box)?.addEventListener('change', (e) => { act.ownership = { ...act.ownership, basis: e.target.value }; renderBundle(); });
-    // 날짜 입력 중에는 다시 그리지 않는다(연도 입력이 끊김) — 요약을 만들 때 값을 읽는다.
-    $('[data-f-area-basis]', box)?.addEventListener('input', (e) => { act.area_basis_date = e.target.value; });
+    bindAreaBasis(box, act);
     $('[data-f-own-coown]', box)?.addEventListener('change', (e) => { act.ownership = { ...act.ownership, coown: e.target.value }; renderBundle(); });
   }
   renderBundleMapBox(box);
@@ -671,7 +720,7 @@ function renderBundleTools() {
   if (!$('[data-f-bundle-memo]', tools)) {
     tools.innerHTML = `<div class="f-bundle-bar"><b class="small">상담 묶음 #${b.no} 통합</b>
       <label class="f-memo small">공통 메모 <span class="hint">묶음 전체 · 실명·연락처·지분값 적지 마세요</span><textarea data-f-bundle-memo rows="2" maxlength="1000"></textarea></label>
-      <div class="f-actions"><button type="button" class="primary" data-f-bundle-copy>통합 현장요약 복사</button><button type="button" class="secondary" data-f-bundle-save>필지별 상세 저장(.txt)</button></div>
+      <div class="f-actions"><button type="button" class="primary" data-f-bundle-copy>묶음 통합 요약 복사</button><button type="button" class="secondary" data-f-bundle-save>필지별 상세 내려받기(.txt)</button></div>
       <p class="small muted" data-f-bundle-stats></p><p class="small" data-f-bundle-out aria-live="polite"></p></div>`;
     const memo = $('[data-f-bundle-memo]', tools); memo.value = b.commonMemo;
     memo.addEventListener('input', () => { b.commonMemo = memo.value; });
@@ -700,16 +749,19 @@ function renderBundleMapBox(box) {
   if (keep) $('[data-f-map-img-slot]', mapBox)?.replaceWith(keep);
   mapBox.querySelectorAll('[data-f-bundle-pick]').forEach((el) => el.addEventListener('click', () => leaveDraft(() => switchTo(Number(el.dataset.fBundlePick)))));
 }
+const bundleCopied = () => `묶음 통합 현장요약을 복사했습니다(담긴 ${st.bundle.slots.length}필지${active() && !activeSlot() ? ' · 지금 열린 담지 않은 필지는 제외' : ''}).`;
 async function copyBundle() {
   const text = buildBundleSummary({ bundleNo: st.bundle.no, parcels: bundleParcels(), commonMemo: st.bundle.commonMemo });
   const out = $('[data-f-bundle-out]');
-  try { await navigator.clipboard.writeText(text); out.textContent = '통합 현장요약을 복사했습니다.'; out.dataset.result = 'copied'; }
+  try { await navigator.clipboard.writeText(text); out.textContent = bundleCopied(); out.dataset.result = 'copied'; }
   catch (_e) {
     const ta = document.createElement('textarea'); ta.value = text; ta.setAttribute('readonly', ''); ta.style.position = 'fixed'; ta.style.opacity = '0';
     document.body.appendChild(ta); ta.select(); const ok = document.execCommand && document.execCommand('copy'); ta.remove();
-    out.textContent = ok ? '통합 현장요약을 복사했습니다.' : '복사하지 못했습니다. 필지별 상세 저장(.txt)을 쓰세요.'; out.dataset.result = ok ? 'copied' : 'copy-failed';
+    out.textContent = ok ? bundleCopied() : '복사하지 못했습니다. 필지별 상세 내려받기(.txt)를 쓰세요.'; out.dataset.result = ok ? 'copied' : 'copy-failed';
   }
 }
+// 내려받기 요청까지만 안다 — 브라우저가 취소·차단할 수 있어 저장 완료로 적지 않는다.
+const DL_TEXT = '파일 다운로드를 요청했습니다(.txt). 실제 저장 여부는 다운로드 목록에서 확인하세요.';
 function saveBundle() {
   const parcels = bundleParcels();
   const text = buildBundleDetail({ bundleNo: st.bundle.no, parcels, commonMemo: st.bundle.commonMemo });
@@ -717,7 +769,63 @@ function saveBundle() {
   a.href = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' }));
   a.download = `상담묶음_${st.bundle.no}_${parcels.length}필지_${new Date().toISOString().slice(0, 10)}.txt`;
   document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-  const out = $('[data-f-bundle-out]'); out.textContent = '필지별 상세본을 이 기기에 .txt로 저장했습니다.'; out.dataset.result = 'saved';
+  const out = $('[data-f-bundle-out]'); out.textContent = DL_TEXT; out.dataset.result = 'download-requested';
+}
+
+// ── 대상 요약(KPI) · 하단 엄지 액션바 · 단계 이동 ─────────────────────────────
+// KPI는 고시 기재값·상태만(공적자료 실조회 값 없음 — 인쇄·복사 대상과 같은 범위). 입력란이 없어 다시 그려도 상태 유실 없음.
+function renderKpi() {
+  const box = $('[data-f-kpi]'); if (!box) return;
+  if (!active()) { box.innerHTML = ''; return; }
+  const slot = activeSlot();
+  const own = slot ? provOwnership(slot.ownership) : { tier: PROV.UNVERIFIED, label: '소유 미확인(묶음에 담으면 표시)' };
+  const m = st.map;
+  const mapLabel = !m ? '지적경계 미조회' : m.status === 'LOADING' ? '지적경계 조회 중' : m.status === 'EXACT_ONE' ? '지적경계 exact-one(API 수신)' : '지적경계 미확정';
+  let head; let cells; let conflict = false;
+  if (st.row) {
+    const f = noticeFacts(st.row); const a = f.arithmetic; conflict = Boolean(a?.inconsistent);
+    head = `${st.row.ri} ${st.row.lot_label}`;
+    cells = [['지목', f.jimok || '—', provNoticeValue(f.jimok)], ['공부면적', `${fmt(f.ledger_area_m2)}㎡`, provNoticeValue(f.ledger_area_m2)],
+      ['편입면적', `${fmt(f.incorporated_area_m2)}㎡`, provNoticeValue(f.incorporated_area_m2)], ['편입률', a ? `${a.incorporated_ratio_pct}%` : '—', provArithmetic(a)]];
+  } else {
+    head = st.direct.scope === 'PNU' ? `PNU ${st.direct.pnu}` : `${st.direct.leaf || ''} ${st.direct.lot_label || ''}`.trim();
+    cells = [['고시 기재값', '없음', PROV.UNVERIFIED], ['편입 여부', '미확인', PROV.UNVERIFIED]];
+  }
+  box.innerHTML = `<div class="f-kpi-head"><b data-f-kpi-head>${esc(head)}</b> <span class="small muted">${st.row ? `${esc(st.index?.notice?.notice_no || '고시')} 세목 일련 ${esc(st.row.serial)}` : '고시 색인 밖'}</span></div>
+    <div class="f-kpi-grid">${cells.map(([k, v, t]) => `<div class="f-kpi-cell" data-f-kpi-cell="${esc(k)}"><span class="k">${esc(k)}</span><b>${esc(v)}</b>${provBadge(t, { label: t === PROV.RECEIVED ? NOTICE_LABEL : '' })}</div>`).join('')}</div>
+    <div class="f-kpi-status small" data-f-kpi-status>${provBadge(provMap(m), { label: mapLabel })} ${provBadge(own.tier, { label: own.label })} ${originPending()} <span class="chip" data-f-kpi-incorp-line>사업 편입선: 공식 도형 미연결 — 표시 안 함</span>${conflict ? ' <span class="chip bad" data-f-kpi-conflict>편입면적 &gt; 공부면적 — 원문 대조(보정 안 함)</span>' : ''}</div>`;
+}
+function renderDock() {
+  const d = $('[data-f-dock-bar]'); if (!d) return;
+  d.hidden = !active();
+  if (d.hidden) return;
+  const add = $('[data-f-dock="add"]', d); const b = st.bundle; const act = activeSlot();
+  const full = Boolean(b && b.slots.length >= BUNDLE.maxParcels);
+  add.textContent = act ? `담김 ${circled(b.slots.indexOf(act) + 1)} · ${b.slots.length}/${BUNDLE.maxParcels}` : full ? `묶음 ${BUNDLE.maxParcels}필지 꽉 참` : `＋ 묶음 담기${b ? ` ${b.slots.length}/${BUNDLE.maxParcels}` : ''}`;
+  add.disabled = Boolean(act) || full;
+  const bs = $('[data-f-dock="bundle"]', d); bs.hidden = !b; if (b) bs.textContent = `묶음 통합 요약(${b.slots.length}필지)`;
+  d.dataset.count = b ? '4' : '3';
+}
+// 단계 이동: 내용을 숨기지 않고 해당 구간으로 스크롤만 한다(입력·선택·스크롤 상태를 지우지 않음). 현재 구간은 스크롤 위치로 표시.
+function stepOffset() { const nav = $('[data-f-steps]'); if (!nav || !nav.offsetParent) return 0; const r = nav.getBoundingClientRect(); return Math.max(0, r.bottom); }
+function markStep(n) { document.querySelectorAll('[data-f-step-go]').forEach((b) => { if (Number(b.dataset.fStepGo) === n) b.setAttribute('aria-current', 'step'); else b.removeAttribute('aria-current'); }); }
+// 단계 구간의 맨 위(화면 배치 순서 기준 — DOM 순서와 다를 수 있음)
+const stepSec = (n) => [...document.querySelectorAll(`[data-f-step-sec="${n}"]`)].filter((x) => !x.hidden && x.offsetParent !== null)
+  .sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top)[0] || null;
+function goStep(n) {
+  const sec = stepSec(n);
+  if (!sec) return;
+  markStep(n); stepLock = Date.now();
+  const nav = $('[data-f-steps]'); const navH = nav && nav.offsetParent ? nav.getBoundingClientRect().height : 0;
+  const pin = $('.f-map-frame'); const pinned = pin && getComputedStyle(pin).position === 'sticky' ? pin.getBoundingClientRect().height : 0;
+  window.scrollTo(0, Math.max(0, sec.getBoundingClientRect().top + window.scrollY - navH - pinned - 6));
+}
+let stepLock = 0;
+function spyStep() {
+  if (Date.now() - stepLock < 400) return;
+  const off = stepOffset() + 8; let cur = 1;
+  for (const n of [1, 2, 3]) { const sec = stepSec(n); if (sec && sec.getBoundingClientRect().top <= off) cur = n; }
+  markStep(cur);
 }
 
 const currentCard = () => (st.row ? buildFieldCard({ profile: st.profile, index: st.index, row: st.row, selectedIssueIds: [...st.issues], memo: st.memo, otherText: st.other, zoning: currentZoning() })
@@ -727,13 +835,13 @@ const currentCardText = () => currentCard()?.text || '';
 
 async function copyCard(kind = 'detail') {
   const card = currentCard(); const text = kind === 'summary' ? card?.summary : card?.text; if (!text) return;
-  const label = kind === 'summary' ? '현장 요약' : '상세 검토본';
+  const label = kind === 'summary' ? '현재 필지 현장 요약' : '현재 필지 상세 검토본';
   const out = $('[data-f-out]'); out.dataset.kind = kind;
   try { await navigator.clipboard.writeText(text); out.textContent = `${label}을 복사했습니다.`; out.dataset.result = 'copied'; }
   catch (_e) {
     const ta = document.createElement('textarea'); ta.value = text; ta.setAttribute('readonly', ''); ta.style.position = 'fixed'; ta.style.opacity = '0';
     document.body.appendChild(ta); ta.select(); const ok = document.execCommand && document.execCommand('copy'); ta.remove();
-    out.textContent = ok ? `${label}을 복사했습니다.` : '복사하지 못했습니다. 저장(.txt)을 쓰세요.'; out.dataset.result = ok ? 'copied' : 'copy-failed';
+    out.textContent = ok ? `${label}을 복사했습니다.` : '복사하지 못했습니다. 내려받기(.txt)를 쓰세요.'; out.dataset.result = ok ? 'copied' : 'copy-failed';
   }
 }
 function saveCard() {
@@ -743,7 +851,7 @@ function saveCard() {
   a.href = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' }));
   a.download = `상담카드_${r.ri}_${r.lot_label}_${new Date().toISOString().slice(0, 10)}.txt`;
   document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-  $('[data-f-out]').textContent = '이 기기에 .txt로 저장했습니다.'; $('[data-f-out]').dataset.result = 'saved';
+  $('[data-f-out]').textContent = DL_TEXT; $('[data-f-out]').dataset.result = 'download-requested';
 }
 
 function init() {
@@ -766,8 +874,19 @@ function init() {
   $('[data-f-copy-summary]').addEventListener('click', () => copyCard('summary'));
   $('[data-f-save]').addEventListener('click', saveCard);
   $('[data-f-print]').addEventListener('click', () => window.print());
+  // 하단 엄지 액션바: 기존 버튼과 같은 함수(실제 복사·실제 .txt 내려받기)만 부른다. 결과 문구는 상담 패널과 같은 것을 비춘다.
+  $('[data-f-dock="add"]').addEventListener('click', addToBundle);
+  $('[data-f-dock="summary"]').addEventListener('click', () => copyCard('summary'));
+  $('[data-f-dock="bundle"]').addEventListener('click', async () => { await copyBundle(); $('[data-f-dock-out]').textContent = $('[data-f-bundle-out]')?.textContent || ''; });
+  $('[data-f-dock="save"]').addEventListener('click', saveCard);
+  new MutationObserver(() => { $('[data-f-dock-out]').textContent = $('[data-f-out]').textContent; }).observe($('[data-f-out]'), { childList: true, characterData: true, subtree: true });
+  document.querySelectorAll('[data-f-step-go]').forEach((b) => b.addEventListener('click', () => goStep(Number(b.dataset.fStepGo))));
+  let spyQueued = false;
+  window.addEventListener('scroll', () => { if (spyQueued) return; spyQueued = true; requestAnimationFrame(() => { spyQueued = false; spyStep(); }); }, { passive: true });
+  $('[data-f-map-pin]').addEventListener('click', (e) => { const on = e.currentTarget.getAttribute('aria-pressed') !== 'true'; e.currentTarget.setAttribute('aria-pressed', String(on)); if (on) delete document.body.dataset.fUnpin; else document.body.dataset.fUnpin = '1'; });
+  $('[data-f-client-toggle]').addEventListener('click', (e) => { const on = e.currentTarget.getAttribute('aria-pressed') !== 'true'; e.currentTarget.setAttribute('aria-pressed', String(on)); e.currentTarget.textContent = on ? '고객설명 모드 끄기' : '고객설명 모드'; if (on) document.body.dataset.fClient = '1'; else delete document.body.dataset.fClient; $('[data-f-client-note]').hidden = !on; });
   // 인쇄·PDF 저장(버튼·브라우저 메뉴·window.print 모두): 공적자료 영역은 CSS로 숨기고, 인쇄 직전 DOM에서도 비운다.
-  window.addEventListener('beforeprint', () => { document.body.dataset.printing = '1'; ['[data-f-pd]', '[data-f-map]', '[data-f-zoning]', '[data-f-bundle-map]'].forEach((sel) => { const box = $(sel); if (box) box.innerHTML = ''; }); lastMapKey = ''; lastZoningKey = ''; bundleKeys.map = ''; });
+  window.addEventListener('beforeprint', () => { document.body.dataset.printing = '1'; ['[data-f-pd]', '[data-f-map]', '[data-f-std]', '[data-f-zoning]', '[data-f-bundle-map]'].forEach((sel) => { const box = $(sel); if (box) box.innerHTML = ''; }); lastMapKey = ''; lastZoningKey = ''; bundleKeys.map = ''; });
   window.addEventListener('afterprint', () => { delete document.body.dataset.printing; render(); });
   $('[data-f-index-file]').addEventListener('change', async (e) => {
     const file = e.target.files?.[0]; if (!file) return;

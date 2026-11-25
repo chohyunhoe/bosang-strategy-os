@@ -116,29 +116,38 @@ export function areaHolds(parcels) {
   return out;
 }
 // 세목표 면적 기준일: 고시 세목표의 공부·편입 면적이 어느 날 기준인지(원문에서 확인해 적은 날짜). 고시일·감정평가 가격시점(valuation_date)과 다른 값이며 그것으로 대신하지 않는다.
-// 완전한 실제 날짜(YYYY-MM-DD, 1900년 이후)만 확인값 — 공란·일부 입력·없는 날짜는 미확인('').
-export function confirmedAreaBasis(v) {
+// 완전한 실제 날짜(YYYY-MM-DD, 1900년 이후)만 — 공란·일부 입력·없는 날짜는 ''. 날짜가 유효해도 그것만으로 원문 확인이 아니다(areaBasisState).
+export function validAreaBasisDate(v) {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(typeof v === 'string' ? v.trim() : '');
   if (!m || Number(m[1]) < 1900) return '';
   const d = new Date(`${m[0]}T00:00:00Z`);
   return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === m[0] ? m[0] : '';
 }
+// 출처(세 번째 값 true = 고시 원문) · 확인 상태. 날짜 + 고시 원문 출처 + 상담자의 '원문 직접 확인' 표시가 모두 있어야 합산에 쓴다(시스템 대조 아님).
+export const AREA_BASIS_SOURCES = Object.freeze([['', '출처 선택 안 함', false], ['PARCEL_TABLE', '고시 세목표 머리·주석', true], ['NOTICE_TEXT', '고시문 본문', true], ['OPERATOR_REPLY', '사업시행자 등 회신(고시 원문 아님)', false], ['OTHER', '기타·진술(고시 원문 아님)', false]]);
+export const AREA_BASIS_CHECKS = Object.freeze([['UNCHECKED', '원문 확인 전'], ['CHECKED', '원문 직접 확인(상담자 표시)']]);
+export function areaBasisState(b) {
+  const date = validAreaBasisDate(b?.date); const src = AREA_BASIS_SOURCES.find(([k]) => k === (b?.source || '')) || AREA_BASIS_SOURCES[0];
+  if (!date) return { status: 'NONE', date: '', source: src[1], label: '기준일 미확인' };
+  if (!src[2] || b.check !== 'CHECKED') return { status: 'INPUT_ONLY', date, source: src[1], label: `날짜 입력만(${src[0] ? `출처: ${src[1]} · ` : '출처 없음 · '}${src[0] && !src[2] ? '고시 원문 아님' : '원문 확인 전'}) — 합산 안 함` };
+  return { status: 'CHECKED', date, source: src[1], label: `상담자 원문 확인 표시(출처: ${src[1]}) · 시스템 대조 아님` };
+}
 // 합산 단위: 사업 · 고시번호 · 고시일 · 확인된 세목표 면적 기준일이 모두 같은 행끼리만. 기준일 미확인 행은 서로 같다고 보지 않고 합계를 보류한다.
 export function bundleTotals(parcels) {
-  const groups = new Map(); const excluded = []; const basisUnconfirmed = []; const held = areaHolds(parcels); const heldSet = new Set(held.flatMap((h) => h.numbers));
+  const groups = new Map(); const excluded = []; const basisUnconfirmed = []; const basisInputOnly = []; const held = areaHolds(parcels); const heldSet = new Set(held.flatMap((h) => h.numbers));
   const duplicates = parcels.filter((p) => p.kind !== 'ROW' && p.pnu).map((p) => ({ n: p.n, of: parcels.filter((q) => q.n !== p.n && q.pnu === p.pnu).map((q) => q.n) })).filter((d) => d.of.length);
   for (const p of parcels) {
     const f = p.facts;
     if (p.kind !== 'ROW' || !f || typeof f.ledger_area_m2 !== 'number' || typeof f.incorporated_area_m2 !== 'number') { excluded.push(p.n); continue; }
     if (heldSet.has(p.n)) continue;
     const no = p.notice?.notice_no || '고시 미상'; const date = p.notice?.notice_date || '일자 미상'; const project = p.notice?.project || '';
-    const basis = confirmedAreaBasis(p.area_basis_date);
-    if (!basis) { basisUnconfirmed.push(p.n); continue; }
+    const ab = areaBasisState(p.area_basis); const basis = ab.date;
+    if (ab.status !== 'CHECKED') { basisUnconfirmed.push(p.n); if (ab.status === 'INPUT_ONLY') basisInputOnly.push({ n: p.n, date: ab.date, label: ab.label }); continue; }
     const k = JSON.stringify([project, no, date, basis]);
-    if (!groups.has(k)) groups.set(k, { project, notice_no: no, notice_date: date, area_basis_date: basis, ledger: 0, incorporated: 0, numbers: [] });
-    const g = groups.get(k); g.ledger += f.ledger_area_m2; g.incorporated += f.incorporated_area_m2; g.numbers.push(p.n);
+    if (!groups.has(k)) groups.set(k, { project, notice_no: no, notice_date: date, area_basis_date: basis, ledger: 0, incorporated: 0, numbers: [], sources: [] });
+    const g = groups.get(k); g.ledger += f.ledger_area_m2; g.incorporated += f.incorporated_area_m2; g.numbers.push(p.n); if (!g.sources.includes(ab.source)) g.sources.push(ab.source);
   }
-  return { groups: [...groups.values()], excluded, basisUnconfirmed, held, duplicates, total: parcels.length };
+  return { groups: [...groups.values()], excluded, basisUnconfirmed, basisInputOnly, held, duplicates, total: parcels.length };
 }
 
 export function buildBundleSummary({ bundleNo = 1, parcels = [], commonMemo = '', now = new Date() }) {
@@ -146,7 +155,7 @@ export function buildBundleSummary({ bundleNo = 1, parcels = [], commonMemo = ''
   const warn = parcels.filter((p) => ownershipNeedsWarning(p.ownership)).map((p) => p.n);
   const line = (p) => {
     const f = p.facts;
-    const area = p.kind === 'ROW' && f ? ` · ${f.jimok || '—'} · 공부 ${fmt(f.ledger_area_m2)}㎡ · 편입 ${fmt(f.incorporated_area_m2)}㎡${f.arithmetic ? ` · [산술] 편입률 ${f.arithmetic.incorporated_ratio_pct}%${f.arithmetic.partial ? '(일부 편입)' : ''}` : ''}`
+    const area = p.kind === 'ROW' && f ? ` · ${f.jimok || '—'} · 공부 ${fmt(f.ledger_area_m2)}㎡ · 편입 ${fmt(f.incorporated_area_m2)}㎡${f.arithmetic ? ` · [산술] 편입률 ${f.arithmetic.incorporated_ratio_pct}%${f.arithmetic.partial ? '(일부 편입)' : ''}${f.arithmetic.inconsistent ? '(편입>공부 · 원문 대조 필요)' : ''}` : ''}`
       : ' · 고시 색인 밖(편입 여부·면적 미확인)';
     return `${circled(p.n)} ${p.label}${area} · ${ownershipText(p.ownership)}`;
   };
@@ -160,13 +169,15 @@ export function buildBundleSummary({ bundleNo = 1, parcels = [], commonMemo = ''
     `[BSO 통합 현장요약 · 검토 보조 · 상담 묶음 #${bundleNo} · ${parcels.length}필지] ${now.toISOString().slice(0, 10)}`,
     ...parcels.map(line),
     '■ 면적 — 고시 기재값 단순 합계(소유 지분 미반영 · 사업·고시·고시일이 같고 세목표 면적 기준일이 확인돼 같은 필지끼리만)',
-    ...(t.groups.length ? t.groups.map((g) => `- ${g.notice_no}(${g.notice_date}): 공부 ${fmt(g.ledger)}㎡ · 편입 ${fmt(g.incorporated)}㎡ · ${t.total}필지 중 ${g.numbers.length}필지(${g.numbers.map(circled).join('')}) · ${g.project ? `사업 ${g.project} · ` : ''}세목표 면적 기준일 ${g.area_basis_date}`) : ['- 합산할 고시 기재 면적 없음']),
+    ...(t.groups.length ? t.groups.map((g) => `- ${g.notice_no}(${g.notice_date}): 공부 ${fmt(g.ledger)}㎡ · 편입 ${fmt(g.incorporated)}㎡ · ${t.total}필지 중 ${g.numbers.length}필지(${g.numbers.map(circled).join('')}) · ${g.project ? `사업 ${g.project} · ` : ''}세목표 면적 기준일 ${g.area_basis_date}(상담자 원문 확인 표시 · 출처: ${g.sources.join(' · ')} · 시스템 대조 아님)`) : ['- 합산할 고시 기재 면적 없음']),
     ...(t.groups.length > 1 ? ['- 고시·세목표 면적 기준일이 달라 전체 합계를 내지 않음'] : []),
     ...(t.basisUnconfirmed.length ? [`- ⚠ 합계 보류 ${t.basisUnconfirmed.length}필지(${t.basisUnconfirmed.map(circled).join('')}) — 세목표 면적 기준일 미확인(서로 같은 기준인지 확인 안 됨) · 감정평가 가격시점·고시일로 대신하지 않음 · 원문 확인 필요`] : []),
+    ...t.basisInputOnly.map((x) => `- ${circled(x.n)} 입력 기준일 ${x.date} — ${x.label}`),
     ...t.held.map((h) => `- ⚠ 합계 보류 ${h.numbers.length}필지(${h.numbers.map(circled).join('')}) — ${h.reason === 'SAME_PNU' ? '같은 PNU' : '같은 고시·같은 지번 행'}(중복 가능) · 이중 합산 방지 · 원문 확인 필요`),
     ...t.duplicates.map((d) => `- 중복 제외 ${circled(d.n)} — 색인 밖 입력이 ${d.of.map(circled).join('')}와 같은 PNU`),
     ...(parcels.some((p) => !p.pnu) && parcels.length > 1 ? [`- PNU 미확인 ${parcels.filter((p) => !p.pnu).length}필지(${parcels.filter((p) => !p.pnu).map((p) => circled(p.n)).join('')}) — 같은 필지 중복 여부 확인 전`] : []),
     ...(t.excluded.length ? [`- 합계 제외 ${t.excluded.length}필지(${t.excluded.map(circled).join('')}) — 고시 기재 면적 없음`] : []),
+    ...(parcels.some((p) => p.facts?.arithmetic?.inconsistent) ? [`⚠ 편입면적이 공부면적보다 큰 필지 ${parcels.filter((p) => p.facts?.arithmetic?.inconsistent).map((p) => circled(p.n)).join('')} — 고시 기재값 그대로(보정 안 함) · 원문 대조 필요`] : []),
     ...(warn.length ? [`⚠ 소유 미확인·공동소유(지분 미확인) ${warn.length}필지(${warn.map(circled).join('')}) — 합계는 본인 몫 면적이 아님`] : []),
     `쟁점: ${issueMap.size ? [...issueMap.entries()].map(([l, ns]) => `${l}(${ns.map(circled).join('')})`).join(' · ') : '(선택 없음)'}`,
     `다음 조치: ${next[0] || '—'}${next.length > 1 ? ` 외 ${next.length - 1}건` : ''}`,

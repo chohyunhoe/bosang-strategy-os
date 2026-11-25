@@ -50,7 +50,7 @@ test('표준지: 2025 행이 섞여도 2026 후보 특성·연도 표시 · 다�
   await expect(cell).toHaveText('맹지'); await expect(page.locator('[data-f-trait-note]')).toContainText('표준지 2026년');
   await expect(page.locator('[data-f-std-trait="road_access"] [data-f-trait-target]')).toHaveAttribute('data-f-trait-status', 'TARGET_LC');
   await page.locator('[data-f-std-rest] summary').click(); await page.locator('[data-f-std-rest] [data-f-std-item]').click();
-  await expect(cell).toHaveText('세로(가)'); await expect(page.locator('[data-f-trait-note]')).toContainText('기준연도 다름');
+  await expect(cell).toHaveText('세로(가)'); await expect(page.locator('[data-f-std-trait="road_access"] [data-f-diff]')).toHaveAttribute('data-f-diff', 'HOLD'); await expect(page.locator('[data-f-std-trait="road_access"] [data-f-diff]')).toContainText('기준연도 다름(2026↔2025)'); await expect(page.locator('[data-f-trait-note]')).toContainText('기준연도 다름');
 });
 
 test('표준지: 값 충돌 행은 한쪽 값을 고르지 않고 충돌 표시 · 후보 없음', async ({ page }) => {
@@ -86,20 +86,26 @@ test('면적 기준일: 공란은 합계 보류 · 같은 확인일만 합산 ·
   await context.grantPermissions(['clipboard-read', 'clipboard-write']).catch(() => {});
   await start(page);
   const copy = async () => { await page.evaluate(() => navigator.clipboard.writeText('')); await page.locator('[data-f-bundle-copy]').click(); await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).not.toBe(''); return page.evaluate(() => navigator.clipboard.readText()); };
-  const basis = page.locator('[data-f-area-basis]'); const chip = (n) => page.locator('[data-f-bundle-pick]').nth(n - 1);
+  const basis = page.locator('[data-f-area-basis]'); const state = page.locator('[data-f-area-basis-state]');
+  const check = async (d) => { await basis.fill(d); await page.locator('[data-f-area-basis-source]').selectOption('PARCEL_TABLE'); await page.locator('[data-f-area-basis-check]').selectOption('CHECKED'); await expect(state).toHaveAttribute('data-f-area-basis-state', 'CHECKED'); }; const chip = (n) => page.locator('[data-f-bundle-pick]').nth(n - 1);
   for (const q of QS.slice(0, 2)) {
     await open(page, q); await add(page); await lookup(page);
     await page.locator('[data-f-zoning-vdate]').fill('2026-12-15'); await page.locator('[data-f-zoning-vdate]').dispatchEvent('change');
   }
   let t = await copy();
   expect(t).toContain('합계 보류 2필지(①②) — 세목표 면적 기준일 미확인'); expect(t).not.toMatch(/필지 중 \d필지/); expect(t).not.toContain('2026-12-15');
+  await page.locator('[data-f-area-basis-box]').evaluate((d) => { d.open = true; });
   await expect(basis).toHaveValue(''); await basis.fill('1999-12-01');
+  await expect(state).toHaveAttribute('data-f-area-basis-state', 'INPUT_ONLY'); // 날짜만으로는 원문 확인 아님
+  expect(await copy()).toContain('합계 보류 2필지(①②)');
+  await check('1999-12-01');
   t = await copy();
   expect(t).toContain('2필지 중 1필지(②)'); expect(t).toContain('합계 보류 1필지(①) — 세목표 면적 기준일 미확인');
-  await chip(1).click(); await expect(basis).toHaveValue(''); await basis.fill('1999-12-01');
+  await chip(1).click(); await expect(basis).toHaveValue(''); await check('1999-12-01');
   t = await copy();
   expect(t).toContain('2필지 중 2필지(①②)'); expect(t).toContain('세목표 면적 기준일 1999-12-01'); expect(t).not.toContain('기준일 미확인');
-  await basis.fill('1999-11-01');
+  await basis.fill('1999-11-01'); await expect(state).toHaveAttribute('data-f-area-basis-state', 'INPUT_ONLY'); // 날짜를 바꾸면 확인 표시 해제
+  await check('1999-11-01');
   t = await copy();
   expect(t).toContain('세목표 면적 기준일 1999-11-01'); expect(t).toContain('전체 합계를 내지 않음'); expect(t).not.toContain('2필지 중 2필지');
   await chip(2).click(); await expect(basis).toHaveValue('1999-12-01');
