@@ -652,3 +652,75 @@ test('FastFlow: 초기 브리지 연결 확인 중 지도 바로가기는 상태
   await expect(page.locator('[data-f-pd-go]')).toBeFocused();
   expect(b.log).toEqual([]);
 });
+
+
+test('원문주석 정돈: 일반 고시 출처는 접고 추정·원문미대조 상태는 보존', async ({ page }) => {
+  const b = bridge(page); await b.ready; await loadIndex(page);
+  await open(page, '바위리 12-3');
+  const facts = page.locator('[data-f-facts]');
+  const box = facts.locator('[data-f-facts-source]');
+  await expect(box).toBeVisible();
+  await expect(box).not.toHaveAttribute('open', '');
+  await expect(facts.locator('.f-head .chip.warn')).toHaveCount(0);
+  await expect(facts.locator('.f-facts-source-body')).toBeHidden();
+  await expect(page.locator('[data-f-kpi-status] .prov-pending')).toBeVisible();
+  await expect(facts.locator('.f-kv dt .prov-received').first()).toBeHidden();
+  await expect(facts.locator('.f-kv dt .prov-estimated').first()).toBeVisible();
+  await box.locator(':scope > summary').click();
+  await expect(box).toHaveAttribute('open', '');
+  await expect(facts.locator('.f-facts-source-body')).toBeVisible();
+  await expect(facts.locator('.f-facts-source-body')).toContainText('고시 원본 PDF 대조 전');
+  const n=b.log.length;
+  await page.locator('[data-f-issue]').first().check();
+  await expect(box).toHaveAttribute('open', '');
+  expect(b.log.length).toBe(n);
+  const height=await box.locator(':scope > summary').evaluate(x=>x.getBoundingClientRect().height);
+  expect(height).toBeGreaterThanOrEqual(44);
+  expect(await overflowX(page)).toBeLessThanOrEqual(0);
+});
+
+test('원문주석 정돈: 5열 비교 근거·footer 설명은 접되 원문과 위험 고지는 복원', async ({ page }) => {
+  test.skip(width(page)<860,'5열 표는 펼침·PC 전용');
+  const b=bridge(page);await b.ready;await loadIndex(page);await twoParcels(page);
+  const calls=b.log.length;
+  const fold=page.locator('[data-f-mx-notes-fold]');
+  const list=fold.locator('[data-f-mx-notes]');
+  await expect(fold).toBeVisible();
+  await expect(fold).not.toHaveAttribute('open', '');
+  await expect(list).toBeHidden();
+  await expect(page.locator('.f-mx-price-note')).toContainText('가격 우열 판정 불가');
+  await expect(page.locator('[data-f-std-matrix]')).toBeVisible();
+  await fold.locator('summary').click();
+  await expect(list).toBeVisible();
+  expect(await list.locator('li').count()).toBe(4);
+  await page.locator('[data-f-std-col]').last().click();
+  await expect(page.locator('[data-f-mx-notes-fold]')).toHaveAttribute('open', '');
+  const foot=page.locator('[data-f-footer-notes]');
+  await expect(foot).toBeVisible();
+  await expect(foot.locator('[data-f-warnings]')).toBeHidden();
+  await foot.locator('summary').click();
+  await expect(foot.locator('[data-f-warnings]')).toBeVisible();
+  const h=await foot.locator('summary').evaluate(x=>x.getBoundingClientRect().height);
+  expect(h).toBeGreaterThanOrEqual(44);
+  expect(b.log.length).toBe(calls);
+  expect(await overflowX(page)).toBeLessThanOrEqual(0);
+});
+
+
+test('원문주석 정돈: 화면에서 접어도 인쇄에는 고시 출처·유의사항 보존 후 상태 복원', async ({ page }) => {
+  const b=bridge(page);await b.ready;await loadIndex(page);await open(page,'바위리 12-3');
+  const facts=page.locator('[data-f-facts-source]');
+  const footer=page.locator('[data-f-footer-notes]');
+  await expect(facts).not.toHaveAttribute('open','');
+  await expect(footer).not.toHaveAttribute('open','');
+  await page.evaluate(()=>window.dispatchEvent(new Event('beforeprint')));
+  await expect(facts).toHaveAttribute('open','');
+  await expect(footer).toHaveAttribute('open','');
+  await expect(page.locator('.f-facts-source-body')).toContainText('고시 원본 PDF 대조 전');
+  await expect(page.locator('[data-f-warnings]')).toBeVisible();
+  await page.evaluate(()=>window.dispatchEvent(new Event('afterprint')));
+  await expect(facts).not.toHaveAttribute('open','');
+  await expect(footer).not.toHaveAttribute('open','');
+  await expect(page.locator('[data-f-warnings]')).toBeHidden();
+  expect(b.log).toEqual([]);
+});

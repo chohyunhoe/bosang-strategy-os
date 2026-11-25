@@ -434,10 +434,14 @@ function stdMatrix(sr, cols, selected) {
   const isSel = (c) => c.pnu === selected;
   const diffOnly = Boolean(st.std?.diffOnly);
   const stableRows = mx.rows.filter((r) => r.target?.tier === PROV.RECEIVED && r.cells.length && r.cells.every((c) => c.diff === 'SAME' && c.tier === PROV.RECEIVED)).length;
-  return `<div class="f-mx-wrap" data-f-std-matrix-wrap data-f-mx-diff-only="${diffOnly}"><div class="f-mx-context"><b>후보 ${cols.length}건 · 확정 아님</b><span>기본 출처: 대상 토지특성 API · 후보 표준지 API (수신값·원문 대조 전)</span><button type="button" class="f-mx-diff-toggle" data-f-mx-diff-toggle aria-pressed="${diffOnly}" title="모든 후보가 동일한 API 수신 명칭을 가진 ${stableRows}개 행만 숨깁니다. 추정·미확인·가격·거리·연도 주의사항은 유지합니다.">${diffOnly ? '전체 항목 보기' : '차이·미확인 우선'}</button></div><table class="f-mx small" data-f-std-matrix data-cols="${cols.length}">
+  return `<div class="f-mx-wrap" data-f-std-matrix-wrap data-f-mx-diff-only="${diffOnly}"><div class="f-mx-context"><b>후보 ${cols.length}건 · 확정 아님</b><span>API 수신값 · 원문 대조 전</span><button type="button" class="f-mx-diff-toggle" data-f-mx-diff-toggle aria-pressed="${diffOnly}" title="모든 후보가 동일한 API 수신 명칭을 가진 ${stableRows}개 행만 숨깁니다. 추정·미확인·가격·거리·연도 주의사항은 유지합니다.">${diffOnly ? '전체 항목 보기' : '차이·미확인 우선'}</button></div><table class="f-mx small" data-f-std-matrix data-cols="${cols.length}">
     <thead><tr><th scope="col">구분</th><th scope="col">대상 필지<br><span class="muted" data-f-mx-year="target">${esc(pdYear() || '연도 미상')}${pdYear() ? '년' : ''} · 토지특성 API</span></th>${mx.columns.map((c) => `<th scope="col"${isSel(c) ? ' class="sel"' : ''}><button type="button" class="f-mx-col${isSel(c) ? ' sel' : ''}" data-f-std-col="${esc(c.pnu)}" aria-pressed="${isSel(c)}"><span class="n">${esc(c.rank ?? '·')}</span>${esc(shortLabel(c.label))}</button><span class="muted" data-f-mx-year="${esc(c.pnu)}">${esc(c.year || '연도 미상')}${c.year ? '년' : ''} 공시 · 표준지 API</span></th>`).join('')}</tr></thead>
     <tbody>${mx.rows.map((r) => `<tr data-f-mx-row="${r.key}" data-f-mx-row-stable="${Boolean(r.target?.tier === PROV.RECEIVED && r.cells.length && r.cells.every((c) => c.diff === 'SAME' && c.tier === PROV.RECEIVED))}"><th scope="row">${esc(r.label)}</th><td data-f-mx-target>${mxCompactCell(r.target)}</td>${r.cells.map((c, i) => `<td data-f-mx-cell="${esc(mx.columns[i].pnu)}"${isSel(mx.columns[i]) ? ' class="sel"' : ''}>${mxCompactCell(c, r.target)}</td>`).join('')}</tr>`).join('')}</tbody></table>
-    <ul class="small muted f-mx-notes" data-f-mx-notes>${mx.notes.map((n) => `<li>${esc(n)}</li>`).join('')}</ul></div>`;
+    <p class="small f-mx-price-note">개별공시지가와 표준지공시지가는 서로 다른 지표 · 가격 우열 판정 불가</p>
+    <details class="f-fold f-mx-notes-fold" data-f-mx-notes-fold>
+      <summary class="small">비교 기준·근거 ${mx.notes.length}건 보기</summary>
+      <ul class="small muted f-mx-notes" data-f-mx-notes>${mx.notes.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>
+    </details></div>`;
 }
 const won = (n) => (n == null ? '미기재' : `${Number(n).toLocaleString('ko-KR')}원/㎡`);
 const dist = (d) => (d == null ? '거리 미산출' : d >= 1000 ? `${(d / 1000).toFixed(2)}km` : `${Math.round(d)}m`);
@@ -500,9 +504,8 @@ function renderCard() {
   if (st.direct) { renderIssuesBox(renderDirectFacts()); return; }
   const card = buildFieldCard({ profile: st.profile, index: st.index, row: st.row, selectedIssueIds: [...st.issues], memo: st.memo, otherText: st.other, zoning: currentZoning() });
   const r = st.row; const f = noticeFacts(r);
-  $('[data-f-facts]').innerHTML = `<div class="f-head" data-f-parcel="${r.serial}">${esc(r.ri)} ${esc(r.lot_label)} <span class="chip warn">원문확인 필요</span></div>
-    ${originPending('고시 원본 PDF 대조 전')}
-    ${provLegend()}
+  const factsSourceOpen = Boolean($('[data-f-facts-source]')?.open);
+  $('[data-f-facts]').innerHTML = `<div class="f-head" data-f-parcel="${r.serial}">${esc(r.ri)} ${esc(r.lot_label)}</div>
     <dl class="f-kv">
       <dt>고시 ${provBadge(PROV.RECEIVED, { label: NOTICE_LABEL })}</dt><dd>${esc(st.index.notice?.notice_no || '')} (${esc(st.index.notice?.notice_date || '')})</dd>
       <dt>일련번호</dt><dd data-f-serial>${r.serial} · 원본 PDF ${r.pdf_page}쪽</dd>
@@ -514,7 +517,13 @@ function renderCard() {
       <dt>공부−편입 ${provBadge(provArithmetic(f.arithmetic))}</dt><dd data-f-remainder>${fmt(f.arithmetic.remainder_area_m2)}㎡ <span class="chip calc">산술</span>${f.arithmetic.partial ? ' <span class="chip warn">일부 편입 · 잔여지 확인</span>' : ''}${f.arithmetic.inconsistent ? ' <span class="chip bad" data-f-area-conflict>편입면적 &gt; 공부면적 · 고시 기재값 그대로(자동 보정 안 함) · 원문 대조</span>' : ''}</dd>` : ''}
     </dl>
     ${r.ri_source === 'CARRIED' ? `<p class="warn-note" data-f-carried>리 이름은 원본 표의 반복 셀에서 이어받았습니다 — PDF ${r.pdf_page}쪽 원문 재확인.</p>` : ''}
-    <p class="small muted">2025 고시 기록입니다. 현재 조서·현황·사업변경과 다를 수 있습니다.</p>`;
+    <details class="f-fold f-facts-source" data-f-facts-source${factsSourceOpen ? ' open' : ''}>
+      <summary class="small">원문·출처 상세 보기</summary>
+      <div class="f-facts-source-body">${originPending('고시 원본 PDF 대조 전')}
+        ${provLegend()}
+        <p class="small muted">2025 고시 기록입니다. 현재 조서·현황·사업변경과 다를 수 있습니다.</p>
+      </div>
+    </details>`;
   $('[data-f-unverified]').innerHTML = card.unverified.map((u) => `<li>${esc(u)}</li>`).join('');
   renderIssuesBox(card);
 }
@@ -1003,8 +1012,22 @@ function init() {
   });
   $('[data-f-client-toggle]').addEventListener('click', (e) => { const on = e.currentTarget.getAttribute('aria-pressed') !== 'true'; e.currentTarget.setAttribute('aria-pressed', String(on)); e.currentTarget.textContent = on ? '고객설명 모드 끄기' : '고객설명 모드'; if (on) document.body.dataset.fClient = '1'; else delete document.body.dataset.fClient; $('[data-f-client-note]').hidden = !on; });
   // 인쇄·PDF 저장(버튼·브라우저 메뉴·window.print 모두): 공적자료 영역은 CSS로 숨기고, 인쇄 직전 DOM에서도 비운다.
-  window.addEventListener('beforeprint', () => { document.body.dataset.printing = '1'; ['[data-f-pd]', '[data-f-map]', '[data-f-std]', '[data-f-zoning]', '[data-f-bundle-map]'].forEach((sel) => { const box = $(sel); if (box) box.innerHTML = ''; }); lastMapKey = ''; lastZoningKey = ''; bundleKeys.map = ''; });
-  window.addEventListener('afterprint', () => { delete document.body.dataset.printing; render(); });
+  const printDetails = new Map();
+  window.addEventListener('beforeprint', () => {
+    // 접힘은 화면 전용. 인쇄에는 기존 원문 대조 상태와 일반 유의사항을 그대로 포함한다.
+    for (const sel of ['[data-f-footer-notes]', '[data-f-facts-source]']) {
+      const detail = $(sel);
+      if (detail) { if (!printDetails.has(sel)) printDetails.set(sel, detail.open); detail.open = true; }
+    }
+    document.body.dataset.printing = '1';
+    ['[data-f-pd]', '[data-f-map]', '[data-f-std]', '[data-f-zoning]', '[data-f-bundle-map]'].forEach((sel) => { const box = $(sel); if (box) box.innerHTML = ''; });
+    lastMapKey = ''; lastZoningKey = ''; bundleKeys.map = '';
+  });
+  window.addEventListener('afterprint', () => {
+    for (const [sel,wasOpen] of printDetails) { const detail = $(sel); if (detail) detail.open = wasOpen; }
+    printDetails.clear();
+    delete document.body.dataset.printing; render();
+  });
   $('[data-f-index-file]').addEventListener('change', async (e) => {
     const file = e.target.files?.[0]; if (!file) return;
     try { setIndex(JSON.parse(await file.text()), '이 기기 파일'); } catch (_err) { showIndexError('JSON을 읽지 못했습니다.'); }
