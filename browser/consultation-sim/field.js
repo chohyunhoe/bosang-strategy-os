@@ -415,6 +415,32 @@ const mxCompactCell = (cell, target = null) => {
   return `<span class="f-mx-value"${attrs}>${value}</span>${badge}${diff}`;
 };
 const pdYear = () => [...TRAIT_FIELDS.map((f) => f.key), 'zoning', 'land_category'].map((k) => (st.pd?.values || []).find((v) => v.key === k)?.base_year).find(Boolean);
+// 현장 집중모드: 선택 후보의 네 가지 토지특성을 대상과 나란히 읽는다.
+// 상태·명칭은 기존 buildStdMatrix 그대로 사용하고, 미확인/추정값을 임의로 확정하지 않는다.
+function focusStandardTraits(sel, review) {
+  const mx = buildStdMatrix({ pdValues: st.pd?.values || [], columns: [sel], review });
+  const targetYear = pdYear(); const stdYear = sel.year || null;
+  const cards = TRAIT_FIELDS.map((f) => {
+    const row = mx.rows.find((r) => r.key === f.key); if (!row) return '';
+    const a = row.target; const b = row.cells[0];
+    const source = b.tier || PROV.UNVERIFIED;
+    const sourceBadge = source === PROV.RECEIVED ? '' : provBadge(source, { label: source === PROV.ESTIMATED ? '추정' : '미확인' });
+    const targetBadge = a?.tier && a.tier !== PROV.RECEIVED ? provBadge(a.tier, { label: '미확인' }) : '';
+    const difference = b.diff && b.diff !== 'SAME' ? mxDiff(b, a) : b.diff === 'SAME' && source === PROV.ESTIMATED ? mxDiff(b, a) : '';
+    return `<div class="f-std-focus-trait" data-f-std-focus-trait="${esc(f.key)}">
+      <b>${esc(f.label)}</b>
+      <div class="f-std-focus-line"><small>대상</small><span data-f-trait-target data-f-tier="${esc(a.tier || PROV.UNVERIFIED)}">${mxVal(a)} ${targetBadge}</span></div>
+      <div class="f-std-focus-line"><small>후보</small><span data-f-trait-std data-f-tier="${esc(source)}">${mxVal(b)} ${sourceBadge}</span></div>
+      ${difference ? `<div class="f-std-focus-diff">${difference}</div>` : ''}
+    </div>`;
+  }).join('');
+  const yearDiff = targetYear && stdYear && String(targetYear) !== String(stdYear);
+  return `<section class="f-std-focus-traits" data-f-std-focus-traits data-pnu="${esc(sel.pnu)}" aria-label="선택 표준지 후보의 이용상황·도로접면·형상·고저 비교">
+    <div class="f-std-focus-head"><b>선택 후보 토지특성</b><span>${esc(targetYear || '연도 미상')}년 대상 ↔ ${esc(stdYear || '연도 미상')}년 후보 ${yearDiff ? '<strong class="f-std-focus-year-warning">기준연도 다름</strong>' : ''}</span></div>
+    <div class="f-std-focus-grid">${cards}</div>
+    <p class="f-std-focus-origin">표준지 API 속성 · 공식 토지특성현황도 대조 전 · 비교표준지 확정 아님</p>
+  </section>`;
+}
 function traitTable(sel, review, dup = false) {
   const mx = buildStdMatrix({ pdValues: st.pd?.values || [], columns: [sel], review });
   const ty = pdYear();
@@ -477,6 +503,7 @@ function renderStdPanel(sr) {
     ${s.retryFailed ? `<p class="small warn-note" data-f-std-retry-failed>다시 조회 실패 — ${esc(s.retryFailed)} · 아래는 앞서 받은 결과(조회 ${esc(fmtTime(s.fetched_at))})</p>` : ''}
     <p class="small">${statusChip} <span data-f-std-review-zoning="${esc(sr.review.basis)}">검토 용도지역: <b>${esc(sr.review.label)}</b></span></p>
     ${cands.length ? `<ol class="f-std-list" data-f-std-list>${cands.map(item).join('')}</ol>` : ''}
+    ${sel ? focusStandardTraits(sel, sr.review) : ''}
     ${stdMatrix(sr, cands, s.selected)}
     ${sel ? `<div class="f-std-detail" data-f-std-detail="${esc(sel.pnu)}"><b>${sel.kind === 'CANDIDATE' ? `${STD_LABEL.CANDIDATE} ${sel.rank}` : esc(sel.status_label)} · ${esc(short(sel.label))}</b> <span class="chip warn">${esc(STD_LABEL.NOT_SELECTED)}</span>
       <p class="small f-std-line">${esc(cf(sel, 'price', won(sel.price)))} · ${esc(cf(sel, 'zoning', sel.zoning || '용도지역 미기재'))} · ${esc(cf(sel, 'land_use', sel.land_use || '이용상황 미기재'))} · 직선 ${esc(dist(sel.distance_m))}${sel.kind !== 'CANDIDATE' && sel.reasons?.length ? ` · ${esc(sel.reasons[0])}` : ''}</p>
