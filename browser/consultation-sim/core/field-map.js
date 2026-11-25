@@ -187,7 +187,7 @@ export function renderFieldMap(model) {
   const pressed = (b) => `aria-pressed="${b ? 'true' : 'false'}"`;
   const layer = (k, on, text) => `<button type="button" class="f-layer" data-f-map-toggle="${k}" ${pressed(on)}>${text}</button>`;
   const cadBtn = cov && !cov.full ? (() => {
-    const left = Math.max(0, CAD.sessionCalls - (model.cad.calls || 0));
+    const left = model.cadLeft ?? Math.max(0, CAD.sessionCalls - (model.cadUsed ?? model.cad.calls ?? 0));
     const need = cov.missing.length;
     const label = model.cad.busy ? '지적 불러오는 중…' : !need ? '' : left <= 0 ? '지적 조회 한도(이번 상담)' : need > CAD.perClick ? `확대 후 지적 불러오기(${need}칸)` : `현재 화면 지적 불러오기(${need}칸)`;
     return label ? `<button type="button" class="f-cad-load" data-f-cad-load data-need="${need}" ${model.cad.busy || left <= 0 || need > CAD.perClick ? 'disabled' : ''}>${label}</button>` : '';
@@ -195,7 +195,7 @@ export function renderFieldMap(model) {
   const aerialChip = `<span class="chip ${model.aerial === 'FAILED' ? 'bad' : model.aerial === 'OK' ? 'ok' : ''}" data-f-map-aerial="${esc(model.aerial)}">${model.aerial === 'FAILED' ? '영상 미수신' : model.aerial === 'OK' ? '영상' : '영상 수신 중'}</span>`;
   const cadChip = cov ? `<span class="chip ${cov.full ? 'ok' : 'warn'}" data-f-cad-coverage="${cov.full ? 'FULL' : cov.loading ? 'LOADING' : 'PARTIAL'}">${esc(cov.label)}${cov.full ? '' : ` · ${cov.complete}/${cov.tiles.length}칸`}</span>` : '';
   const stdSum = model.std?.summary ? `<span class="small" data-f-std-sum>${esc(model.std.summary)}</span>` : '';
-  const cadDetail = cov ? `<p data-f-cad-detail>지적 조회 칸(0.01° 격자, 화면 ${cov.tiles.length}칸): ${cov.states.map(({ t, s: ts }) => `${t[0] / 100},${t[1] / 100} ${ts ? `${CAD_LABEL[ts.status] || ts.status}${ts.total != null ? `(${ts.received ?? 0}/${ts.total}건)` : ''}${ts.reason && ts.status !== 'COMPLETE' ? ` ${esc(ts.reason)}` : ''}` : '미조회'}`).join(' · ')} · 이번 상담 지적 VWorld 호출 ${model.cad.calls || 0}회(상한 ${CAD.sessionCalls}회). 빗금 = 지적 미조회·일부 구역(지적선이 없어도 필지가 없는 것이 아님).</p>` : '';
+  const cadDetail = cov ? `<p data-f-cad-detail>지적 조회 칸(0.01° 격자, 화면 ${cov.tiles.length}칸): ${cov.states.map(({ t, s: ts }) => `${t[0] / 100},${t[1] / 100} ${ts ? `${CAD_LABEL[ts.status] || ts.status}${ts.total != null ? `(${ts.received ?? 0}/${ts.total}건)` : ''}${ts.reason && ts.status !== 'COMPLETE' ? ` ${esc(ts.reason)}` : ''}` : '미조회'}`).join(' · ')} · 이번 상담 지적 VWorld 호출 ${model.cadUsed ?? (model.cad.calls || 0)}회(상한 ${CAD.sessionCalls}회${model.cadShared ?? model.cadUsed != null ? ' · 상담 묶음 공유' : ''}${model.cadUnknown ? ` · 이 중 미확인 최대 ${model.cadUnknown}회` : ''}). 빗금 = 지적 미조회·일부 구역(지적선이 없어도 필지가 없는 것이 아님).</p>` : '';
   return `<div class="f-map" data-f-map-state="EXACT_ONE" data-f-map-pnu="${esc(model.pnu)}" data-f-map-zoom="${v.zoom}" data-f-map-mode="${esc(model.mode || 'CUSTOM')}">
     <div class="f-map-frame">
       <img class="f-map-img" data-f-map-img src="${esc(aerialUrl(v))}" width="${MAP.width}" height="${MAP.height}" alt="항공영상(VWorld PHOTO)" referrerpolicy="no-referrer">
@@ -219,4 +219,31 @@ export function renderFieldMap(model) {
       ${cadDetail}
     </div></details>
   </div>`;
+}
+
+// ── 상담 묶음 전체 필지 지도(검토 보조) ─────────────────────────────────────
+// items: [{ n, pid, label, geometry|null, status }] — geometry는 그 필지 PNU의 연속지적도 exact-one 경계만.
+// 위치가 확인되지 않은 필지는 그리지 않고 목록에 '위치 미확인'으로 남긴다. 영상 1장만 요청(지적 칸·표준지 조회 없음).
+export function renderBundleMap({ items = [], activePid = null }) {
+  const shown = items.filter((x) => x.geometry);
+  const missing = items.filter((x) => !x.geometry);
+  const list = missing.length ? `<p class="small" data-f-bundle-map-missing>위치 미확인 ${missing.length}필지: ${missing.map((x) => `${'①②③④⑤⑥⑦⑧⑨⑩'[x.n - 1] || x.n} ${esc(x.label)}(${x.status === 'NOT_LOADED' ? '지도 미조회' : esc(x.status)})`).join(' · ')} — 추정 위치로 그리지 않음</p>` : '';
+  if (!shown.length) return `<div class="f-bundle-map" data-f-bundle-map-state="NONE"><p class="small"><span class="chip">전체 지도 없음</span> 대상 경계가 확인된 필지가 없습니다(각 필지에서 공적자료 조회 후 표시).</p>${list}</div>`;
+  const first = shown[0].geometry; const others = shown.slice(1).flatMap((x) => allPoints(x.geometry));
+  const v = fitView(first, others, 0.8);
+  const pts = shown.flatMap((x) => allPoints(x.geometry)).map((p) => project(v, p));
+  const fits = pts.every(([x, y]) => x >= 0 && x <= MAP.width && y >= 0 && y <= MAP.height);
+  if (!fits) return `<div class="f-bundle-map" data-f-bundle-map-state="TOO_WIDE"><p class="small"><span class="chip warn">한 화면 표시 안 함</span> 필지 사이가 멀어 한 화면(최소 줌 ${MAP.minZoom})에 담기지 않습니다. 필지를 하나씩 보세요.</p>${list}</div>`;
+  const paths = shown.map((x) => `<path class="f-target${x.pid === activePid ? '' : ' f-bundle-other'}" data-f-bundle-shape="${x.n}" d="${svgPath(v, x.geometry)}" fill-rule="evenodd"/>`).join('');
+  const pins = shown.map((x) => {
+    const ps = allPoints(x.geometry).map((p) => project(v, p)); const cx = ps.reduce((s, p) => s + p[0], 0) / ps.length; const cy = ps.reduce((s, p) => s + p[1], 0) / ps.length;
+    return `<button type="button" class="f-std-pin cand${x.pid === activePid ? ' sel' : ''}" style="left:${((cx / MAP.width) * 100).toFixed(2)}%;top:${((cy / MAP.height) * 100).toFixed(2)}%" data-f-bundle-pick="${x.pid}" data-f-bundle-pin="${x.n}" aria-label="필지 ${x.n} ${esc(x.label)}로 전환"><i class="f-pin-dot">${x.n}</i></button>`;
+  }).join('');
+  return `<div class="f-bundle-map" data-f-bundle-map-state="SHOWN" data-f-bundle-map-zoom="${v.zoom}" data-f-bundle-map-count="${shown.length}">
+    <div class="f-map-frame">
+      <img class="f-map-img" data-f-map-img src="${esc(aerialUrl(v))}" width="${MAP.width}" height="${MAP.height}" alt="항공영상(VWorld PHOTO)" referrerpolicy="no-referrer">
+      <svg class="f-map-svg" viewBox="0 0 ${MAP.width} ${MAP.height}" preserveAspectRatio="none" aria-label="묶음 필지 경계">${paths}</svg>
+      <div class="f-std-layer">${pins}</div>
+    </div>
+    <p class="small muted">빨간 선 = 각 필지 연속지적도 경계(exact-one) · 사업 편입선 아님 · 번호를 누르면 그 필지로 전환 · 화면 열람 전용</p>${list}</div>`;
 }

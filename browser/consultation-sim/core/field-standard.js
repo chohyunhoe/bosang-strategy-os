@@ -4,7 +4,8 @@
 // - 대상 용도지역은 '사업 영향 배제 기준' 후보가 있으면 그것을, 없으면 현재 조회값을 쓴다(어느 쪽인지 표시).
 // - 지도 표식은 연속지적도 exact-one으로 위치가 확인된 표준지만. 위치 미확인은 목록에만 '지도 미표시'로 남긴다.
 // - 감정평가서에서 선정이 확인된 비교표준지가 아니면 '비교표준지 후보'로만 부른다. 보정률·보상액 계산 없음.
-import { analyzeStandardCandidates, normalizeStandardRow, useGroup } from './standard-land-engine.js';
+import { analyzeStandardCandidates, normalizeStandardRow, useGroup, STANDARD_FIELD_ALIASES } from './standard-land-engine.js';
+import { collapseNedRevisions } from './ned-revisions.js';
 
 export const STD_LABEL = Object.freeze({
   CANDIDATE: '비교표준지 후보',
@@ -28,6 +29,55 @@ export function reviewZoningFor(zoning, currentZoning) {
   return { zoning: currentZoning || null, basis: 'CURRENT', label: `현재 용도지역 ${currentZoning || '미확보'}`, note: null };
 }
 
+// ── 표준지·대상 필지 특성(이용상황·도로접면·형상·고저) ─────────────────────────
+// API 속성 텍스트일 뿐 '토지특성현황도'(공식 도면) 원문이 아니다. 값이 없으면 '미확인'으로 둔다(추정·보간 없음).
+export const TRAIT_FIELDS = Object.freeze([
+  { key: 'land_use', label: '이용상황', name: 'ladUseSittnNm', code: 'ladUseSittn' },
+  { key: 'road_access', label: '도로접면', name: 'roadSideCodeNm', code: 'roadSideCode' },
+  { key: 'shape', label: '형상', name: 'tpgrphFrmCodeNm', code: 'tpgrphFrmCode' },
+  { key: 'elevation', label: '고저', name: 'tpgrphHgCodeNm', code: 'tpgrphHgCode' },
+]);
+export const TRAIT_STATUS = Object.freeze({
+  API_NAME: 'VWorld 표준지 속성(텍스트)', NAME_SAME_PNU: '표준지 코드 + 같은 필지·같은 연도 토지특성 명칭', NAME_OTHER: '표준지 코드 + 다른 필지·행 응답의 명칭 — 이 필지 값으로 확인 안 됨',
+  NAME_FROM_LC: '표준지 코드 + 같은 연도 토지특성 명칭(필지 구분 미제공 — 확인 필요)', CODE_ONLY: '코드만 — 명칭 미확인', CONFLICT: '값 충돌·확인 필요(응답 행끼리 다름)', TARGET_LC: 'VWorld 토지특성(대상 필지)', MISSING: '미확인',
+});
+// conflict: 같은 PNU·연도 응답 행끼리 값이 다른 경우의 원본 행들 — 다른 필드는 값을 고르지 않는다.
+export function standardTraits(raw, conflictRows = null) {
+  const filled = new Set(raw?.name_filled_from_land_characteristics || []);
+  return Object.fromEntries(TRAIT_FIELDS.map((f) => {
+    if (conflictRows) {
+      const shown = (r) => String(r?.[f.name] ?? '').trim() || (String(r?.[f.code] ?? '').trim() ? `코드 ${String(r[f.code]).trim()}` : '');
+      const codes = new Set(conflictRows.map((r) => String(r?.[f.code] ?? '').trim())); const values = [...new Set(conflictRows.map(shown))].sort();
+      if (values.length > 1 || codes.size > 1) return [f.key, { value: null, code: null, status: 'CONFLICT', values: values.map((v) => v || '미기재'), year: raw?.stdrYear || null }];
+    }
+    const value = String(raw?.[f.name] ?? '').trim() || null;
+    const code = String(raw?.[f.code] ?? '').trim() || null;
+    const status = value ? (filled.has(f.name) ? (!raw.name_sources?.[f.name] ? 'NAME_FROM_LC' : raw.name_sources[f.name] === 'SAME_PNU_LC' ? 'NAME_SAME_PNU' : 'NAME_OTHER') : 'API_NAME') : code ? 'CODE_ONLY' : 'MISSING';
+    return [f.key, { value, code, status, year: raw?.stdrYear || null }];
+  }));
+}
+// 대상 필지 특성: 공적자료(토지특성) 값 그대로. pdValues: [{key,value,base_year,source}]
+export function targetTraits(pdValues = []) {
+  const by = Object.fromEntries((pdValues || []).map((v) => [v.key, v]));
+  return Object.fromEntries(TRAIT_FIELDS.map((f) => {
+    const v = by[f.key];
+    const value = v && v.value != null && String(v.value).trim() ? String(v.value).trim() : null;
+    return [f.key, { value, status: value ? 'TARGET_LC' : 'MISSING', year: v?.base_year || null, source: v?.source || null }];
+  }));
+}
+
+// 같은 PNU·공시연도 응답 행 묶음. 판정 엔진과 같은 규칙(ned-revisions)으로 정리하고, 값이 다르면 어느 행도 고르지 않는다.
+const groupKey = (pnu, year) => `${pnu}|${year == null ? '' : Number(year)}`;
+function rowGroups(rows) {
+  const m = new Map();
+  for (const r of rows) { const n = normalizeStandardRow(r); const k = groupKey(n.pnu, n.year); if (!m.has(k)) m.set(k, []); m.get(k).push(r); }
+  return m;
+}
+function pickRow(group) {
+  const c = collapseNedRevisions(group);
+  return c.ok ? { raw: c.row, conflict: null } : { raw: group[0], conflict: { fields: c.selection.conflict_fields, row_count: group.length, rows: group } };
+}
+
 const fmtR = (m) => (m == null ? '미정' : `${Number(m).toLocaleString('ko-KR')}m`);
 const fmtM = (m) => (m == null ? '거리 미산출' : m >= 1000 ? `${(m / 1000).toFixed(2)}km` : `${Math.round(m)}m`);
 
@@ -42,14 +92,18 @@ export function buildStandardReview({ response, target = {}, zoning = null }) {
   const rows = Array.isArray(response.rows) ? response.rows : [];
   const inRange = []; const held = [];
   const seen = new Set();
+  const groups = rowGroups(rows);
   for (const raw of rows) {
     const l = loc[raw.pnu] || { status: 'NOT_ATTEMPTED' };
     if (l.status === 'EXACT_ONE' && Number.isFinite(l.distance_m) && (radius == null || l.distance_m <= radius)) { inRange.push(raw); continue; }
-    if (seen.has(raw.pnu)) continue; seen.add(raw.pnu);
+    const gk = groupKey(raw.pnu, normalizeStandardRow(raw).year);
+    if (seen.has(gk)) continue; seen.add(gk);
     const reason = l.status === 'EXACT_ONE' ? `검색 반경 ${fmtR(radius)} 밖(${fmtM(l.distance_m)})`
       : l.status === 'NOT_ATTEMPTED' ? '위치 조회 한도 초과 — 위치 미확인(지도 미표시)'
         : `위치 미확인 — 연속지적도 exact-one 아님(${l.status}${l.code ? ` ${l.code}` : ''}) · 지도 미표시`;
-    held.push({ row: normalizeStandardRow(raw), raw, distance_m: l.status === 'EXACT_ONE' ? l.distance_m : null, reasons: [reason] });
+    const year = normalizeStandardRow(raw).year;
+    held.push({ row: normalizeStandardRow(raw), distance_m: l.status === 'EXACT_ONE' ? l.distance_m : null,
+      reasons: [reason, ...(year !== Number(s.year) ? [`기준연도 ${s.year} 공시 아님(${year || '연도 미상'})`] : [])] });
   }
   const dongs = (s.legal_dongs || []).filter((d) => d.status === 'OK');
   const failedDongs = (s.legal_dongs || []).filter((d) => d.status !== 'OK');
@@ -62,7 +116,6 @@ export function buildStandardReview({ response, target = {}, zoning = null }) {
     road_access: target.road_access || null, shape: target.shape || null, elevation: target.elevation || null, area_m2: null };
   const analysis = analyzeStandardCandidates({ target: engineTarget, rows: inRange, baseYear: s.year, distances, maxCandidates: 3, scope });
   const rankOf = new Map((analysis.candidates || []).map((c) => [c.row.pnu, c]));
-  const rawOf = new Map(rows.map((r) => [r.pnu, r]));
   const markers = [];
   const markerSeen = new Set();
   for (const r of rows) {
@@ -73,18 +126,27 @@ export function buildStandardReview({ response, target = {}, zoning = null }) {
     markers.push({ pnu: r.pnu, centroid: l.centroid, geometry: l.geometry || null, rank: c ? c.rank : null, kind: c ? 'CANDIDATE' : 'STANDARD',
       in_radius: radius == null || l.distance_m <= radius, label: normalizeStandardRow(r).label || r.pnu });
   }
-  const detail = (row, raw, distance, extra) => ({
+  // 표시 행 = 판정에 쓰인 PNU·공시연도 행(PNU만으로 찾지 않음). 값 충돌 필드는 비운다.
+  const detail = (row, distance, extra) => {
+    const { raw, conflict } = pickRow(groups.get(groupKey(row.pnu, row.year)) || [{}]);
+    const bad = (key) => Boolean(conflict && STANDARD_FIELD_ALIASES[key].some((n) => conflict.fields.includes(n)));
+    const val = (key) => (bad(key) ? null : row[key]);
+    return {
     pnu: row.pnu, label: [raw?.ldCodeNm, raw?.mnnmSlno].filter(Boolean).join(' ') || row.label || row.pnu, lot: raw?.mnnmSlno || null,
-    price: row.price, year: row.year, zoning: row.zoning, land_use: row.land_use, land_category: row.land_category,
+    price: val('price'), year: row.year, zoning: val('zoning'), land_use: val('land_use'), land_category: val('land_category'),
+    conflict: conflict ? { fields: conflict.fields, row_count: conflict.row_count, price: bad('price'), zoning: bad('zoning'), land_use: bad('land_use'), land_category: bad('land_category') } : null,
     distance_m: distance, located: Boolean(loc[row.pnu]?.status === 'EXACT_ONE'),
-    names_from_land_characteristics: raw?.name_filled_from_land_characteristics || [], ...extra,
-  });
+    names_from_land_characteristics: raw?.name_filled_from_land_characteristics || [],
+    traits: standardTraits(raw, conflict?.rows || null), ...extra,
+    ...(conflict ? { status_label: `값 충돌·확인 필요(응답 ${conflict.row_count}행) · 판정 보류` } : {}),
+    };
+  };
   const list = [
-    ...(analysis.candidates || []).map((c) => detail(c.row, rawOf.get(c.row.pnu), c.distance_m, {
+    ...(analysis.candidates || []).map((c) => detail(c.row, c.distance_m, {
       kind: 'CANDIDATE', rank: c.rank, status_label: STD_LABEL.CANDIDATE, reasons: c.selection_reasons,
       review: (c.review_requirements || []).map((q) => `${q.label}: ${q.confirmed.join(' · ') || '자료 없음'}`) })),
-    ...(analysis.excluded || []).map((e) => detail(e.row, rawOf.get(e.row.pnu), e.distance_m, { kind: 'EXCLUDED', rank: null, status_label: '후보 제외', reasons: e.reasons })),
-    ...held.map((h) => detail(h.row, h.raw, h.distance_m, { kind: 'HELD', rank: null, status_label: h.distance_m != null ? '반경 밖' : '위치 미확인', reasons: h.reasons })),
+    ...(analysis.excluded || []).map((e) => detail(e.row, e.distance_m, { kind: 'EXCLUDED', rank: null, status_label: '후보 제외', reasons: e.reasons })),
+    ...held.map((h) => detail(h.row, h.distance_m, { kind: 'HELD', rank: null, status_label: h.distance_m != null ? '반경 밖' : '위치 미확인', reasons: h.reasons })),
   ];
   const notes = [...(analysis.notes || [])];
   if (review.note) notes.unshift(review.note);

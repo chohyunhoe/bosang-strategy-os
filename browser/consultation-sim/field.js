@@ -1,6 +1,6 @@
 // BSO 현장 지번 상담 — 고시 세목 색인 + 상담카드 (전국 공통, 사업별 프로필)
 // 저장: 이 화면 메모리뿐. 복사·저장(.txt)·인쇄는 상담자가 버튼을 누를 때만.
-import { validateNoticeIndex, searchNoticeIndex, SEARCH_STATUS, noticeFacts } from './core/notice-index.js';
+import { validateNoticeIndex, searchNoticeIndex, SEARCH_STATUS, noticeFacts, rowKey } from './core/notice-index.js';
 import { issuesFor } from './core/field-issues.js';
 import { buildFieldCard, buildDirectCard } from './core/field-card.js';
 import { directLookupTarget } from './core/field-direct.js';
@@ -10,6 +10,9 @@ import { buildStandardReview, STD_LABEL } from './core/field-standard.js';
 import { evaluateZoningBasis, RELATION_OPTIONS, ZONING_STATUS, ZONING_STATUS_LABEL } from './core/zoning-basis.js';
 import { EVIDENCE_STATUS_LABEL } from './core/zoning-trace.js';
 import { profileForIndex } from './profiles/index.js';
+import { BUNDLE, OWNERSHIP_BASIS, CO_OWNERSHIP, ownershipNeedsWarning, parcelKey, parcelLabel, circled, pnuConflicts, createBridgeCache, buildBundleSummary, buildBundleDetail } from './core/field-bundle.js';
+import { renderBundleMap } from './core/field-map.js';
+import { TRAIT_FIELDS, TRAIT_STATUS, targetTraits } from './core/field-standard.js';
 
 const $ = (s, r = document) => r.querySelector(s);
 const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -17,8 +20,37 @@ const fmt = (n) => (typeof n === 'number' ? n.toLocaleString('ko-KR', { maximumF
 const fmtTime = (iso) => (iso ? new Date(iso).toLocaleString('ko-KR', { hour12: false }) : '—');
 
 // row: 고시 색인 행 / direct: 색인 밖 전국 직접 조회 대상. 둘 중 하나만 활성.
-const st = { index: null, profile: profileForIndex(null), check: null, search: null, row: null, direct: null, directOffer: null, issues: new Set(), memo: '', other: '', map: null, std: null, zoningConfirm: { relation: '', basis_doc: '', by: '', valuation_date: '' }, zoningExtra: null, pdBridge: null, pd: null, pdBusy: false, epoch: 0 };
+const st = { index: null, profile: profileForIndex(null), check: null, search: null, row: null, direct: null, directOffer: null, issues: new Set(), memo: '', other: '', map: null, std: null, zoningConfirm: { relation: '', basis_doc: '', by: '', valuation_date: '' }, zoningExtra: null, pdBridge: null, pd: null, pdBusy: false, epoch: 0,
+  pid: 0, tok: {}, slotId: null, bundle: null, meter: null };
 const active = () => st.row || st.direct;
+
+// ── 필지 단위 상태 · 상담 묶음(다필지) ─────────────────────────────────────
+// 필지 하나의 상태(아래 키)는 활성일 때 st에 있고, 묶음에 담긴 필지는 슬롯에 따로 보관한다.
+// 늦게 온 응답은 시작할 때 잡은 필지 번호(pid)와 요청 표(tok)로 주인을 찾아 그 필지에만 쓴다(다른 필지 화면에 섞이지 않음).
+const PARCEL_KEYS = ['row', 'direct', 'issues', 'memo', 'other', 'pd', 'pdBusy', 'map', 'std', 'zoningConfirm', 'zoningExtra', 'tok'];
+let pidSeq = 0;
+function freshParcel({ row = null, direct = null } = {}) {
+  st.epoch += 1; st.pid = ++pidSeq; st.slotId = null; st.tok = {};
+  if (!st.bundle) st.meter = newMeter();
+  else st.bundle.pending = null;
+  st.row = row; st.direct = direct; st.issues = new Set(); st.memo = ''; st.map = null; st.std = null; st.other = '';
+  st.zoningConfirm = { relation: '', basis_doc: '', by: '', valuation_date: '' }; st.zoningExtra = null; st.pd = null; st.pdBusy = false;
+  $('[data-f-memo]').value = ''; $('[data-f-out]').textContent = '';
+}
+const activeSlot = () => (st.bundle && st.slotId != null ? st.bundle.slots.find((s) => s.pid === st.slotId) || null : null);
+function saveSlot() { const s = activeSlot(); if (s) PARCEL_KEYS.forEach((k) => { s[k] = st[k]; }); }
+const ownerNow = () => ({ pid: st.pid });
+// 응답을 쓸 곳: 지금 열린 필지면 st, 묶음에 담긴 필지면 그 슬롯, 그 밖(새 상담·버린 필지)이면 없음
+function targetOf(owner) {
+  if (owner.pid === st.pid) return st;
+  return st.bundle?.slots.find((s) => s.pid === owner.pid) || null;
+}
+const ticket = (t, op) => { t.tok = t.tok || {}; t.tok[op] = (t.tok[op] || 0) + 1; return t.tok[op]; };
+// 모든 조회는 계량기를 거친다(시간 제한·호출 집계·지적 상한 예약). 묶음이 없으면 필지마다 새 계량기(재사용·표준지 한도 없음),
+// 묶음을 만들 때 첫 필지의 계량기를 그대로 이어받아 담기 전 조회도 집계에 남긴다.
+const newMeter = () => createBridgeCache({ fetchImpl: (...a) => fetch(...a), timeoutMs: globalThis.BSO_FIELD_TIMEOUT_MS || BUNDLE.timeoutMs, cache: false });
+const meter = () => (st.bundle ? st.bundle.cache : (st.meter ||= newMeter()));
+const fx = () => meter().fetch;
 
 function setIndex(index, origin) {
   const check = validateNoticeIndex(index);
@@ -40,14 +72,55 @@ function setIndex(index, origin) {
 function showIndexError(msg) { const e = $('[data-f-index-error]'); e.hidden = false; e.textContent = msg; $('[data-f-loader]').hidden = false; }
 
 function newConsultation() {
-  st.epoch += 1; st.search = null; st.row = null; st.direct = null; st.directOffer = null; st.issues = new Set(); st.memo = ''; st.map = null; st.std = null; st.other = ''; st.zoningConfirm = { relation: '', basis_doc: '', by: '', valuation_date: '' }; st.zoningExtra = null; st.pd = null; st.pdBusy = false;
-  $('[data-f-q]').value = ''; $('[data-f-memo]').value = ''; $('[data-f-out]').textContent = '';
+  st.bundle = null; bundleKeys.bar = ''; bundleKeys.map = '';
+  st.search = null; st.directOffer = null; freshParcel();
+  $('[data-f-q]').value = '';
   render();
   if (!$('[data-f-q]').disabled) $('[data-f-q]').focus();
 }
 
-function openDirect(target) { st.epoch += 1; st.row = null; st.direct = target; st.issues = new Set(); st.memo = ''; st.map = null; st.std = null; st.other = ''; st.zoningConfirm = { relation: '', basis_doc: '', by: '', valuation_date: '' }; st.zoningExtra = null; st.pd = null; $('[data-f-memo]').value = ''; $('[data-f-out]').textContent = ''; render(); }
-function selectRow(row) { st.epoch += 1; st.direct = null; st.row = row; st.issues = new Set(); st.memo = ''; st.map = null; st.std = null; st.other = ''; st.zoningConfirm = { relation: '', basis_doc: '', by: '', valuation_date: '' }; st.zoningExtra = null; st.pd = null; $('[data-f-memo]').value = ''; $('[data-f-out]').textContent = ''; render(); }
+function openDirect(target) { saveSlot(); freshParcel({ direct: target }); render(); }
+function selectRow(row) { saveSlot(); freshParcel({ row }); render(); }
+
+// 묶음에 담기: 지금 열린 필지를 슬롯으로(같은 필지면 그 슬롯으로 전환만). 소유 확인은 상담자가 고른다(기본 미확인).
+function addToBundle({ force = false } = {}) {
+  if (!active()) return;
+  if (!st.bundle) st.bundle = { no: 1, slots: [], mapOpen: false, commonMemo: '', cache: meter(), note: '', pending: null };
+  st.bundle.cache.enableCache(); st.bundle.pending = null;
+  const key = parcelKey({ row: st.row, direct: st.direct, notice: st.index?.notice });
+  const dup = st.bundle.slots.find((s) => s.key === key);
+  if (dup && dup.pid !== st.pid && draftDirty() && !force) { askDraft(() => addToBundle({ force: true }), { canKeep: false }); return; }
+  if (dup) { st.bundle.note = `이미 담긴 필지입니다 — ${circled(st.bundle.slots.indexOf(dup) + 1)}로 전환`; if (dup.pid !== st.pid) switchTo(dup.pid); else render(); return; }
+  if (st.bundle.slots.length >= BUNDLE.maxParcels) { st.bundle.note = `한 묶음은 ${BUNDLE.maxParcels}필지까지입니다`; render(); return; }
+  const slot = { pid: st.pid, key, label: parcelLabel({ row: st.row, direct: st.direct }), ownership: { basis: 'UNCONFIRMED', coown: 'UNKNOWN' }, area_basis_date: '' };
+  st.bundle.slots.push(slot); st.slotId = st.pid; st.bundle.note = '';
+  saveSlot(); render();
+}
+// 담지 않은 필지에 적은 내용이 있으면 다른 필지로 옮기기 전에 담기·버리기·머무르기를 고르게 한다(조용한 유실 없음).
+const draftDirty = () => Boolean(st.bundle && active() && st.slotId == null && (st.memo.trim() || st.issues.size || st.other.trim() || Object.values(st.zoningConfirm).some(Boolean)));
+function askDraft(run, { canKeep = true } = {}) { st.bundle.pending = { run, canKeep: canKeep && st.bundle.slots.length < BUNDLE.maxParcels }; renderBundle(); $('[data-f-draft-guard]')?.scrollIntoView({ block: 'nearest' }); }
+function leaveDraft(run) {
+  if (!draftDirty()) { run(); return; }
+  const dup = st.bundle.slots.some((s) => s.key === parcelKey({ row: st.row, direct: st.direct, notice: st.index?.notice }));
+  askDraft(run, { canKeep: !dup });
+}
+function answerDraft(how) {
+  const p = st.bundle?.pending; if (!p) return;
+  st.bundle.pending = null;
+  if (how === 'keep') addToBundle();
+  if (how === 'stay') renderBundle(); else p.run();
+}
+// 필지 전환: 현재 필지를 저장하고 대상 슬롯을 그대로 복원(재조회 없음)
+function switchTo(pid) {
+  const slot = st.bundle?.slots.find((s) => s.pid === pid); if (!slot || pid === st.slotId) return;
+  saveSlot(); st.bundle.pending = null;
+  PARCEL_KEYS.forEach((k) => { st[k] = slot[k]; });
+  st.pid = slot.pid; st.slotId = slot.pid; st.epoch += 1; st.search = null; st.directOffer = null;
+  $('[data-f-memo]').value = st.memo || ''; $('[data-f-out]').textContent = '';
+  render();
+  // 다른 필지에 있는 동안 표준지 응답이 왔으면 지금 첫 후보를 고르고 후보 비교로 맞춘다(재조회 없음)
+  if (st.std?.pendingSelect) { st.std.pendingSelect = false; const sr = stdReview(); st.std.selected = sr?.list?.find((x) => x.kind === 'CANDIDATE')?.pnu || null; st.std.selectedYear = null; if (sr?.markers?.some((x) => x.kind === 'CANDIDATE') && st.map?.status === 'EXACT_ONE') fitStandard(st.map, sr); else renderMap(); }
+}
 
 function renderResult() {
   const box = $('[data-f-result]');
@@ -58,7 +131,7 @@ function renderResult() {
     box.innerHTML = `<div class="f-msg" data-f-choose data-count="${s.matches.length}"><p><b>${esc(s.message)}</b></p>
       <ul class="f-cands">${s.matches.map((r) => `<li data-f-cand="${r.serial}"><div><b>${esc(r.ri)} ${esc(r.lot_label)}</b> <span class="muted small">${esc(r.jimok)} · 편입 ${fmt(r.incorporated_area_m2)}㎡ · 일련 ${r.serial} · PDF ${r.pdf_page}쪽</span></div>
       <button type="button" class="secondary" data-f-pick="${r.serial}">이 필지</button></li>`).join('')}</ul></div>`;
-    box.querySelectorAll('[data-f-pick]').forEach((btn) => btn.addEventListener('click', () => selectRow(s.matches.find((r) => String(r.serial) === btn.dataset.fPick))));
+    box.querySelectorAll('[data-f-pick]').forEach((btn) => btn.addEventListener('click', () => leaveDraft(() => selectRow(s.matches.find((r) => String(r.serial) === btn.dataset.fPick)))));
     return;
   }
   const offer = st.directOffer;
@@ -67,7 +140,7 @@ function renderResult() {
       <button type="button" class="secondary" data-f-direct-open>색인 밖 필지로 상담 · ${esc(offer.scope === 'PNU' ? `PNU ${offer.pnu}(검증 전)` : offer.address)}</button>`)
     : `<p class="small muted" data-f-direct-reason>${esc(offer.reason)}</p>`;
   box.innerHTML = `<div class="f-msg ${s.status === SEARCH_STATUS.INPUT_INVALID ? 'bad' : ''}" data-f-status="${esc(s.status)}"><p><b>${esc(s.message)}</b></p>${direct}</div>`;
-  $('[data-f-direct-open]', box)?.addEventListener('click', () => openDirect(offer));
+  $('[data-f-direct-open]', box)?.addEventListener('click', () => leaveDraft(() => openDirect(offer)));
 }
 
 function renderPublicData() {
@@ -107,43 +180,54 @@ function renderPublicData() {
     <p class="warn-note">공적자료 값은 이용조건 확인 전이라 화면 열람만 합니다. 카드 복사·저장·인쇄에는 넣지 않습니다.</p></div>`;
 }
 
+const repaint = (t, fn = render) => { if (t === st) fn(); else renderBundle(); };
+
 async function runPublicData() {
   const subject = active(); if (!subject) return;
-  const epoch = st.epoch;
+  const owner = ownerNow(); const tk = ticket(st, 'pd');
   st.pdBusy = true; render();
-  const res = await queryPublicData({ fetchImpl: (...a) => fetch(...a), location, index: st.index, row: st.row, target: st.direct });
-  if (epoch !== st.epoch || subject !== active()) return; // 새 상담·다른 필지로 바뀌었으면 늦은 응답 폐기
-  st.pd = res; st.pdBusy = false; render();
+  const res = await queryPublicData({ fetchImpl: fx(), location, index: st.index, row: st.row, target: st.direct });
+  const t = targetOf(owner); if (!t || t.tok.pd !== tk) return; // 새 상담·버린 필지·같은 필지 재요청이면 늦은 응답 폐기
+  t.pd = res; t.pdBusy = false; repaint(t);
   // 지도: PNU가 확인된 경우에만(주소 해석 실패·PNU 지적 미확인이면 지도도 부르지 않음). 같은 PNU로 경계·영상을 맞춘다.
-  if (res.pnu && !['resolve_pnu', 'pnu_parcel'].includes(res.step) && res.code !== 'PNU_NOT_FOUND') loadMap(res.pnu, epoch, subject);
+  if (res.pnu && !['resolve_pnu', 'pnu_parcel'].includes(res.step) && res.code !== 'PNU_NOT_FOUND') loadMap(res.pnu, owner);
 }
 
-async function loadMap(pnu, epoch, subject) {
-  st.map = { status: 'LOADING', pnu }; renderMap();
-  const res = await queryParcelMap({ fetchImpl: (...a) => fetch(...a), location, pnu, now: () => new Date() });
-  if (epoch !== st.epoch || subject !== active()) return;
-  if (res.status !== 'EXACT_ONE') { st.map = res; renderMap(); return; }
+async function loadMap(pnu, owner = ownerNow()) {
+  const t0 = targetOf(owner); if (!t0) return;
+  const tk = ticket(t0, 'map');
+  t0.map = { status: 'LOADING', pnu }; repaint(t0, renderMap);
+  const res = await queryParcelMap({ fetchImpl: fx(), location, pnu, now: () => new Date() });
+  const t = targetOf(owner); if (!t || t.tok.map !== tk) return;
+  if (res.status !== 'EXACT_ONE') { t.map = res; repaint(t, renderMap); return; }
   const view = fitView(res.target.geometry);
-  st.map = { ...res, view, mode: 'PARCEL', showTarget: true, showNeighbors: true, aerial: 'LOADING', fetched_at: new Date(res.fetched_at).toLocaleString('ko-KR', { hour12: false }),
+  t.map = { ...res, view, mode: 'PARCEL', showTarget: true, showNeighbors: true, aerial: 'LOADING', fetched_at: new Date(res.fetched_at).toLocaleString('ko-KR', { hour12: false }),
     cad: { tiles: {}, features: [], seen: new Set(), calls: 0, busy: false, v: 0 } };
-  renderMap();
+  repaint(t, renderMap);
   // 첫 화면은 화면 중심 칸부터 최대 CAD.autoTiles칸만 자동 조회. 그 밖은 '현재 화면 지적 불러오기'로(자동 무제한 호출 없음).
-  loadCad(st.map, tilesForView(view).slice(0, CAD.autoTiles));
+  loadCad(t.map, tilesForView(view).slice(0, CAD.autoTiles), owner);
 }
+
+// 지적 칸 호출 상한: 계량기가 보내기 전에 예약한다(묶음이면 묶음 공유, 아니면 이 필지). 막히면 BUNDLE_CAD_LIMIT.
 
 // 화면 범위 지적경계 칸 조회(요청당 4칸 · 상담당 VWorld 호출 상한). 받은 칸은 캐시(같은 상담 안에서 다시 부르지 않음).
-async function loadCad(m, tiles) {
+async function loadCad(m, tiles, owner = ownerNow()) {
   const cad = m?.cad; if (!cad || cad.busy || !tiles.length) return;
-  const epoch = st.epoch;
+  const alive = () => { const t = targetOf(owner); return t && t.map === m ? t : null; };
   cad.busy = true;
   tiles.forEach((t) => { cad.tiles[tileKey(t)] = { status: 'LOADING' }; });
-  cad.v += 1; renderMap();
+  cad.v += 1; if (alive() === st) renderMap();
+  try {
   for (let i = 0; i < tiles.length; i += CAD.perRequest) {
     const batch = tiles.slice(i, i + CAD.perRequest);
     if (cad.calls >= CAD.sessionCalls) { batch.forEach((t) => { cad.tiles[tileKey(t)] = { status: 'NOT_QUERIED', reason: 'SESSION_LIMIT' }; }); continue; }
-    const r = await queryCadastralTiles({ fetchImpl: (...a) => fetch(...a), location, pnu: m.pnu, tiles: batch });
-    if (epoch !== st.epoch || st.map !== m) return; // 새 상담·다른 필지면 폐기
-    if (!r.ok) { batch.forEach((t) => { cad.tiles[tileKey(t)] = { status: 'FAILED', reason: r.error_code || 'FAILED' }; }); }
+    const r = await queryCadastralTiles({ fetchImpl: fx(), location, pnu: m.pnu, tiles: batch });
+    if (!alive()) { // 새 상담·같은 필지 지도 재조회로 버려진 지도: 진행 중 칸을 '미조회'로 되돌리고 끝냄
+      Object.keys(cad.tiles).forEach((k) => { if (cad.tiles[k].status === 'LOADING') delete cad.tiles[k]; });
+      return; // finally에서 busy 해제
+    }
+    if (r.error_code === 'BUNDLE_CAD_LIMIT') { batch.forEach((t) => { cad.tiles[tileKey(t)] = { status: 'NOT_QUERIED', reason: 'SESSION_LIMIT' }; }); }
+    else if (!r.ok) { batch.forEach((t) => { cad.tiles[tileKey(t)] = { status: 'FAILED', reason: r.error_code || 'FAILED' }; }); }
     else {
       cad.calls += r.request_count;
       const got = new Set();
@@ -158,15 +242,21 @@ async function loadCad(m, tiles) {
       }
       batch.forEach((t) => { if (!got.has(tileKey(t))) cad.tiles[tileKey(t)] = { status: 'FAILED', reason: 'NO_RESPONSE' }; });
     }
-    cad.v += 1; renderMap();
+    cad.v += 1; if (alive() === st) renderMap();
   }
-  cad.busy = false; cad.v += 1; renderMap();
+  } finally {
+    // 어떤 경로로 끝나도 '조회 중' 칸·busy가 남지 않게
+    Object.keys(cad.tiles).forEach((k) => { if (cad.tiles[k].status === 'LOADING') cad.tiles[k] = { status: 'FAILED', reason: 'INTERRUPTED' }; });
+    cad.busy = false; cad.v += 1;
+    const t = alive(); if (t) repaint(t, renderMap);
+  }
 }
 
 let lastMapKey = '';
 function renderMap() {
   const panel = $('[data-f-map-panel]'); const box = $('[data-f-map]');
   if (!panel || !box) return;
+  renderBundle(); // 묶음 막대(조회 중 표시·호출 집계)도 같이 갱신 — 바뀐 것이 없으면 다시 그리지 않음
   panel.hidden = !active() || !st.map;
   if (panel.hidden) { box.innerHTML = ''; lastMapKey = ''; return; }
   const m = st.map;
@@ -174,7 +264,8 @@ function renderMap() {
   const sr = m.status === 'EXACT_ONE' ? stdReview() : null;
   m.std = sr && sr.markers ? { markers: sr.markers, selected: st.std.selected, showStandards: st.std.showStandards, showCandidates: st.std.showCandidates,
     summary: `후보 ${sr.list.filter((x) => x.kind === 'CANDIDATE').length}곳 · 표준지 위치확인 ${sr.meta.located}곳` } : null;
-  const key = JSON.stringify([st.epoch, m.status, m.pnu, m.view?.zoom, m.view?.center, m.mode, m.cad?.v, m.showTarget, m.showNeighbors, st.std?.status, st.std?.selected, st.std?.showStandards, st.std?.showCandidates, stdReviewKey, st.std ? st.zoningConfirm.valuation_date : '']);
+  { const mt = meter(); m.cadUsed = mt.cadUsed(); m.cadLeft = mt.cadLeft(); m.cadUnknown = mt.stats.cad_unknown + mt.stats.cad_reserved; m.cadShared = Boolean(st.bundle); }
+  const key = JSON.stringify([st.epoch, m.status, m.pnu, m.view?.zoom, m.view?.center, m.mode, m.cad?.v, m.cadUsed, m.cadUnknown, m.cadShared, m.showTarget, m.showNeighbors, st.std?.status, st.std?.selected, st.std?.selectedYear, st.std?.reused, st.std?.retryFailed, st.std?.showStandards, st.std?.showCandidates, stdReviewKey, st.std ? st.zoningConfirm.valuation_date : '']);
   if (key === lastMapKey) return;
   lastMapKey = key;
   // 같은 영상 주소(중심·줌 동일)면 이미 받은 영상 요소를 그대로 옮겨 붙인다 — 후보 선택·표시 전환 때 항공영상 재요청 없음.
@@ -210,7 +301,7 @@ function renderMap() {
     m.view = withZoom({ ...m.view, center: mercator(ll), centerLonLat: ll }, m.view.zoom + 2); m.mode = null; m.aerial = 'LOADING'; renderMap();
   }));
   box.querySelectorAll('[data-f-std-pin]').forEach((b) => b.addEventListener('click', () => selectStandard(b.dataset.fStdPin, false)));
-  box.querySelectorAll('[data-f-std-item]').forEach((b) => b.addEventListener('click', () => selectStandard(b.dataset.fStdItem, true)));
+  box.querySelectorAll('[data-f-std-item]').forEach((b) => b.addEventListener('click', () => selectStandard(b.dataset.fStdItem, true, b.dataset.fStdItemYear)));
   box.querySelectorAll('[data-f-std-go]').forEach((b) => b.addEventListener('click', runStandard));
   box.querySelectorAll('[data-f-cad-load]').forEach((b) => b.addEventListener('click', () => loadCad(m, cadCoverage(m.view, m.cad).missing.slice(0, CAD.perClick))));
 }
@@ -222,7 +313,7 @@ let stdReviewKey = ''; let stdReviewCache = null;
 function stdReview() {
   if (!st.std || !st.std.response) return null;
   const z = currentZoning();
-  const k = JSON.stringify([st.std.fetched_at, z?.status, z?.basis_zoning, z?.verification_label, pdValue('zoning')?.value]);
+  const k = JSON.stringify([st.pid, st.std.pnu, st.std.fetched_at, z?.status, z?.basis_zoning, z?.verification_label, pdValue('zoning')?.value]);
   if (k !== stdReviewKey) {
     stdReviewKey = k;
     stdReviewCache = buildStandardReview({ response: st.std.response, zoning: z,
@@ -233,14 +324,20 @@ function stdReview() {
 }
 async function runStandard() {
   const pnu = st.pd?.pnu; const subject = active(); if (!pnu || !subject || st.map?.status !== 'EXACT_ONE') return;
-  const year = pdValue('zoning')?.base_year; const epoch = st.epoch;
+  const year = pdValue('zoning')?.base_year; const owner = ownerNow(); const tk = ticket(st, 'std');
   const z = currentZoning();
   const reviewZoning = z && ['NOTICE_PROJECT_REASON', 'PROJECT_RELATED'].includes(z.status) && z.basis_zoning ? z.basis_zoning : pdValue('zoning')?.value;
-  st.std = { pnu, status: 'LOADING', selected: null, showStandards: false, showCandidates: true }; renderMap();
-  const res = await queryStandardLands({ fetchImpl: (...a) => fetch(...a), location, pnu, year, reviewZoning, now: () => new Date() });
-  if (epoch !== st.epoch || subject !== active() || st.pd?.pnu !== pnu) return; // 다른 필지·새 상담이면 폐기
-  st.std = { pnu, status: res.ok ? 'OK' : 'FAILED', response: res.ok ? res : null, error: res.ok ? null : res, fetched_at: res.fetched_at,
+  const prev = st.std?.pnu === pnu && st.std.response ? st.std : null;
+  st.std = { pnu, status: 'LOADING', selected: null, showStandards: false, showCandidates: true }; renderMap(); renderBundle();
+  const res = await queryStandardLands({ fetchImpl: fx(), location, pnu, year, reviewZoning, now: () => new Date() });
+  const t = targetOf(owner);
+  if (!t || t.tok.std !== tk || t.pd?.pnu !== pnu) return; // 다른 필지·새 상담·같은 필지 재요청이면 폐기
+  if (!res.ok && prev) { // 재조회 실패: 앞서 받은 결과(원래 조회시각)를 지우지 않는다
+    t.std = { ...prev, retryFailed: res.reason || res.error_code || '사유 미상' }; repaint(t, renderMap); return;
+  }
+  t.std = { pnu, status: res.ok ? 'OK' : 'FAILED', response: res.ok ? res : null, error: res.ok ? null : res, fetched_at: res.fetched_at, reused: Boolean(res.reused),
     selected: null, showStandards: false, showCandidates: true };
+  if (t !== st) { t.std.pendingSelect = true; renderBundle(); return; } // 그 필지로 돌아올 때 첫 후보 선택·후보 비교
   const sr = stdReview();
   st.std.selected = sr?.list?.find((x) => x.kind === 'CANDIDATE')?.pnu || null;
   // 후보가 있으면 기본 보기는 '후보 비교'(대상 + 후보), 일반 표준지는 숨김(표시 버튼으로 켬)
@@ -253,9 +350,9 @@ function fitParcel(m) {
   const same = m.view && m.view.zoom === view.zoom && aerialUrl(m.view) === aerialUrl(view);
   m.view = view; m.mode = 'PARCEL'; if (!same) m.aerial = 'LOADING'; renderMap();
 }
-function selectStandard(pnu, fromList) {
+function selectStandard(pnu, fromList, year = null) {
   if (!st.std) return;
-  st.std.selected = pnu;
+  st.std.selected = pnu; st.std.selectedYear = year;
   const m = st.map; const mk = stdReview()?.markers?.find((x) => x.pnu === pnu);
   if (fromList && m?.view && mk) {
     const [x, y] = project(m.view, mk.centroid);
@@ -274,10 +371,23 @@ function fitStandard(m, sr) {
   const same = m.view && aerialUrl(m.view) === aerialUrl(view);
   m.view = view; m.mode = cands.length ? 'COMPARE' : null; if (!same) m.aerial = 'LOADING'; renderMap();
 }
+// 대상 필지 ↔ 선택 표준지 특성(이용상황·도로접면·형상·고저). 필지 슬롯의 공적자료·표준지 응답 그대로(필지마다 독립).
+// API 속성 텍스트이며 토지특성현황도(도면) 원문이 아님. 값이 없으면 '미확인'(추정 없음).
+function traitTable(sel) {
+  const tt = targetTraits(st.pd?.values || []);
+  const stdCell = (b) => (b?.value ? `${esc(b.value)}${b.status === 'NAME_OTHER' ? ' <span class="muted">(명칭만 참고 · 이 필지 확인 안 됨)</span>' : ''}` : b?.status === 'CONFLICT' ? `값 충돌·확인 필요(${esc(b.values.join(' / '))})` : b?.status === 'CODE_ONLY' ? `코드 ${esc(b.code)}(명칭 미확인)` : '미확인');
+  const ty = TRAIT_FIELDS.map((f) => tt[f.key].year).find(Boolean); const sy = sel.year || TRAIT_FIELDS.map((f) => sel.traits?.[f.key]?.year).find(Boolean);
+  return `<table class="f-traits small" data-f-std-traits="${esc(sel.pnu)}"><thead><tr><th>특성</th><th>대상 필지</th><th>${sel.kind === 'CANDIDATE' ? `후보 ${sel.rank}` : '표준지'}</th></tr></thead><tbody>
+    ${TRAIT_FIELDS.map((f) => { const a = tt[f.key]; const b = sel.traits?.[f.key];
+      return `<tr data-f-std-trait="${f.key}"><th>${f.label}</th><td data-f-trait-target data-f-trait-status="${a.status}">${a.value ? esc(a.value) : '미확인'}</td><td data-f-trait-std data-f-trait-status="${esc(b?.status || 'MISSING')}">${stdCell(b)}</td></tr>`; }).join('')}
+    </tbody></table>
+    <p class="small muted" data-f-trait-note>대상: 공적자료 토지특성 ${esc(ty || '연도 미상')}년 · ${sel.kind === 'CANDIDATE' ? '후보' : '표준지'}: 표준지 ${esc(sy || '연도 미상')}년 공시 속성${ty && sy && String(ty) !== String(sy) ? ' · <b>기준연도 다름</b>' : ''} — API 텍스트 값, 토지특성현황도(도면) 원문 아님 · 검토 보조</p>`;
+}
 const won = (n) => (n == null ? '미기재' : `${Number(n).toLocaleString('ko-KR')}원/㎡`);
 const dist = (d) => (d == null ? '거리 미산출' : d >= 1000 ? `${(d / 1000).toFixed(2)}km` : `${Math.round(d)}m`);
 function renderStdPanel(sr) {
   const s = st.std;
+  const cf = (x, key, text) => (x.conflict?.[key] ? '값 충돌' : text); // 충돌 필드는 한쪽 값을 고르지 않음
   const canQuery = st.pd?.status === PD_STATUS.OK && pdValue('zoning')?.base_year;
   const head = `<div class="f-std-panel" data-f-std-panel><h3 class="small"><b>비교표준지 후보</b> <span class="muted">검토 보조 · 화면 열람 전용(카드·인쇄 제외)</span></h3>`;
   if (!s) {
@@ -286,38 +396,41 @@ function renderStdPanel(sr) {
   }
   if (s.status === 'LOADING') return `${head}<p class="small muted" data-f-std-state="LOADING">표준지 조회 중…</p></div>`;
   if (s.status === 'FAILED') {
-    return `${head}<p class="small" data-f-std-state="FAILED"><span class="chip bad">표준지 미조회</span> ${esc(s.error?.reason || s.error?.error_code || '')} — 임의 표식·가상 후보를 만들지 않습니다.</p><button type="button" class="ghost" data-f-std-go>다시 조회</button></div>`;
+    return `${head}<p class="small" data-f-std-state="FAILED"><span class="chip bad">표준지 미조회</span> ${esc(s.error?.reason || s.error?.error_code || '')} — 임의 표식·가상 후보를 만들지 않습니다.</p>${s.error?.error_code === 'BUNDLE_STD_LIMIT' ? '' : '<button type="button" class="ghost" data-f-std-go>다시 조회</button>'}</div>`;
   }
   if (!sr || sr.status === 'TARGET_NOT_EXACT' || sr.status === 'FAILED') {
     return `${head}<p class="small" data-f-std-state="${esc(sr?.status || 'FAILED')}"><span class="chip bad">후보 판정 안 함</span> ${esc((sr?.notes || []).join(' '))}</p></div>`;
   }
-  const sel = sr.list.find((x) => x.pnu === s.selected) || null;
+  const sel = (s.selectedYear != null && sr.list.find((x) => x.pnu === s.selected && String(x.year) === String(s.selectedYear))) || sr.list.find((x) => x.pnu === s.selected) || null;
   const short = (label) => String(label || '').trim().split(/\s+/).slice(-2).join(' ');
   // 후보 3건은 한 줄 요약(지번·거리·원/㎡·용도지역), 나머지는 기존 상세 줄
   const item = (x) => (x.kind === 'CANDIDATE'
-    ? `<li><button type="button" class="f-std-item cand compact${x.pnu === s.selected ? ' sel' : ''}" data-f-std-item="${esc(x.pnu)}" data-f-std-item-kind="${x.kind}"><span class="n">${x.rank}</span><b>${esc(short(x.label))}</b> <span class="small">${esc(dist(x.distance_m))} · ${esc(won(x.price))} · ${esc(x.zoning || '용도지역 미기재')}</span></button></li>`
-    : `<li><button type="button" class="f-std-item std${x.pnu === s.selected ? ' sel' : ''}" data-f-std-item="${esc(x.pnu)}" data-f-std-item-kind="${x.kind}">
-      <b>${esc(x.label)}</b> <span class="small">${esc(won(x.price))} · ${esc(x.zoning || '용도지역 미기재')} · ${esc(x.land_use || '이용상황 미기재')} · ${esc(dist(x.distance_m))}</span>
+    ? `<li><button type="button" class="f-std-item cand compact${x === sel ? ' sel' : ''}" data-f-std-item="${esc(x.pnu)}" data-f-std-item-kind="${x.kind}"><span class="n">${x.rank}</span><b>${esc(short(x.label))}</b> <span class="small">${esc(dist(x.distance_m))} · ${esc(won(x.price))} · ${esc(x.zoning || '용도지역 미기재')}</span></button></li>`
+    : `<li><button type="button" class="f-std-item std${x === sel ? ' sel' : ''}" data-f-std-item="${esc(x.pnu)}" data-f-std-item-year="${esc(x.year ?? '')}" data-f-std-item-kind="${x.kind}">
+      <b>${esc(x.label)}</b> <span class="small">${esc(cf(x, 'price', won(x.price)))} · ${esc(cf(x, 'zoning', x.zoning || '용도지역 미기재'))} · ${esc(cf(x, 'land_use', x.land_use || '이용상황 미기재'))} · ${esc(dist(x.distance_m))}${x.year && String(x.year) !== String(sr.meta.year) ? ` · ${esc(x.year)}년` : ''}</span>
       <span class="small muted">${esc(x.status_label)}${x.located ? '' : ' · 지도 미표시'}${x.reasons?.length ? ` — ${esc(x.reasons[0])}` : ''}</span></button></li>`);
   const cands = sr.list.filter((x) => x.kind === 'CANDIDATE'); const rest = sr.list.filter((x) => x.kind !== 'CANDIDATE');
   const statusChip = { FOUND: `<span class="chip warn">후보 ${cands.length}건 — 확정 아님</span>`, NONE: '<span class="chip bad">조건에 맞는 후보 없음</span>',
     SCHEMA_UNMAPPED: '<span class="chip bad">필드 해석 불가 — 판정 보류</span>', INSUFFICIENT_TARGET: '<span class="chip bad">대상 용도지역·이용상황 미확보 — 판정 보류</span>' }[sr.status] || '';
   return `${head}<div data-f-std-state="${esc(sr.status)}">
+    ${s.retryFailed ? `<p class="small warn-note" data-f-std-retry-failed>다시 조회 실패 — ${esc(s.retryFailed)} · 아래는 앞서 받은 결과(조회 ${esc(fmtTime(s.fetched_at))})</p>` : ''}
     <p class="small">${statusChip} <span data-f-std-review-zoning="${esc(sr.review.basis)}">검토 용도지역: <b>${esc(sr.review.label)}</b></span></p>
     ${cands.length ? `<ol class="f-std-list" data-f-std-list>${cands.map(item).join('')}</ol>` : ''}
     ${sel ? `<div class="f-std-detail" data-f-std-detail="${esc(sel.pnu)}"><b>${sel.kind === 'CANDIDATE' ? `${STD_LABEL.CANDIDATE} ${sel.rank}` : esc(sel.status_label)} · ${esc(short(sel.label))}</b> <span class="chip warn">${esc(STD_LABEL.NOT_SELECTED)}</span>
-      <p class="small f-std-line">${esc(won(sel.price))} · ${esc(sel.zoning || '용도지역 미기재')} · ${esc(sel.land_use || '이용상황 미기재')} · 직선 ${esc(dist(sel.distance_m))}${sel.kind !== 'CANDIDATE' && sel.reasons?.length ? ` · ${esc(sel.reasons[0])}` : ''}</p>
+      <p class="small f-std-line">${esc(cf(sel, 'price', won(sel.price)))} · ${esc(cf(sel, 'zoning', sel.zoning || '용도지역 미기재'))} · ${esc(cf(sel, 'land_use', sel.land_use || '이용상황 미기재'))} · 직선 ${esc(dist(sel.distance_m))}${sel.kind !== 'CANDIDATE' && sel.reasons?.length ? ` · ${esc(sel.reasons[0])}` : ''}</p>
+      ${traitTable(sel)}
       <details class="f-fold" data-f-std-why><summary class="small">근거·출처</summary>
       <dl class="small"><dt>지번</dt><dd data-f-std-d="lot">${esc(sel.label)}</dd><dt>PNU</dt><dd data-f-std-d="pnu">${esc(sel.pnu)}</dd>
-      <dt>공시지가</dt><dd data-f-std-d="price">${esc(won(sel.price))}</dd><dt>공시연도</dt><dd data-f-std-d="year">${esc(sel.year || '미상')}년</dd>
-      <dt>용도지역</dt><dd data-f-std-d="zoning">${esc(sel.zoning || '미기재')}</dd><dt>이용상황</dt><dd data-f-std-d="land_use">${esc(sel.land_use || '미기재')}</dd>
-      <dt>지목</dt><dd>${esc(sel.land_category || '미기재')}</dd><dt>거리</dt><dd data-f-std-d="distance">대상 필지 중심↔표준지 중심 직선 ${esc(dist(sel.distance_m))}</dd>
+      <dt>공시지가</dt><dd data-f-std-d="price">${esc(cf(sel, 'price', won(sel.price)))}</dd><dt>공시연도</dt><dd data-f-std-d="year">${esc(sel.year || '미상')}년</dd>
+      <dt>용도지역</dt><dd data-f-std-d="zoning">${esc(cf(sel, 'zoning', sel.zoning || '미기재'))}</dd><dt>이용상황</dt><dd data-f-std-d="land_use">${esc(cf(sel, 'land_use', sel.land_use || '미기재'))}</dd>
+      <dt>지목</dt><dd>${esc(cf(sel, 'land_category', sel.land_category || '미기재'))}</dd><dt>거리</dt><dd data-f-std-d="distance">대상 필지 중심↔표준지 중심 직선 ${esc(dist(sel.distance_m))}</dd>
       <dt>위치</dt><dd>${sel.located ? '연속지적도 exact-one 경계로 확인' : '위치 미확인 — 지도 미표시'}</dd>
       <dt>검토 근거</dt><dd data-f-std-d="reasons">${(sel.reasons || []).map((r) => `<div>${esc(r)}</div>`).join('')}${(sel.review || []).map((r) => `<div class="muted">${esc(r)}</div>`).join('')}</dd>
-      <dt>출처</dt><dd class="muted">VWorld 표준지공시지가(getReferLandPriceAttr)${sel.names_from_land_characteristics.length ? ' · 코드 명칭은 같은 연도 토지특성 응답으로 채움' : ''} · 감정평가서 선정 여부 미확인</dd></dl></details></div>` : ''}
+      <dt>특성 출처</dt><dd data-f-std-d="traits">${TRAIT_FIELDS.map((f) => `${f.label}: ${esc(TRAIT_STATUS[sel.traits?.[f.key]?.status || 'MISSING'])}`).join(' · ')}</dd>
+      <dt>출처</dt><dd class="muted">VWorld 표준지공시지가(getReferLandPriceAttr)${sel.names_from_land_characteristics.length ? ' · 코드 명칭 일부는 토지특성·다른 표준지 응답으로 채움(항목별 출처는 특성 출처 참조)' : ''} · 감정평가서 선정 여부 미확인</dd></dl></details></div>` : ''}
     ${rest.length ? `<details class="f-fold" data-f-std-rest><summary class="small">제외·반경 밖·위치 미확인 ${rest.length}건</summary><ul class="f-std-list">${rest.map(item).join('')}</ul></details>` : ''}
     <details class="f-fold" data-f-std-more><summary class="small">조회 범위·기준시점·유의사항</summary>
-    <p class="small muted" data-f-std-scope>조회 범위: ${esc(sr.scope.label)} · 표준지 ${sr.meta.total_rows}행 · 위치 확인 ${sr.meta.located}곳(반경 안 ${sr.meta.in_radius}행) · 조회 ${esc(new Date(s.fetched_at).toLocaleString('ko-KR', { hour12: false }))}${sr.meta.request_count != null ? ` · VWorld 호출 ${sr.meta.request_count}회` : ''}</p>
+    <p class="small muted" data-f-std-scope>조회 범위: ${esc(sr.scope.label)} · 표준지 ${sr.meta.total_rows}행 · 위치 확인 ${sr.meta.located}곳(반경 안 ${sr.meta.in_radius}행) · 조회 ${esc(new Date(s.fetched_at).toLocaleString('ko-KR', { hour12: false }))}${sr.meta.request_count != null ? ` · VWorld 호출 ${sr.meta.request_count}회` : ''}${s.reused ? '<span data-f-std-reused> · 저장 결과 재사용(새 조회 아님)</span>' : ''}</p>
     <p class="small" data-f-std-basis-date>표준지 공시연도 <b>${esc(sr.meta.year)}년</b>(${esc(sr.meta.year)}-01-01 공시 기준) · ${esc(currentZoning()?.valuation_date_label || '감정평가 기준시점 미확인')} — 적용할 표준지 공시연도는 기준시점에 따라 달라지므로 별도 확인(전문가 검토)</p>
     ${sr.notes.map((n) => `<p class="small warn-note">${esc(n)}</p>`).join('')}
     <button type="button" class="ghost" data-f-std-go>다시 조회</button></details></div></div>`;
@@ -361,6 +474,7 @@ function renderIssuesBox(card) {
   if (issueBox.dataset.for !== `${st.epoch}`) {
     issueBox.dataset.for = `${st.epoch}`;
     issueBox.innerHTML = issuesFor(st.profile).map((it) => `<label class="f-issue"><input type="checkbox" data-f-issue="${esc(it.id)}"> <b>${esc(it.label)}</b><span class="q">${esc(it.question)}</span></label>${it.free_text ? `<textarea class="f-other" data-f-other rows="2" maxlength="500" placeholder="기타 쟁점 내용(실명·전화번호 제외)" hidden></textarea>` : ''}`).join('');
+    issueBox.querySelectorAll('[data-f-issue]').forEach((cb) => { cb.checked = st.issues.has(cb.dataset.fIssue); }); // 필지 전환 시 선택 복원(새 필지는 빈 집합)
     issueBox.querySelectorAll('[data-f-issue]').forEach((cb) => cb.addEventListener('change', () => {
       if (cb.checked) st.issues.add(cb.dataset.fIssue); else st.issues.delete(cb.dataset.fIssue);
       $('[data-f-out]').textContent = ''; render();
@@ -374,10 +488,10 @@ function renderIssuesBox(card) {
 }
 
 // 용도지역 보상평가 기준: 사업 고시는 그 사업 색인의 필지(색인 행·색인 리 직접 조회)에만 연결한다.
-function zoningProject() {
+function zoningProject(s = st) {
   const n = st.index?.notice;
   if (!n || st.profile?.id === 'generic' && !n.notice_no) return null;
-  if (st.row || st.direct?.scope === 'INDEX_AREA') {
+  if (s.row || s.direct?.scope === 'INDEX_AREA') {
     const p = st.profile || {};
     return { ...n, zoning_check: p.notice?.zoning_check || n.zoning_check || null, zoning_decisions: p.zoning_decisions || [], zoning_events: p.zoning_events || [],
       prior_designations: p.prior_designations || [], supporting_documents: p.supporting_documents || [] };
@@ -385,25 +499,27 @@ function zoningProject() {
   return null;
 }
 // 필지 대조 기록은 사업 색인 필지이면서 PNU가 정확히 같은 경우에만 붙인다.
-function parcelEvidence() {
-  const pnu = st.pd?.pnu; const proj = zoningProject();
+function parcelEvidence(s = st) {
+  const pnu = s.pd?.pnu; const proj = zoningProject(s);
   return proj && pnu ? (st.profile?.parcel_zoning_evidence?.[pnu] || []) : [];
 }
-function zoningHistoryAll() {
-  const extra = st.zoningExtra?.pnu === st.pd?.pnu ? (st.zoningExtra.rows || []) : [];
-  return [...(st.pd?.zoning_history || []), ...extra];
+function zoningHistoryAll(s = st) {
+  const extra = s.zoningExtra?.pnu === s.pd?.pnu ? (s.zoningExtra.rows || []) : [];
+  return [...(s.pd?.zoning_history || []), ...extra];
 }
-function currentZoning() {
-  if (!st.pd) return null;
-  return evaluateZoningBasis({ history: zoningHistoryAll(), project: zoningProject(), confirmation: st.zoningConfirm, valuationDate: st.zoningConfirm.valuation_date, parcelEvidence: parcelEvidence() });
+function currentZoning(s = st) {
+  if (!s.pd) return null;
+  return evaluateZoningBasis({ history: zoningHistoryAll(s), project: zoningProject(s), confirmation: s.zoningConfirm, valuationDate: s.zoningConfirm.valuation_date, parcelEvidence: parcelEvidence(s) });
 }
 async function runZoningTrace() {
   const pnu = st.pd?.pnu; const subject = active(); if (!pnu || !subject) return;
-  const epoch = st.epoch;
-  st.zoningExtra = { pnu, status: 'LOADING', rows: [] }; renderZoning();
-  const res = await queryZoningHistory({ fetchImpl: (...a) => fetch(...a), location, pnu });
-  if (epoch !== st.epoch || subject !== active() || st.pd?.pnu !== pnu) return; // 다른 필지·새 상담이면 폐기
-  st.zoningExtra = { ...res, pnu }; $('[data-f-out]').textContent = ''; renderZoning(); renderCard();
+  const owner = ownerNow(); const tk = ticket(st, 'zx');
+  st.zoningExtra = { pnu, status: 'LOADING', rows: [] }; renderZoning(); renderBundle();
+  const res = await queryZoningHistory({ fetchImpl: fx(), location, pnu });
+  const t = targetOf(owner);
+  if (!t || t.tok.zx !== tk || t.pd?.pnu !== pnu) return; // 다른 필지·새 상담·같은 필지 재요청이면 폐기
+  t.zoningExtra = { ...res, pnu };
+  if (t === st) { $('[data-f-out]').textContent = ''; renderZoning(); renderCard(); } else renderBundle();
 }
 const ZCHIP = { NO_DATA: 'bad', NO_CHANGE_OBSERVED: 'warn', CHANGE_UNCONFIRMED: 'bad', NOTICE_PROJECT_REASON: 'warn', PROJECT_RELATED: 'warn', UNRELATED: 'warn' };
 let lastZoningKey = '';
@@ -483,7 +599,126 @@ function renderZoning() {
   renderZoningResult();
 }
 
-function render() { renderResult(); renderCard(); renderPublicData(); renderZoning(); renderMap(); }
+function render() { renderResult(); renderCard(); renderPublicData(); renderZoning(); renderMap(); renderBundle(); }
+
+// ── 상담 묶음 막대 · 전체 필지 지도 · 통합 요약 ─────────────────────────────
+const bundleKeys = { bar: '', map: '' };
+// 슬롯별 표시용 상태(활성 필지는 st 기준)
+const slotState = (s) => (s.pid === st.slotId ? st : s);
+const slotBusy = (s) => { const x = slotState(s); return Boolean(x.pdBusy || x.map?.status === 'LOADING' || x.map?.cad?.busy || x.std?.status === 'LOADING' || x.zoningExtra?.status === 'LOADING'); };
+function bundleParcels() {
+  saveSlot();
+  return st.bundle.slots.map((s, i) => {
+    const card = s.row ? buildFieldCard({ profile: st.profile, index: st.index, row: s.row, selectedIssueIds: [...s.issues], memo: s.memo, otherText: s.other, zoning: currentZoning(s) })
+      : buildDirectCard({ profile: st.profile, target: s.direct, selectedIssueIds: [...s.issues], memo: s.memo, otherText: s.other, zoning: currentZoning(s) });
+    return { n: i + 1, pid: s.pid, label: s.label, kind: s.row ? 'ROW' : 'DIRECT', notice: s.row ? (st.index?.notice || null) : null,
+      pnu: s.pd?.pnu || s.direct?.pnu || null, lot_key: s.row ? `${s.row.eupmyeon || ''}|${rowKey(s.row)}` : null, area_basis_date: s.area_basis_date || '', // 세목표 면적 기준일(감정평가 가격시점 아님)
+      facts: s.row ? noticeFacts(s.row) : null, ownership: s.ownership, card };
+  });
+}
+function renderBundle() {
+  const box = $('[data-f-bundle]'); if (!box) return;
+  const b = st.bundle;
+  box.hidden = !b && !active();
+  if (box.hidden) { box.innerHTML = ''; bundleKeys.bar = ''; bundleKeys.map = ''; renderBundleTools(); return; }
+  if (!b) { // 단일 필지: 담기 버튼 하나만
+    if (bundleKeys.bar !== 'single') { bundleKeys.bar = 'single'; bundleKeys.map = ''; box.innerHTML = '<button type="button" class="ghost f-bundle-add" data-f-bundle-add>＋ 상담 묶음에 담기(여러 필지 소유자)</button>'; $('[data-f-bundle-add]', box).addEventListener('click', () => addToBundle()); }
+    renderBundleTools(); return;
+  }
+  const act = activeSlot(); const stats = b.cache.stats;
+  const conflicts = pnuConflicts(b.slots.map((s) => ({ pnu: slotState(s).pd?.pnu || s.direct?.pnu || null })));
+  const barKey = JSON.stringify([b.slots.map((s) => [s.pid, s.label, slotBusy(s), slotState(s).pd?.pnu || null, s.ownership]), st.slotId, Boolean(active()), b.note, b.mapOpen, stats, conflicts, b.pending ? [b.pending.canKeep] : null]);
+  if (barKey !== bundleKeys.bar) {
+    bundleKeys.bar = barKey;
+    const own = act ? `<div class="f-own" data-f-own><span class="small">${circled(b.slots.indexOf(act) + 1)} 소유 확인</span>
+      <select data-f-own-basis aria-label="소유 확인 근거">${OWNERSHIP_BASIS.map(([k, l]) => `<option value="${k}"${act.ownership.basis === k ? ' selected' : ''}>${l}</option>`).join('')}</select>
+      <select data-f-own-coown aria-label="공동소유 여부">${CO_OWNERSHIP.map(([k, l]) => `<option value="${k}"${act.ownership.coown === k ? ' selected' : ''}>${l}</option>`).join('')}</select>
+      ${ownershipNeedsWarning(act.ownership) ? '<span class="chip warn" data-f-own-warn>본인 몫 면적 아님</span>' : ''}
+      ${act.row ? `<label class="small f-area-basis">세목표 면적 기준일(원문에 적힌 날짜만 · 감정평가 가격시점 아님) <input type="date" min="1900-01-01" data-f-area-basis value="${esc(act.area_basis_date || '')}"></label>` : ''}</div>` : '';
+    const html = `<div class="f-bundle-bar" data-f-bundle-bar data-count="${b.slots.length}">
+      <div class="f-bundle-head"><b>상담 묶음 #${b.no}</b> <span class="small">${b.slots.length}필지</span>
+        ${active() && !act ? `<button type="button" class="secondary f-bundle-add" data-f-bundle-add ${b.slots.length >= BUNDLE.maxParcels ? 'disabled' : ''}>＋ 이 필지 담기</button>` : ''}
+        ${b.slots.length >= 2 ? `<button type="button" class="ghost" data-f-bundle-map-btn aria-pressed="${b.mapOpen}">전체 필지 지도</button>` : ''}</div>
+      <div class="f-bundle-chips" role="tablist" aria-label="묶음 필지">${b.slots.map((s, i) => `<button type="button" role="tab" class="f-chip${s.pid === st.slotId ? ' sel' : ''}" aria-selected="${s.pid === st.slotId}" data-f-bundle-pick="${s.pid}"${slotBusy(s) ? ' data-f-bundle-busy' : ''}>${circled(i + 1)} ${esc(s.label)}${slotBusy(s) ? ' <i class="f-dot" aria-label="조회 중"></i>' : ''}</button>`).join('')}
+        ${active() && !act ? '<span class="f-chip draft" data-f-bundle-draft>담지 않은 필지 열림</span>' : ''}</div>
+      ${b.note ? `<p class="small warn-note" data-f-bundle-note>${esc(b.note)}</p>` : ''}
+      ${b.pending ? `<div class="warn-note f-draft-guard" data-f-draft-guard role="alert"><p class="small"><b>담지 않은 필지에 입력한 내용(메모·쟁점 등)이 있습니다.</b> ${b.pending.canKeep ? '담고 이동하면 보존되고, ' : '이 필지는 이미 담겨 있거나 묶음이 가득 차 새로 담을 수 없습니다. '}버리면 되돌릴 수 없습니다.</p>
+        <div class="f-actions">${b.pending.canKeep ? '<button type="button" class="primary" data-f-draft-keep>담고 이동</button>' : ''}<button type="button" class="secondary" data-f-draft-stay>머무르기</button><button type="button" class="ghost" data-f-draft-drop>버리고 이동</button></div></div>` : ''}
+      ${conflicts.map((c) => `<p class="small warn-note" data-f-bundle-conflict>같은 PNU ${esc(c.pnu)} — ${c.numbers.map(circled).join('·')} 중복 가능 · 확인 필요(자동 병합 안 함 · 면적 합계 보류·중복 제외)</p>`).join('')}
+      ${own}</div>`;
+    let mapBox = $('[data-f-bundle-map]', box);
+    if (mapBox) mapBox.remove(); // 전체 지도(영상)는 따로 두어 막대만 다시 그려도 영상 재요청 없음
+    box.innerHTML = html;
+    if (mapBox) box.appendChild(mapBox);
+    $('[data-f-bundle-add]', box)?.addEventListener('click', () => addToBundle());
+    ['keep', 'stay', 'drop'].forEach((k) => $(`[data-f-draft-${k}]`, box)?.addEventListener('click', () => answerDraft(k)));
+    box.querySelectorAll('[data-f-bundle-pick]').forEach((el) => el.addEventListener('click', () => leaveDraft(() => switchTo(Number(el.dataset.fBundlePick)))));
+    $('[data-f-bundle-map-btn]', box)?.addEventListener('click', () => { b.mapOpen = !b.mapOpen; renderBundle(); });
+    $('[data-f-own-basis]', box)?.addEventListener('change', (e) => { act.ownership = { ...act.ownership, basis: e.target.value }; renderBundle(); });
+    // 날짜 입력 중에는 다시 그리지 않는다(연도 입력이 끊김) — 요약을 만들 때 값을 읽는다.
+    $('[data-f-area-basis]', box)?.addEventListener('input', (e) => { act.area_basis_date = e.target.value; });
+    $('[data-f-own-coown]', box)?.addEventListener('change', (e) => { act.ownership = { ...act.ownership, coown: e.target.value }; renderBundle(); });
+  }
+  renderBundleMapBox(box);
+  renderBundleTools();
+}
+// 공통 메모·통합 요약·호출 집계: 지도를 밀어내지 않도록 카드 아래(기존 카드 버튼 옆)에 둔다.
+function renderBundleTools() {
+  const tools = $('[data-f-bundle-tools]'); if (!tools) return;
+  const b = st.bundle;
+  tools.hidden = !b;
+  if (!b) { tools.innerHTML = ''; bundleKeys.tools = ''; return; }
+  if (!$('[data-f-bundle-memo]', tools)) {
+    tools.innerHTML = `<div class="f-bundle-bar"><b class="small">상담 묶음 #${b.no} 통합</b>
+      <label class="f-memo small">공통 메모 <span class="hint">묶음 전체 · 실명·연락처·지분값 적지 마세요</span><textarea data-f-bundle-memo rows="2" maxlength="1000"></textarea></label>
+      <div class="f-actions"><button type="button" class="primary" data-f-bundle-copy>통합 현장요약 복사</button><button type="button" class="secondary" data-f-bundle-save>필지별 상세 저장(.txt)</button></div>
+      <p class="small muted" data-f-bundle-stats></p><p class="small" data-f-bundle-out aria-live="polite"></p></div>`;
+    const memo = $('[data-f-bundle-memo]', tools); memo.value = b.commonMemo;
+    memo.addEventListener('input', () => { b.commonMemo = memo.value; });
+    $('[data-f-bundle-copy]', tools).addEventListener('click', copyBundle);
+    $('[data-f-bundle-save]', tools).addEventListener('click', saveBundle);
+  }
+  const s = b.cache.stats;
+  $('[data-f-bundle-stats]', tools).textContent = `이번 묶음에서 계측된 호출(첫 필지는 담기 전 조회 포함 · 항공영상 제외 · 전체 VWorld 호출 수 아님): 지적 ${s.vworld_cad}회/${BUNDLE.cadCalls}${s.cad_unknown ? `(+미확인 최대 ${s.cad_unknown}회)` : ''}${s.cad_reserved ? `(+진행 중 예약 ${s.cad_reserved}회)` : ''} · 표준지 ${s.vworld_std}회(조회 ${s.std_sent}/${BUNDLE.stdLookups})${s.std_failed ? ` · 표준지 실패 ${s.std_failed}${s.std_unknown ? `(호출 수 미확인 ${s.std_unknown})` : ''}` : ''} · 기타 브리지 요청 ${s.other_requests}회${s.other_failed ? `(실패 ${s.other_failed})` : ''}(VWorld 호출 수 미제공) · 저장 결과 재사용 ${s.reuse}회${s.blocked ? ` · 한도로 막음 ${s.blocked}회` : ''}`;
+}
+// 전체 필지 지도: 대상 경계가 exact-one으로 확인된 필지만 번호로. 영상 1장, 지적·표준지 조회 없음.
+function renderBundleMapBox(box) {
+  const b = st.bundle;
+  let mapBox = $('[data-f-bundle-map]', box);
+  if (!b.mapOpen || b.slots.length < 2) { if (mapBox) mapBox.remove(); bundleKeys.map = ''; return; }
+  const items = b.slots.map((s, i) => { const m = slotState(s).map; return { n: i + 1, pid: s.pid, label: s.label, geometry: m?.status === 'EXACT_ONE' ? m.target.geometry : null, status: m?.status || 'NOT_LOADED' }; });
+  const key = JSON.stringify(items.map((x) => [x.pid, x.status, x.geometry ? x.geometry.coordinates?.[0]?.[0]?.[0] : null]).concat([st.slotId]));
+  if (key === bundleKeys.map && mapBox) return;
+  bundleKeys.map = key;
+  if (!mapBox) { mapBox = document.createElement('div'); mapBox.dataset.fBundleMap = ''; box.appendChild(mapBox); }
+  const prevImg = $('[data-f-map-img]', mapBox);
+  const html = renderBundleMap({ items, activePid: st.slotId });
+  // 같은 영상 주소면 받은 영상을 재사용(선택 필지 강조만 바뀔 때 영상 재요청 없음)
+  const m = /src="([^"]+)"/.exec(html); const keep = prevImg && m && prevImg.getAttribute('src') === m[1].replace(/&amp;/g, '&') ? prevImg : null;
+  if (keep) keep.remove();
+  mapBox.innerHTML = keep ? html.replace(/<img class="f-map-img"[^>]*>/, '<i data-f-map-img-slot hidden></i>') : html;
+  if (keep) $('[data-f-map-img-slot]', mapBox)?.replaceWith(keep);
+  mapBox.querySelectorAll('[data-f-bundle-pick]').forEach((el) => el.addEventListener('click', () => leaveDraft(() => switchTo(Number(el.dataset.fBundlePick)))));
+}
+async function copyBundle() {
+  const text = buildBundleSummary({ bundleNo: st.bundle.no, parcels: bundleParcels(), commonMemo: st.bundle.commonMemo });
+  const out = $('[data-f-bundle-out]');
+  try { await navigator.clipboard.writeText(text); out.textContent = '통합 현장요약을 복사했습니다.'; out.dataset.result = 'copied'; }
+  catch (_e) {
+    const ta = document.createElement('textarea'); ta.value = text; ta.setAttribute('readonly', ''); ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select(); const ok = document.execCommand && document.execCommand('copy'); ta.remove();
+    out.textContent = ok ? '통합 현장요약을 복사했습니다.' : '복사하지 못했습니다. 필지별 상세 저장(.txt)을 쓰세요.'; out.dataset.result = ok ? 'copied' : 'copy-failed';
+  }
+}
+function saveBundle() {
+  const parcels = bundleParcels();
+  const text = buildBundleDetail({ bundleNo: st.bundle.no, parcels, commonMemo: st.bundle.commonMemo });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' }));
+  a.download = `상담묶음_${st.bundle.no}_${parcels.length}필지_${new Date().toISOString().slice(0, 10)}.txt`;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  const out = $('[data-f-bundle-out]'); out.textContent = '필지별 상세본을 이 기기에 .txt로 저장했습니다.'; out.dataset.result = 'saved';
+}
 
 const currentCard = () => (st.row ? buildFieldCard({ profile: st.profile, index: st.index, row: st.row, selectedIssueIds: [...st.issues], memo: st.memo, otherText: st.other, zoning: currentZoning() })
   : st.direct ? buildDirectCard({ profile: st.profile, target: st.direct, selectedIssueIds: [...st.issues], memo: st.memo, otherText: st.other, zoning: currentZoning() }) : null);
@@ -514,14 +749,17 @@ function saveCard() {
 function init() {
   $('[data-f-form]').addEventListener('submit', (e) => {
     e.preventDefault();
-    st.epoch += 1; st.row = null; st.direct = null; st.directOffer = null; st.pd = null; st.issues = new Set(); st.memo = ''; st.map = null; st.std = null; st.other = ''; st.zoningConfirm = { relation: '', basis_doc: '', by: '', valuation_date: '' }; st.zoningExtra = null; $('[data-f-memo]').value = ''; $('[data-f-out]').textContent = '';
     const q = $('[data-f-q]').value;
+    leaveDraft(() => search(q));
+  });
+  function search(q) {
+    saveSlot(); st.directOffer = null; freshParcel(); // 묶음에 담긴 필지는 슬롯에 남고, 새 검색은 묶음 밖 필지로 연다
     st.search = st.index ? searchNoticeIndex(st.index, q)
       : (q.trim() ? { status: SEARCH_STATUS.NOT_IN_INDEX, message: '고시 색인이 없습니다. 전체 주소로 전국 공적자료만 조회할 수 있습니다(편입 여부 미확인).', matches: [] } : { status: SEARCH_STATUS.EMPTY, matches: [] });
     if (st.search.status === SEARCH_STATUS.UNIQUE) { st.row = st.search.matches[0]; }
     else if ([SEARCH_STATUS.NOT_IN_INDEX, SEARCH_STATUS.OUTSIDE_NOTICE_AREA, SEARCH_STATUS.PNU_NOT_SUPPORTED].includes(st.search.status)) st.directOffer = directLookupTarget(st.index, q);
     render();
-  });
+  }
   $('[data-f-new]').addEventListener('click', newConsultation);
   $('[data-f-memo]').addEventListener('input', (e) => { st.memo = e.target.value; $('[data-f-out]').textContent = ''; });
   $('[data-f-copy]').addEventListener('click', () => copyCard('detail'));
@@ -529,7 +767,7 @@ function init() {
   $('[data-f-save]').addEventListener('click', saveCard);
   $('[data-f-print]').addEventListener('click', () => window.print());
   // 인쇄·PDF 저장(버튼·브라우저 메뉴·window.print 모두): 공적자료 영역은 CSS로 숨기고, 인쇄 직전 DOM에서도 비운다.
-  window.addEventListener('beforeprint', () => { document.body.dataset.printing = '1'; ['[data-f-pd]', '[data-f-map]', '[data-f-zoning]'].forEach((sel) => { const box = $(sel); if (box) box.innerHTML = ''; }); lastMapKey = ''; lastZoningKey = ''; });
+  window.addEventListener('beforeprint', () => { document.body.dataset.printing = '1'; ['[data-f-pd]', '[data-f-map]', '[data-f-zoning]', '[data-f-bundle-map]'].forEach((sel) => { const box = $(sel); if (box) box.innerHTML = ''; }); lastMapKey = ''; lastZoningKey = ''; bundleKeys.map = ''; });
   window.addEventListener('afterprint', () => { delete document.body.dataset.printing; render(); });
   $('[data-f-index-file]').addEventListener('change', async (e) => {
     const file = e.target.files?.[0]; if (!file) return;

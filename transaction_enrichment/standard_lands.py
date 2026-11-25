@@ -160,18 +160,24 @@ class StandardLandSearch:
         learned: dict[str, dict[str, str]] = {k: {} for k in CODE_FIELDS}
         conflicts: dict[str, set[str]] = {k: set() for k in CODE_FIELDS}
 
-        def learn(field: str, code: str, name: str) -> None:
+        sources: dict[str, dict[str, str]] = {k: {} for k in CODE_FIELDS}
+        own: dict[tuple[str, str], set[tuple[str, str]]] = {}  # (표준지 PNU, 필드) → 같은 PNU·연도로 확인된 응답의 (코드, 명칭)
+
+        def learn(field: str, code: str, name: str, source: str) -> None:
             if not code or not name:
                 return
             prev = learned[field].get(code)
             if prev is None:
                 learned[field][code] = name
+                sources[field][code] = source
             elif prev != name:
                 conflicts[field].add(code)
 
-        for r in rows:  # 표준지 응답에 명칭이 이미 있으면 그대로 학습
+        for r in rows:  # 표준지 응답에 명칭이 이미 있으면 그대로 학습(다른 연도 행은 쓰지 않음)
+            if _s(r.get("stdrYear")) not in ("", str(year)):
+                continue
             for field, (std_name, _c, _n) in CODE_FIELDS.items():
-                learn(field, _s(r.get(field)), _s(r.get(std_name)))
+                learn(field, _s(r.get(field)), _s(r.get(std_name)), "STANDARD_ROW")
 
         def missing(r: Mapping[str, Any]) -> bool:
             return any(_s(r.get(f)) and not _s(r.get(n)) and _s(r.get(f)) not in learned[f] for f, (n, _c, _nn) in CODE_FIELDS.items())
@@ -192,14 +198,22 @@ class StandardLandSearch:
             except ProviderError:
                 continue
             for lr in lc_rows:
+                lr_pnu, lr_year = _s(lr.get("pnu")), _s(lr.get("stdrYear"))
+                if lr_pnu not in ("", pnu) or lr_year not in ("", str(year)):
+                    continue  # 요청과 다른 필지·연도 응답은 배우지 않음
+                verified = lr_pnu == pnu and lr_year == str(year)
                 for field, (_n, lc_code, lc_name) in CODE_FIELDS.items():
-                    learn(field, _s(lr.get(lc_code)), _s(lr.get(lc_name)))
+                    code, name = _s(lr.get(lc_code)), _s(lr.get(lc_name))
+                    learn(field, code, name, "OTHER_PNU_LC" if verified else "UNVERIFIED_LC")
+                    if verified and code and name:
+                        own.setdefault((pnu, field), set()).add((code, name))
         for field in CODE_FIELDS:
             for code in conflicts[field]:
                 learned[field].pop(code, None)
         unresolved = sorted({f"{f}:{_s(r.get(f))}" for r in rows for f, (n, _c, _nn) in CODE_FIELDS.items()
                              if _s(r.get(f)) and not _s(r.get(n)) and _s(r.get(f)) not in learned[f]})
-        return {"learned": learned, "conflicts": {k: sorted(v) for k, v in conflicts.items() if v}, "lookups": lookups, "unresolved": unresolved}
+        return {"learned": learned, "conflicts": {k: sorted(v) for k, v in conflicts.items() if v}, "lookups": lookups, "unresolved": unresolved,
+                "sources": sources, "own": own}
 
     def locate(self, pnu: str, center: tuple[float, float]) -> dict[str, Any]:
         try:
@@ -211,6 +225,11 @@ class StandardLandSearch:
             return {"status": t.get("status") or "MISMATCH"}
         c = _centroid(t["geometry"])
         return {"status": "EXACT_ONE", "centroid": [c[0], c[1]], "geometry": t["geometry"], "jibun": t.get("jibun"), "distance_m": round(_haversine(center, c), 1)}
+
+
+def used(s: StandardLandSearch) -> dict[str, int]:
+    """이 요청에서 시도한 VWorld 호출 수(실패 포함)."""
+    return {**s.calls, "total": sum(s.calls.values())}
 
 
 def search_standard_lands(payload: Mapping[str, Any], *, searcher: StandardLandSearch | None = None) -> dict[str, Any]:
@@ -236,9 +255,9 @@ def search_standard_lands(payload: Mapping[str, Any], *, searcher: StandardLandS
         s.count("cadastral")
         target = s.geometry.target(pnu)
     except ProviderError as exc:
-        return {"ok": False, "error_code": exc.code, "error_message": str(exc)}
+        return {"ok": False, "error_code": exc.code, "error_message": str(exc), "request_count": used(s)}
     if target.get("status") != "EXACT_ONE" or not target.get("geometry"):
-        return {"ok": True, "status": "TARGET_NOT_EXACT", "target": {"pnu": pnu, "status": target.get("status")}, "rows": [], "locations": {}}
+        return {"ok": True, "status": "TARGET_NOT_EXACT", "target": {"pnu": pnu, "status": target.get("status")}, "rows": [], "locations": {}, "request_count": used(s)}
     center = _centroid(target["geometry"])
     dlat = radius / 111320.0
     dlon = radius / (111320.0 * math.cos(math.radians(center[1])))
@@ -246,7 +265,7 @@ def search_standard_lands(payload: Mapping[str, Any], *, searcher: StandardLandS
     try:
         dongs, dongs_cut = s.legal_dongs(bbox, pnu[:10])
     except ProviderError as exc:
-        return {"ok": False, "error_code": exc.code, "error_message": str(exc)}
+        return {"ok": False, "error_code": exc.code, "error_message": str(exc), "request_count": used(s)}
     rows: list[dict[str, Any]] = []
     for d in dongs:
         try:
@@ -262,13 +281,18 @@ def search_standard_lands(payload: Mapping[str, Any], *, searcher: StandardLandS
     for r in rows:
         row = {k: _s(r.get(k)) for k in KEEP_FIELDS}
         filled = []
+        name_sources: dict[str, str] = {}
         for field, (name_field, _c, _n) in CODE_FIELDS.items():
             code = row.get(field)
             if code and not row.get(name_field) and code in learned[field]:
                 row[name_field] = learned[field][code]
                 filled.append(name_field)
+                # 이 필지 응답에서 같은 코드·명칭이 하나로 확인된 때만 SAME_PNU_LC
+                same = names["own"].get((row.get("pnu") or "", field)) == {(code, learned[field][code])} and row.get("stdrYear") == str(year)
+                name_sources[name_field] = "SAME_PNU_LC" if same else names["sources"][field].get(code, "UNVERIFIED_LC")
         row["ldCodeNm"] = dong_name.get(row.get("ldCode") or "", "")
         row["name_filled_from_land_characteristics"] = filled
+        row["name_sources"] = name_sources
         out_rows.append(row)
     # 위치 확인 순서: 검토 용도지역과 같은 표준지 → 대상과 같은 법정동 → 나머지. 한도를 넘으면 위치 미조회로 남긴다.
     order = sorted({r["pnu"] for r in out_rows if re.fullmatch(r"\d{19}", r["pnu"])},
@@ -288,6 +312,6 @@ def search_standard_lands(payload: Mapping[str, Any], *, searcher: StandardLandS
         "name_resolution": {"lookups": names["lookups"], "unresolved": names["unresolved"], "conflicts": names["conflicts"],
                             "source": "같은 연도 VWorld 토지특성 응답의 코드↔명칭 쌍"},
         "limits": {"max_legal_dongs": MAX_LEGAL_DONGS, "max_locate": MAX_LOCATE, "not_located_by_limit": len(skipped)},
-        "request_count": {**s.calls, "total": sum(s.calls.values())},
+        "request_count": used(s),
         "source": "VWorld 국가중점데이터 표준지공시지가(getReferLandPriceAttr) · 연속지적도(LP_PA_CBND_BUBUN) · 리/읍면동 경계(LT_C_ADRI_INFO/LT_C_ADEMD_INFO)",
     }
