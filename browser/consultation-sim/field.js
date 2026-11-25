@@ -92,7 +92,7 @@ function addToBundle({ force = false } = {}) {
   if (dup && dup.pid !== st.pid && draftDirty() && !force) { askDraft(() => addToBundle({ force: true }), { canKeep: false }); return; }
   if (dup) { st.bundle.note = `이미 담긴 필지입니다 — ${circled(st.bundle.slots.indexOf(dup) + 1)}로 전환`; if (dup.pid !== st.pid) switchTo(dup.pid); else render(); return; }
   if (st.bundle.slots.length >= BUNDLE.maxParcels) { st.bundle.note = `한 묶음은 ${BUNDLE.maxParcels}필지까지입니다`; render(); return; }
-  const slot = { pid: st.pid, key, label: parcelLabel({ row: st.row, direct: st.direct }), ownership: { basis: 'UNCONFIRMED', coown: 'UNKNOWN' } };
+  const slot = { pid: st.pid, key, label: parcelLabel({ row: st.row, direct: st.direct }), ownership: { basis: 'UNCONFIRMED', coown: 'UNKNOWN' }, area_basis_date: '' };
   st.bundle.slots.push(slot); st.slotId = st.pid; st.bundle.note = '';
   saveSlot(); render();
 }
@@ -612,7 +612,7 @@ function bundleParcels() {
     const card = s.row ? buildFieldCard({ profile: st.profile, index: st.index, row: s.row, selectedIssueIds: [...s.issues], memo: s.memo, otherText: s.other, zoning: currentZoning(s) })
       : buildDirectCard({ profile: st.profile, target: s.direct, selectedIssueIds: [...s.issues], memo: s.memo, otherText: s.other, zoning: currentZoning(s) });
     return { n: i + 1, pid: s.pid, label: s.label, kind: s.row ? 'ROW' : 'DIRECT', notice: s.row ? (st.index?.notice || null) : null,
-      pnu: s.pd?.pnu || s.direct?.pnu || null, lot_key: s.row ? `${s.row.eupmyeon || ''}|${rowKey(s.row)}` : null, valuation_date: s.zoningConfirm?.valuation_date || '',
+      pnu: s.pd?.pnu || s.direct?.pnu || null, lot_key: s.row ? `${s.row.eupmyeon || ''}|${rowKey(s.row)}` : null, area_basis_date: s.area_basis_date || '', // 세목표 면적 기준일(감정평가 가격시점 아님)
       facts: s.row ? noticeFacts(s.row) : null, ownership: s.ownership, card };
   });
 }
@@ -633,7 +633,8 @@ function renderBundle() {
     const own = act ? `<div class="f-own" data-f-own><span class="small">${circled(b.slots.indexOf(act) + 1)} 소유 확인</span>
       <select data-f-own-basis aria-label="소유 확인 근거">${OWNERSHIP_BASIS.map(([k, l]) => `<option value="${k}"${act.ownership.basis === k ? ' selected' : ''}>${l}</option>`).join('')}</select>
       <select data-f-own-coown aria-label="공동소유 여부">${CO_OWNERSHIP.map(([k, l]) => `<option value="${k}"${act.ownership.coown === k ? ' selected' : ''}>${l}</option>`).join('')}</select>
-      ${ownershipNeedsWarning(act.ownership) ? '<span class="chip warn" data-f-own-warn>본인 몫 면적 아님</span>' : ''}</div>` : '';
+      ${ownershipNeedsWarning(act.ownership) ? '<span class="chip warn" data-f-own-warn>본인 몫 면적 아님</span>' : ''}
+      ${act.row ? `<label class="small f-area-basis">세목표 면적 기준일(원문에 적힌 날짜만 · 감정평가 가격시점 아님) <input type="date" min="1900-01-01" data-f-area-basis value="${esc(act.area_basis_date || '')}"></label>` : ''}</div>` : '';
     const html = `<div class="f-bundle-bar" data-f-bundle-bar data-count="${b.slots.length}">
       <div class="f-bundle-head"><b>상담 묶음 #${b.no}</b> <span class="small">${b.slots.length}필지</span>
         ${active() && !act ? `<button type="button" class="secondary f-bundle-add" data-f-bundle-add ${b.slots.length >= BUNDLE.maxParcels ? 'disabled' : ''}>＋ 이 필지 담기</button>` : ''}
@@ -654,6 +655,8 @@ function renderBundle() {
     box.querySelectorAll('[data-f-bundle-pick]').forEach((el) => el.addEventListener('click', () => leaveDraft(() => switchTo(Number(el.dataset.fBundlePick)))));
     $('[data-f-bundle-map-btn]', box)?.addEventListener('click', () => { b.mapOpen = !b.mapOpen; renderBundle(); });
     $('[data-f-own-basis]', box)?.addEventListener('change', (e) => { act.ownership = { ...act.ownership, basis: e.target.value }; renderBundle(); });
+    // 날짜 입력 중에는 다시 그리지 않는다(연도 입력이 끊김) — 요약을 만들 때 값을 읽는다.
+    $('[data-f-area-basis]', box)?.addEventListener('input', (e) => { act.area_basis_date = e.target.value; });
     $('[data-f-own-coown]', box)?.addEventListener('change', (e) => { act.ownership = { ...act.ownership, coown: e.target.value }; renderBundle(); });
   }
   renderBundleMapBox(box);

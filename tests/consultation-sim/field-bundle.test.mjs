@@ -8,7 +8,7 @@ import { renderBundleMap, MAP } from '../../browser/consultation-sim/core/field-
 const N1 = { notice_no: '가상 고시 제0000-1호', notice_date: '2000-01-01' };
 const N2 = { notice_no: '가상 고시 제0000-2호', notice_date: '2001-05-05' };
 const card = (label, extra = {}) => ({ text: `[상세 ${label}]\n- 미확인 A\n- 미확인 B`, chosen: [], next: ['받은 통지문 원문으로 현재 절차 단계 확인'], unverified: ['A', 'B'], ...extra });
-const row = (n, ledger, inc, notice = N1, extra = {}) => ({ n, label: `바위리 ${n}`, kind: 'ROW', notice, ownership: { basis: 'DOCUMENT', coown: 'SOLE' },
+const row = (n, ledger, inc, notice = N1, extra = {}) => ({ n, label: `바위리 ${n}`, kind: 'ROW', notice, area_basis_date: '1999-12-01', ownership: { basis: 'DOCUMENT', coown: 'SOLE' },
   facts: { jimok: '답', ledger_area_m2: ledger, incorporated_area_m2: inc, arithmetic: { incorporated_ratio_pct: Math.round((inc / ledger) * 1000) / 10, partial: inc < ledger } }, card: card(n), ...extra });
 
 test('필지 키·이름·번호: 색인 행은 고시+일련, 색인 밖은 PNU·주소 · 같은 PNU는 경고만', () => {
@@ -34,7 +34,7 @@ test('면적 합계: 같은 고시끼리만 · 다른 고시는 따로(전체 �
   const s = buildBundleSummary({ parcels: [row(1, 1000, 1000), row(2, 500, 200), row(3, 300, 300, N2), { n: 4, label: 'PNU x', kind: 'DIRECT', ownership: {}, card: card(4) }], now: new Date('2000-01-02T00:00:00Z') });
   assert.match(s, /가상 고시 제0000-1호\(2000-01-01\): 공부 1,500㎡ · 편입 1,200㎡ · 4필지 중 2필지\(①②\)/);
   assert.match(s, /가상 고시 제0000-2호\(2001-05-05\): 공부 300㎡ · 편입 300㎡ · 4필지 중 1필지\(③\)/);
-  assert.match(s, /고시·기준일이 달라 전체 합계를 내지 않음/);
+  assert.match(s, /고시·세목표 면적 기준일이 달라 전체 합계를 내지 않음/);
   assert.match(s, /합계 제외 1필지\(④\)/);
   assert.match(s, /④ PNU x · 고시 색인 밖\(편입 여부·면적 미확인\)/);
 });

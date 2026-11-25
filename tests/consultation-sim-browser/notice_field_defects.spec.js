@@ -82,6 +82,29 @@ test('면적: 같은 PNU 두 필지는 통합 요약 합계에서 보류', async
   expect(t).toContain('합계 보류 2필지(①②)'); expect(t).not.toMatch(/필지 중 2필지/); expect(t).not.toMatch(/\d{19}/);
 });
 
+test('면적 기준일: 공란은 합계 보류 · 같은 확인일만 합산 · 다르면 따로 · 감정평가 가격시점은 무관 · 필지별 보존', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']).catch(() => {});
+  await start(page);
+  const copy = async () => { await page.evaluate(() => navigator.clipboard.writeText('')); await page.locator('[data-f-bundle-copy]').click(); await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).not.toBe(''); return page.evaluate(() => navigator.clipboard.readText()); };
+  const basis = page.locator('[data-f-area-basis]'); const chip = (n) => page.locator('[data-f-bundle-pick]').nth(n - 1);
+  for (const q of QS.slice(0, 2)) {
+    await open(page, q); await add(page); await lookup(page);
+    await page.locator('[data-f-zoning-vdate]').fill('2026-12-15'); await page.locator('[data-f-zoning-vdate]').dispatchEvent('change');
+  }
+  let t = await copy();
+  expect(t).toContain('합계 보류 2필지(①②) — 세목표 면적 기준일 미확인'); expect(t).not.toMatch(/필지 중 \d필지/); expect(t).not.toContain('2026-12-15');
+  await expect(basis).toHaveValue(''); await basis.fill('1999-12-01');
+  t = await copy();
+  expect(t).toContain('2필지 중 1필지(②)'); expect(t).toContain('합계 보류 1필지(①) — 세목표 면적 기준일 미확인');
+  await chip(1).click(); await expect(basis).toHaveValue(''); await basis.fill('1999-12-01');
+  t = await copy();
+  expect(t).toContain('2필지 중 2필지(①②)'); expect(t).toContain('세목표 면적 기준일 1999-12-01'); expect(t).not.toContain('기준일 미확인');
+  await basis.fill('1999-11-01');
+  t = await copy();
+  expect(t).toContain('세목표 면적 기준일 1999-11-01'); expect(t).toContain('전체 합계를 내지 않음'); expect(t).not.toContain('2필지 중 2필지');
+  await chip(2).click(); await expect(basis).toHaveValue('1999-12-01');
+});
+
 test('지적 상한: 여러 필지 동시 조회(요청당 8회)여도 보낸 요청 합계가 40회를 넘지 않음 · 막힌 필지는 미조회', async ({ page }) => {
   let rel; const gate = new Promise((r) => { rel = r; });
   const b = await start(page, { hook: async (op, q) => { if (!q.tiles) return null; await gate; return tileOk(q, 8); } });

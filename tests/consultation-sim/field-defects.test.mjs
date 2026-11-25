@@ -5,7 +5,7 @@ import * as B from '../../browser/consultation-sim/core/field-bundle.js';
 import { buildStandardReview, standardTraits, targetTraits, TRAIT_STATUS } from '../../browser/consultation-sim/core/field-standard.js';
 import { queryStandardLands, queryPublicData, errorText } from '../../browser/consultation-sim/core/field-public-data.js';
 
-const { BUNDLE, createBridgeCache, bundleTotals, buildBundleSummary } = B;
+const { BUNDLE, createBridgeCache, bundleTotals, confirmedAreaBasis, buildBundleSummary } = B;
 
 // ── 표준지: 엔진이 고른 행만 표시 ──
 const P = '9999910201100010000';
@@ -69,7 +69,7 @@ test('대상 특성: 표준지 속성이 아니라 토지특성 출처로 표시
 
 // ── 면적 이중 합산 ──
 const N = { notice_no: '가상 고시 1', notice_date: '2000-01-01', project: '가상사업' };
-const p = (n, x = {}) => ({ n, label: `필지${n}`, kind: 'ROW', notice: N, pnu: `999991010110${String(n).padStart(3, '0')}0000`, lot_key: `숲내읍|바위리|0|${n}|0`, valuation_date: '', ownership: {}, card: {},
+const p = (n, x = {}) => ({ n, label: `필지${n}`, kind: 'ROW', notice: N, pnu: `999991010110${String(n).padStart(3, '0')}0000`, lot_key: `숲내읍|바위리|0|${n}|0`, area_basis_date: '1999-12-01', ownership: {}, card: {},
   facts: { jimok: '답', ledger_area_m2: 1000, incorporated_area_m2: 300 }, ...x });
 
 test('면적: 같은 PNU가 두 번 담기면 합계 보류(두 배 금지) · 근거 표시 · 나머지만 합산', () => {
@@ -90,14 +90,58 @@ test('면적: PNU 미조회라도 같은 고시·같은 지번 행이면 보류 
   assert.deepEqual(d.groups.map((g) => g.ledger), [1000]); assert.deepEqual(d.excluded, [2]); assert.deepEqual(d.duplicates, [{ n: 2, of: [1] }]);
 });
 
-test('면적: 같은 고시라도 사업·고시일·기준일이 다르면 합산하지 않음', () => {
+test('면적: 같은 고시라도 사업·고시번호·고시일이 다르면 합산하지 않음', () => {
   const g = (x) => bundleTotals([p(1), p(2, x)]).groups.length;
   assert.equal(g({}), 1);
   assert.equal(g({ notice: { ...N, project: '다른사업' } }), 2);
   assert.equal(g({ notice: { ...N, notice_date: '2001-01-01' } }), 2);
-  assert.equal(g({ valuation_date: '2026-12-15' }), 2);
-  const s = buildBundleSummary({ parcels: [p(1), p(2, { valuation_date: '2026-12-15' })] });
-  assert.match(s, /기준일 미확인/); assert.match(s, /기준일 2026-12-15/);
+  assert.equal(g({ notice: { ...N, notice_no: '가상 고시 2' } }), 2);
+});
+
+// ── 세목표 면적 기준일(감정평가 가격시점과 별개) ──
+const B1 = '1999-12-01'; const B2 = '1999-11-01';
+const shape = (t) => t.groups.map((g) => [g.area_basis_date, g.ledger, g.incorporated, g.numbers]);
+
+test('면적 기준일: 둘 다 공란이면 같은 기준으로 보지 않고 합계 보류(GPT 재현 사례)', () => {
+  for (const v of ['', '   ', null, undefined]) {
+    const ps = [1, 2].map((n) => ({ ...p(n), area_basis_date: v })); const t = bundleTotals(ps);
+    assert.deepEqual(t.groups, []); assert.deepEqual(t.basisUnconfirmed, [1, 2]);
+    const s = buildBundleSummary({ parcels: ps });
+    assert.match(s, /합산할 고시 기재 면적 없음/); assert.match(s, /합계 보류 2필지\(①②\) — 세목표 면적 기준일 미확인/); assert.doesNotMatch(s, /2,000|필지 중 \d필지/);
+    assert.match(s, /① 필지1 · 답 · 공부 1,000㎡ · 편입 300㎡/); // 필지별 기재값은 그대로
+  }
+});
+
+test('면적 기준일: 일부 필지만 입력하면 확인된 필지끼리만 합산 · 나머지 보류', () => {
+  const ps = [p(1), p(2, { area_basis_date: '' }), p(3), p(4, { area_basis_date: '' })]; const t = bundleTotals(ps);
+  assert.deepEqual(shape(t), [[B1, 2000, 600, [1, 3]]]); assert.deepEqual(t.basisUnconfirmed, [2, 4]);
+  const s = buildBundleSummary({ parcels: ps });
+  assert.match(s, /4필지 중 2필지\(①③\) · 사업 가상사업 · 세목표 면적 기준일 1999-12-01/); assert.match(s, /합계 보류 2필지\(②④\) — 세목표 면적 기준일 미확인/); assert.doesNotMatch(s, /4,000/);
+});
+
+test('면적 기준일: 일부만 적은 날짜·없는 날짜·입력 중 연도는 같은 문자열이어도 미확인', () => {
+  for (const v of ['1999', '1999-12', '1999-12-', '1999-12-1', '1999-02-30', '1999-13-01', '0002-12-01', '미확인', 19991201]) {
+    const t = bundleTotals([p(1, { area_basis_date: v }), p(2, { area_basis_date: v })]);
+    assert.deepEqual([t.groups, t.basisUnconfirmed], [[], [1, 2]], String(v));
+  }
+  assert.equal(confirmedAreaBasis(' 2000-02-29 '), '2000-02-29');
+});
+
+test('면적 기준일: 같은 확인일이면 합산 · 다른 확인일이면 나눠 표시하고 전체 합계 없음', () => {
+  assert.deepEqual(shape(bundleTotals([p(1), p(2)])), [[B1, 2000, 600, [1, 2]]]);
+  const ps = [p(1), p(2, { area_basis_date: B2 })];
+  assert.deepEqual(shape(bundleTotals(ps)), [[B1, 1000, 300, [1]], [B2, 1000, 300, [2]]]);
+  const s = buildBundleSummary({ parcels: ps });
+  assert.match(s, /세목표 면적 기준일 1999-12-01/); assert.match(s, /세목표 면적 기준일 1999-11-01/); assert.match(s, /전체 합계를 내지 않음/); assert.doesNotMatch(s, /2,000|기준일 미확인/);
+});
+
+test('면적 기준일: 감정평가 가격시점은 기준일을 대신하거나 합산을 가르지 않음 · 중복 보류가 먼저 · 다른 고시는 같은 기준일이어도 따로', () => {
+  const v = bundleTotals([1, 2].map((n) => p(n, { area_basis_date: '', valuation_date: '2026-12-15' })));
+  assert.deepEqual([v.groups, v.basisUnconfirmed], [[], [1, 2]]);
+  assert.deepEqual(shape(bundleTotals([p(1, { valuation_date: '2026-12-15' }), p(2, { valuation_date: '' })])), [[B1, 2000, 600, [1, 2]]]);
+  const d = bundleTotals([p(1, { area_basis_date: '' }), p(2, { area_basis_date: '', pnu: p(1).pnu })]);
+  assert.deepEqual([d.groups, d.basisUnconfirmed, d.held], [[], [], [{ reason: 'SAME_PNU', numbers: [1, 2] }]]);
+  assert.equal(bundleTotals([p(1), p(2, { notice: { ...N, notice_no: '가상 고시 2' } })]).groups.length, 2);
 });
 
 // ── 호출 상한 ──

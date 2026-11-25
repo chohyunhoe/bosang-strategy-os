@@ -246,8 +246,9 @@ test('통합 현장요약·필지별 상세 저장: 같은 고시 단순 합계 
   await loadIndex(page);
   await open(page, '바위리 12-3'); await add(page);
   await page.locator('[data-f-own-basis]').selectOption('DOCUMENT'); await page.locator('[data-f-own-coown]').selectOption('SOLE');
+  await page.locator('[data-f-area-basis]').fill('1999-12-01');
   await page.locator('[data-f-issue="obstacle"]').check(); await page.locator('[data-f-memo]').fill('개별 메모 A');
-  await open(page, '새솔리 12-3'); await add(page); await page.locator('[data-f-issue="obstacle"]').check();
+  await open(page, '새솔리 12-3'); await add(page); await page.locator('[data-f-area-basis]').fill('1999-12-01'); await page.locator('[data-f-issue="obstacle"]').check();
   // 색인 밖(전체 주소) 필지
   await page.locator('[data-f-q]').fill('가상도 연습시 숲내읍 먼마을리 9-9'); await page.locator('[data-f-go]').click();
   if (await page.locator('[data-f-direct-open]').count()) { await page.locator('[data-f-direct-open]').click(); await add(page); }
