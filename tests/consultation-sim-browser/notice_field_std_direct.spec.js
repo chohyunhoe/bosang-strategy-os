@@ -60,7 +60,10 @@ async function start(page, { focus = false } = {}) {
   await page.locator('[data-f-index-file]').setInputFiles({ name: 'std-direct.json', mimeType: 'application/json', buffer: fs.readFileSync(FIXTURE) });
   await expect(page.locator('[data-f-loader]')).toBeHidden();
   await page.locator('[data-f-q]').fill('바위리 12-3'); await page.locator('[data-f-go]').click(); await expect(page.locator('[data-f-card]')).toBeVisible();
-  await page.locator('[data-f-pd-go]').click(); await expect(page.locator('[data-f-pd-state="OK"]')).toBeVisible(); await expect(page.locator('.f-map')).toBeVisible();
+  if (focus) { // 집중 화면: ① 공적자료 바로가기 → ② 표준지비교 단계
+    await page.locator('[data-f-focus-pd]').click(); await expect(page.locator('[data-f-pd-state="OK"]')).toBeAttached();
+    await page.locator('[data-f-step-go="2"]').click();
+  } else { await page.locator('[data-f-pd-go]').click(); await expect(page.locator('[data-f-pd-state="OK"]')).toBeVisible(); await expect(page.locator('.f-map')).toBeVisible(); }
   await page.locator('[data-f-std-go]').click(); await expect(page.locator('[data-f-std-state="FOUND"]')).toBeVisible();
 }
 const width = (page) => page.viewportSize().width;
