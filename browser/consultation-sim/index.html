@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="referrer" content="no-referrer">
+  <title>BSO 지번 상담 시뮬레이터 · 검토 보조</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <span class="eyebrow">BSO · 지번형 보상상담 시뮬레이터 (PR-1)</span>
+      <h1>지번 1차 상담 화면 <small>검토 보조 · 감정평가·법률자문 아님</small></h1>
+    </div>
+    <div class="mode" data-mode-bar>
+      <label>데이터 <select data-mode-select>
+        <option value="SYNTHETIC">합성 데모</option>
+        <option value="VWORLD_DIRECT">VWorld 직접(실데이터)</option>
+        <option value="LIVE_BRIDGE">로컬 브리지(ThinkPad)</option>
+      </select></label>
+      <label data-scenario-wrap>시나리오 <select data-scenario-select>
+        <option value="DEFAULT">기본</option>
+        <option value="NO_MAP_KEY">지도 키 없음</option>
+        <option value="API_DOWN">공적자료 API 장애</option>
+      </select></label>
+      <span class="badge" data-mode-badge></span>
+    </div>
+  </header>
+
+  <section class="key-panel" data-key-panel hidden></section>
+
+  <form class="query" data-query-form autocomplete="off" novalidate>
+    <label class="f-region">행정구역 <span class="hint">기본 현장 컨텍스트</span>
+      <input name="context" data-context list="region-hints" placeholder="예: 가상특별시 누리구 새솔동">
+      <datalist id="region-hints" data-region-hints></datalist>
+    </label>
+    <label class="f-lot">지번 <span class="hint">산 포함 · PNU 19자리 가능</span>
+      <input name="lot" data-lot placeholder="예: 123-4 / 산 12-3" inputmode="text">
+    </label>
+    <label class="f-year">기준연도
+      <select name="year" data-year><option>2026</option><option>2025</option><option>2024</option></select>
+    </label>
+    <div class="f-actions">
+      <button type="submit" class="primary" data-lookup>조회</button>
+      <button type="button" class="secondary" data-save-open disabled>상담 결과 저장</button>
+    </div>
+  </form>
+
+  <section class="notice" data-notice aria-live="polite"></section>
+  <section class="save-panel" data-save-panel hidden></section>
+
+  <nav class="tabs" data-tabs role="tablist" aria-label="상담 패널">
+    <button type="button" role="tab" data-tab="map">지도</button>
+    <button type="button" role="tab" data-tab="land">토지정보</button>
+    <button type="button" role="tab" data-tab="analysis">보상분석</button>
+  </nav>
+
+  <main class="grid">
+    <section class="panel" data-panel="map" aria-label="지도"><h2>지도 <span class="sub">항공사진·지적경계</span></h2><div data-map></div></section>
+    <section class="panel" data-panel="land" aria-label="토지정보"><h2>토지정보 <span class="sub">공적자료 · 필드별 출처</span></h2><div data-land></div></section>
+    <section class="panel" data-panel="analysis" aria-label="보상분석"><h2>보상분석 <span class="sub">검토 보조 · 확정 아님</span></h2><div data-analysis></div></section>
+  </main>
+
+  <footer class="actions">
+    <div class="legend" data-legend></div>
+    <div class="buttons">
+      <button type="button" class="secondary" data-copy disabled>1차 상담 검토서 복사</button>
+      <button type="button" class="secondary" data-print disabled>인쇄</button>
+      <button type="button" class="ghost" data-proposal disabled>정밀검토 과업 제안</button>
+    </div>
+    <div data-footer-out></div>
+  </footer>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

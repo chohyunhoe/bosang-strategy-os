@@ -1,0 +1,54 @@
+name: Consultation Simulator CI
+
+on:
+  pull_request:
+    paths:
+      - 'browser/consultation-sim/**'
+      - 'scripts/build_consultation_sim.js'
+      - 'scripts/build_consultation_sim_demo.js'
+      - 'scripts/serve_product_v2.js'
+      - 'scripts/public_data_bridge.*'
+      - 'tests/consultation-sim/**'
+      - 'tests/test_vworld_revisions.py'
+      - 'transaction_enrichment/providers.py'
+      - 'tests/consultation-sim-browser/**'
+      - 'playwright.consultation-sim.config.js'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/consultation-sim-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  consultation-sim-gate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Deterministic core (synthetic data only)
+        run: npm run consult:test
+      - name: VWorld revision rule (Python provider opt-in, Release v1 default unchanged)
+        run: python -m unittest tests.test_vworld_revisions -v
+      - name: Public demo bundle safety checks (synthetic only, no bridge, no network)
+        run: |
+          node scripts/build_consultation_sim_demo.js --host=claude-artifact
+          node scripts/build_consultation_sim_demo.js --host=static
+          node scripts/build_consultation_sim_demo.js --host=static --variant=vworld-direct-test
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: PC / Fold open / Fold cover E2E
+        run: npm run consult:e2e
+      - name: Release v1 / Product v2 build output untouched by simulator
+        run: |
+          npm run product:v2:build
+          ! grep -R "consultation-sim" dist/product-v2-candidate --exclude=parser-bundle.js
