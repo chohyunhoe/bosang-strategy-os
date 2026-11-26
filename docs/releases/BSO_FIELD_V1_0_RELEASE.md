@@ -37,7 +37,7 @@ git status                                  # 미커밋 작업 없음 확인
 git fetch origin claude/bso-v1-official-release-wcw5jw
 git log -1 --oneline b31b088                # 로컬 커밋 존재 확인
 git switch -c v1.0-release-local b31b088
-git cherry-pick <이 브랜치의 V1.0 커밋 hash>   # 충돌 시: field.js·field.html·field.css는 양쪽 변경을 모두 살린다(아래 참고)
+git cherry-pick 90a5829   # 충돌 시: field.js·field.html·field.css는 양쪽 변경을 모두 살린다(아래 참고)
 #   b31b088이 없고 원격 bc4ff7e 기준이면: git switch -c v1.0-release-local origin/claude/bso-v1-official-release-wcw5jw
 #   후 git apply --3way local-data\handoff\b31b088-map-pin.patch 로 지도 고정 패치를 먼저 반영하고 커밋한다.
 
