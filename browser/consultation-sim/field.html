@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="referrer" content="no-referrer">
   <meta name="robots" content="noindex,nofollow">
-  <meta name="bso-field-ui-rev" content="std-direct-1">
+  <meta name="bso-field-ui-rev" content="v1.0-std-direct-records-1">
   <title>BSO 현장 지번 상담 · 고시 세목 색인</title>
   <link rel="icon" href="data:,">
   <link rel="stylesheet" href="field.css">
@@ -32,6 +32,26 @@
       <button type="button" class="secondary" data-f-new>새 상담</button>
     </div>
   </form>
+  <div class="f-save-line" data-f-save-line hidden>
+    <span class="badge" data-f-save-badge role="status"></span><span class="small muted mono" data-f-save-id></span>
+    <button type="button" class="ghost f-records-toggle" data-f-records-toggle aria-expanded="false" aria-controls="f-records">상담기록</button>
+  </div>
+  <div class="f-save-alert warn-note" data-f-save-alert role="alert" hidden></div>
+  <section class="f-records" id="f-records" data-f-records aria-label="상담기록 검색·재열기" hidden>
+    <form class="f-row" data-f-records-form autocomplete="off">
+      <input data-f-records-q enterkeyhint="search" placeholder="상담ID·지번·PNU·사업·쟁점·메모 검색" aria-label="상담기록 검색어">
+      <button type="submit" class="secondary">검색</button>
+      <button type="button" class="ghost" data-f-records-close>닫기</button>
+    </form>
+    <p class="small muted" data-f-records-info>이 PC(현장 서버)의 로컬 DB에만 저장됩니다 · 외부 전송 없음</p>
+    <ul class="f-list f-records-list" data-f-records-list></ul>
+    <div class="f-actions">
+      <a class="secondary f-btn-link" data-f-records-export="csv" href="/__field/records/export?format=csv" download>전체 내보내기(CSV)</a>
+      <a class="ghost f-btn-link" data-f-records-export="json" href="/__field/records/export?format=json" download>JSON</a>
+      <button type="button" class="ghost" data-f-records-backup>지금 백업</button>
+    </div>
+    <p class="small" data-f-records-out aria-live="polite"></p>
+  </section>
   <div class="f-active-context" data-f-active-context aria-live="polite" hidden></div>
 
   <div class="f-work" data-f-work>
@@ -82,7 +102,7 @@
         <h2 class="f-h2-gap">확보할 문서</h2><ul class="f-list" data-f-docs></ul>
         <h2 class="f-h2-gap">후속조치</h2><ul class="f-list" data-f-next></ul>
       </details>
-      <label class="f-memo">상담 메모 <span class="hint">실명·전화번호는 적지 마세요 · 이 화면 메모리에만</span>
+      <label class="f-memo">상담 메모 <span class="hint" data-f-memo-hint>실명·전화번호는 적지 마세요 · 이 화면 메모리에만</span>
         <textarea data-f-memo rows="3"></textarea></label>
       <div class="f-actions">
         <button type="button" class="primary" data-f-copy-summary>현재 필지 요약 복사</button>

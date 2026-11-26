@@ -1,5 +1,6 @@
 // BSO 현장 지번 상담 — 고시 세목 색인 + 상담카드 (전국 공통, 사업별 프로필)
-// 저장: 이 화면 메모리뿐. 복사·저장(.txt)·인쇄는 상담자가 버튼을 누를 때만.
+// 저장: 화면 메모리 + (V1.0 현장 서버로 열었을 때만) 이 PC의 로컬 상담기록 DB 자동저장. 브라우저 저장소·외부 전송 없음.
+// 복사·저장(.txt)·인쇄는 상담자가 버튼을 누를 때만.
 import { validateNoticeIndex, searchNoticeIndex, SEARCH_STATUS, noticeFacts, rowKey } from './core/notice-index.js';
 import { issuesFor } from './core/field-issues.js';
 import { buildFieldCard, buildDirectCard } from './core/field-card.js';
@@ -13,6 +14,7 @@ import { profileForIndex } from './profiles/index.js';
 import { BUNDLE, OWNERSHIP_BASIS, CO_OWNERSHIP, ownershipNeedsWarning, parcelKey, parcelLabel, circled, pnuConflicts, createBridgeCache, AREA_BASIS_SOURCES, AREA_BASIS_CHECKS, areaBasisState, buildBundleSummary, buildBundleDetail } from './core/field-bundle.js';
 import { renderBundleMap } from './core/field-map.js';
 import { TRAIT_FIELDS, TRAIT_STATUS, buildStdMatrix } from './core/field-standard.js';
+import { createAutosave, saveStateText, SAVE_STATE, RECORD_ID_RE } from './core/consult-autosave.js';
 import { PROV, NOTICE_LABEL, API_LABEL, originPending, provBadge, provLegend, provNoticeValue, provRi, provArithmetic, provPdValue, provOwnership, provZoningBasis, provMap, diffTag } from './core/field-provenance.js';
 
 const $ = (s, r = document) => r.querySelector(s);
@@ -73,7 +75,8 @@ function setIndex(index, origin) {
 }
 function showIndexError(msg) { const e = $('[data-f-index-error]'); e.hidden = false; e.textContent = msg; $('[data-f-loader]').hidden = false; }
 
-function newConsultation() {
+function newConsultation({ keepRecord = false } = {}) {
+  if (!keepRecord) closeRecord();
   delete document.body.dataset.fAnalysisFull;
   delete document.body.dataset.fConsultMini;
   const mini = $('[data-f-map-mini]'); if (mini) mini.hidden = true;
@@ -678,7 +681,7 @@ function renderIssuesBox(card) {
       if (cb.checked) st.issues.add(cb.dataset.fIssue); else st.issues.delete(cb.dataset.fIssue);
       $('[data-f-out]').textContent = ''; render();
     }));
-    $('[data-f-other]', issueBox)?.addEventListener('input', (e) => { st.other = e.target.value; $('[data-f-out]').textContent = ''; });
+    $('[data-f-other]', issueBox)?.addEventListener('input', (e) => { st.other = e.target.value; $('[data-f-out]').textContent = ''; recTouch(); });
   }
   const selectedCount = $('[data-f-issues-selected]');
   if (selectedCount) selectedCount.textContent = `${st.issues.size}개 선택`;
@@ -794,7 +797,7 @@ function renderZoning() {
     const sel = $('[data-f-zoning-relation]', wrap); const doc = $('[data-f-zoning-doc]', wrap); const by = $('[data-f-zoning-by]', wrap); const vdate = $('[data-f-zoning-vdate]', wrap);
     if (sel) { sel.value = st.zoningConfirm.relation; doc.value = st.zoningConfirm.basis_doc; by.value = st.zoningConfirm.by; }
     if (vdate) vdate.value = st.zoningConfirm.valuation_date;
-    const sync = () => { st.zoningConfirm = { relation: sel ? sel.value : '', basis_doc: doc ? doc.value : '', by: by ? by.value : '', valuation_date: vdate ? vdate.value : '' }; $('[data-f-out]').textContent = ''; renderZoningResult(); if (st.std) renderMap(); };
+    const sync = () => { st.zoningConfirm = { relation: sel ? sel.value : '', basis_doc: doc ? doc.value : '', by: by ? by.value : '', valuation_date: vdate ? vdate.value : '' }; $('[data-f-out]').textContent = ''; renderZoningResult(); if (st.std) renderMap(); recTouch(); };
     [sel, doc, by, vdate].forEach((el) => el?.addEventListener(el.tagName === 'SELECT' || el.type === 'date' ? 'change' : 'input', sync));
   }
   renderZoningResult();
@@ -839,7 +842,7 @@ function renderActiveContext() {
     });
   });
 }
-function render() { renderResult(); renderCard(); renderPublicData(); renderZoning(); renderMap(); renderBundle(); renderActiveContext(); }
+function render() { renderResult(); renderCard(); renderPublicData(); renderZoning(); renderMap(); renderBundle(); renderActiveContext(); recTouch(); }
 
 // ── 상담 묶음 막대 · 전체 필지 지도 · 통합 요약 ─────────────────────────────
 const bundleKeys = { bar: '', map: '' };
@@ -869,7 +872,7 @@ const AREA_TONE = { NONE: 'prov-unverified', INPUT_ONLY: 'prov-estimated', CHECK
 function bindAreaBasis(box, act) {
   const d = $('[data-f-area-basis]', box); const src = $('[data-f-area-basis-source]', box); const chk = $('[data-f-area-basis-check]', box); if (!d) return;
   // 날짜 입력 중에는 다시 그리지 않는다(연도 입력이 끊김) — 상태 표시만 바꾼다.
-  const paint = () => { act.area_basis = { date: d.value, source: src.value, check: chk.value }; const x = areaBasisState(act.area_basis); const tag = $('[data-f-area-basis-state]', box); tag.dataset.fAreaBasisState = x.status; tag.className = `prov ${AREA_TONE[x.status]}`; tag.textContent = x.label; };
+  const paint = () => { act.area_basis = { date: d.value, source: src.value, check: chk.value }; recTouch(); const x = areaBasisState(act.area_basis); const tag = $('[data-f-area-basis-state]', box); tag.dataset.fAreaBasisState = x.status; tag.className = `prov ${AREA_TONE[x.status]}`; tag.textContent = x.label; };
   $('[data-f-area-basis-box]', box).addEventListener('toggle', (e) => { areaBoxOpen = e.target.open; });
   d.addEventListener('input', () => { chk.value = 'UNCHECKED'; paint(); });
   src.addEventListener('change', () => { chk.value = 'UNCHECKED'; paint(); });
@@ -916,9 +919,9 @@ function renderBundle() {
     ['keep', 'stay', 'drop'].forEach((k) => $(`[data-f-draft-${k}]`, box)?.addEventListener('click', () => answerDraft(k)));
     box.querySelectorAll('[data-f-bundle-pick]').forEach((el) => el.addEventListener('click', () => leaveDraft(() => switchTo(Number(el.dataset.fBundlePick)))));
     $('[data-f-bundle-map-btn]', box)?.addEventListener('click', () => { b.mapOpen = !b.mapOpen; renderBundle(); });
-    $('[data-f-own-basis]', box)?.addEventListener('change', (e) => { act.ownership = { ...act.ownership, basis: e.target.value }; renderBundle(); });
+    $('[data-f-own-basis]', box)?.addEventListener('change', (e) => { act.ownership = { ...act.ownership, basis: e.target.value }; renderBundle(); recTouch(); });
     bindAreaBasis(box, act);
-    $('[data-f-own-coown]', box)?.addEventListener('change', (e) => { act.ownership = { ...act.ownership, coown: e.target.value }; renderBundle(); });
+    $('[data-f-own-coown]', box)?.addEventListener('change', (e) => { act.ownership = { ...act.ownership, coown: e.target.value }; renderBundle(); recTouch(); });
   }
   renderBundleMapBox(box);
   renderBundleTools();
@@ -935,7 +938,7 @@ function renderBundleTools() {
       <div class="f-actions"><button type="button" class="primary" data-f-bundle-copy>묶음 통합 요약 복사</button><button type="button" class="secondary" data-f-bundle-save>필지별 상세 내려받기(.txt)</button></div>
       <p class="small muted" data-f-bundle-stats></p><p class="small" data-f-bundle-out aria-live="polite"></p></div>`;
     const memo = $('[data-f-bundle-memo]', tools); memo.value = b.commonMemo;
-    memo.addEventListener('input', () => { b.commonMemo = memo.value; });
+    memo.addEventListener('input', () => { b.commonMemo = memo.value; recTouch(); });
     $('[data-f-bundle-copy]', tools).addEventListener('click', copyBundle);
     $('[data-f-bundle-save]', tools).addEventListener('click', saveBundle);
   }
@@ -1124,7 +1127,196 @@ function saveCard() {
   $('[data-f-out]').textContent = DL_TEXT; $('[data-f-out]').dataset.result = 'download-requested';
 }
 
+// ── V1.0 상담기록 자동저장·검색·재열기 ─────────────────────────────────────────
+// 현장 서버(V1.0)로 연 화면에서만 켠다(서버 기능 표지 consult_records). 정적·파일 열기·구버전 서버에서는 꺼짐.
+// 저장 단위 = 상담 1건(단일 필지 또는 다필지 묶음 + 담지 않은 열린 필지). 내용이 생긴 순간(쟁점·메모·기타·묶음 담기) 상담 ID를 만든다.
+const SERVED = Boolean(document.querySelector('meta[name="bso-field-bridge"][content="private"]'));
+const rec = { autosave: null, suspend: false, authGone: false, pairShown: false, listOpen: false, lastList: [] };
+const issueLabel = (id) => (issuesFor(st.profile).find((it) => it.id === id) || {}).label || id;
+function recordSnapshot() {
+  if (!st.bundle && !active()) return null;
+  saveSlot();
+  const items = st.bundle ? st.bundle.slots.map((slot) => ({ x: slotState(slot), slot, in_bundle: true })) : [];
+  if (active() && !activeSlot()) items.push({ x: st, slot: null, in_bundle: false });
+  const has = (x) => Boolean(String(x.memo || '').trim() || x.issues?.size || String(x.other || '').trim() || Object.values(x.zoningConfirm || {}).some(Boolean));
+  if (!items.some((it) => it.in_bundle || has(it.x)) && !String(st.bundle?.commonMemo || '').trim()) return null;
+  const parcels = items.map(({ x, in_bundle }) => {
+    const card = x.row ? buildFieldCard({ profile: st.profile, index: st.index, row: x.row, selectedIssueIds: [...x.issues], memo: x.memo, otherText: x.other, zoning: currentZoning(x) })
+      : buildDirectCard({ profile: st.profile, target: x.direct, selectedIssueIds: [...x.issues], memo: x.memo, otherText: x.other, zoning: currentZoning(x) });
+    return { pnu: x.pd?.pnu || x.direct?.pnu || x.row?.pnu || null, jibun: parcelLabel({ row: x.row, direct: x.direct }), address: card.address || x.direct?.address || null, in_bundle,
+      issues: [...x.issues].map((id) => ({ id, label: issueLabel(id) })), memo: x.memo || '', other: x.other || '', followups: card.next || [] };
+  });
+  const n = st.index?.notice || {};
+  const activeIdx = Math.max(0, items.findIndex((it) => (it.slot ? it.slot.pid === st.slotId : true) && active()));
+  return {
+    project: [st.profile?.title, n.notice_no].filter(Boolean).join(' · ') || null, is_bundle: Boolean(st.bundle), common_memo: st.bundle?.commonMemo || '', parcels,
+    payload: { v: 1, notice: { id: n.id || null, notice_no: n.notice_no || null }, active: activeIdx, common_memo: st.bundle?.commonMemo || '',
+      slots: items.map(({ x, slot, in_bundle }) => ({ in_bundle, label: parcelLabel({ row: x.row, direct: x.direct }),
+        row: x.row ? { serial: x.row.serial, key: rowKey(x.row) } : null, direct: x.row ? null : (x.direct || null),
+        issues: [...x.issues], memo: x.memo || '', other: x.other || '', zoningConfirm: { ...x.zoningConfirm },
+        ownership: slot?.ownership || null, area_basis: slot?.area_basis || null })) },
+  };
+}
+function recTouch() { if (rec.autosave && !rec.suspend) rec.autosave.touch(); }
+function closeRecord() {
+  if (!rec.autosave?.enabled) return;
+  rec.autosave.finalize(); // 이전 상담은 마지막 내용까지 같은 ID로 보낸다(내용은 지금 잡아 둠)
+  rec.autosave.detach(); rec.autosave.setResume(null);
+}
+function renderSaveState(state) {
+  const line = $('[data-f-save-line]'); if (!line) return;
+  line.hidden = !SERVED;
+  if (!SERVED) return;
+  const t = saveStateText(state, { fmtTime: (iso) => new Date(iso).toLocaleTimeString('ko-KR', { hour12: false, hour: '2-digit', minute: '2-digit' }) });
+  const badge = $('[data-f-save-badge]'); badge.className = `badge ${t.tone}`; badge.textContent = state.status === SAVE_STATE.OFF ? `자동저장 꺼짐 · ${rec.offReason || '서버 미지원'}` : t.badge;
+  badge.dataset.fSaveState = state.status;
+  $('[data-f-save-id]').textContent = state.id ? `상담ID ${state.id}` : '';
+  $('[data-f-records-toggle]').hidden = state.status === SAVE_STATE.OFF;
+  const hint = $('[data-f-memo-hint]'); if (hint) hint.textContent = state.status === SAVE_STATE.OFF ? '실명·전화번호는 적지 마세요 · 이 화면 메모리에만' : '실명·전화번호는 적지 마세요 · 이 PC 로컬 DB에 자동저장';
+  const alert = $('[data-f-save-alert]');
+  if (rec.pairShown) return; // 페어링 입력 중에는 덮어쓰지 않음
+  alert.hidden = !t.alert; alert.dataset.fSaveAlert = t.alert ? state.status : '';
+  if (!t.alert) { alert.innerHTML = ''; return; }
+  const acts = state.status === SAVE_STATE.FAILED ? '<button type="button" class="secondary" data-f-save-retry>지금 다시 저장</button>'
+    : state.status === SAVE_STATE.CONFLICT ? '<button type="button" class="primary" data-f-save-overwrite>이 기기 내용으로 저장</button><button type="button" class="secondary" data-f-save-reload>저장본 다시 열기</button>'
+      : state.status === SAVE_STATE.AUTH ? '<button type="button" class="primary" data-f-save-pair>기기 다시 연결</button>' : '';
+  alert.innerHTML = `<span>${esc(t.alert)}</span>${acts}`;
+  $('[data-f-save-retry]', alert)?.addEventListener('click', () => rec.autosave.retry());
+  $('[data-f-save-overwrite]', alert)?.addEventListener('click', () => rec.autosave.overwrite());
+  $('[data-f-save-reload]', alert)?.addEventListener('click', () => openRecord(state.id, { force: true }));
+  $('[data-f-save-pair]', alert)?.addEventListener('click', () => showPairing());
+}
+// 인증 만료: 저장 안 된 입력이 없으면 페어링 화면으로 이동, 있으면 이 화면에서 6자리 코드로 다시 연결(입력 보존).
+function authExpired(j = {}) {
+  if (rec.authGone) return; rec.authGone = true;
+  const unsaved = rec.autosave?.state().dirty || [SAVE_STATE.PENDING, SAVE_STATE.SAVING, SAVE_STATE.FAILED, SAVE_STATE.AUTH].includes(rec.autosave?.state().status);
+  if (!unsaved && j.pair) {
+    const alert = $('[data-f-save-alert]'); alert.hidden = false; alert.dataset.fSaveAlert = 'AUTH_REDIRECT'; alert.textContent = '접속 인증이 만료되었습니다. 기기 연결 화면으로 이동합니다…';
+    setTimeout(() => location.assign(j.pair), 1200); return;
+  }
+  showPairing(j);
+}
+function showPairing() {
+  const alert = $('[data-f-save-alert]'); rec.pairShown = true; alert.hidden = false; alert.dataset.fSaveAlert = 'PAIR';
+  alert.innerHTML = '<span>접속 인증이 만료되었습니다. 입력 중인 상담은 이 화면에 그대로 있습니다. PC의 local-data\\field-server\\pair-code.txt 6자리 코드를 넣으면 이어서 저장합니다.</span><input inputmode="numeric" maxlength="6" autocomplete="one-time-code" data-f-pair-code aria-label="기기 연결 코드"><button type="button" class="primary" data-f-pair-go>연결</button><span class="small" data-f-pair-msg></span>';
+  fetch('/pair', { credentials: 'same-origin' }).catch(() => {}); // 쓸 코드가 없으면 서버가 PC 파일에 새 코드를 만든다
+  $('[data-f-pair-go]', alert).addEventListener('click', async () => {
+    const code = $('[data-f-pair-code]', alert).value.trim(); const msg = $('[data-f-pair-msg]', alert);
+    try {
+      const r = await fetch('/pair', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify({ code }) });
+      const j = await r.json().catch(() => ({}));
+      if (!j.ok) { msg.textContent = j.error_code === 'PAIR_CODE_EXPIRED' ? '코드 만료 — 1분 뒤 다시 누르면 PC에 새 코드가 생깁니다.' : `연결 실패(${j.error_code || r.status})`; if (j.error_code === 'PAIR_CODE_EXPIRED') fetch('/pair', { credentials: 'same-origin' }).catch(() => {}); return; }
+      rec.pairShown = false; rec.authGone = false; alert.hidden = true; alert.innerHTML = '';
+      rec.autosave.authRestored(); if (!st.pdBridge || st.pdBridge.status !== PD_STATUS.NOT_QUERIED) bridgeStatus({ fetchImpl: (...a) => fetch(...a), location }).then((b) => { st.pdBridge = b; render(); });
+    } catch (_e) { msg.textContent = '연결 실패(네트워크)'; }
+  });
+}
+function installAuthWatch() {
+  if (!SERVED) return;
+  const raw = window.fetch.bind(window);
+  window.fetch = async (input, init) => {
+    const r = await raw(input, init);
+    if (r.status === 401) { try { const j = await r.clone().json(); if (j && j.error_code === 'FIELD_ACCESS_TOKEN_REQUIRED') authExpired(j); } catch (_e) { /* 응답 형식이 다르면 무시 */ } }
+    return r;
+  };
+}
+// 기록 → 화면 복원. 색인에서 찾을 수 없는 필지가 있으면 읽기 전용(저장 안 함)으로 연다.
+function restoreRecord(record) {
+  const p = record.payload || {}; const slots = Array.isArray(p.slots) ? p.slots : [];
+  const missing = [];
+  rec.suspend = true;
+  try {
+    newConsultation({ keepRecord: true });
+    for (const x of slots) {
+      let row = null; let direct = null;
+      if (x.row) {
+        row = (p.notice?.id && st.index?.notice?.id && p.notice.id !== st.index.notice.id) ? null
+          : (st.index?.rows || []).find((r) => r.serial === x.row.serial && rowKey(r) === x.row.key) || null;
+        if (!row) { missing.push(x.label || `일련 ${x.row.serial}`); continue; }
+      } else if (x.direct) direct = x.direct; else continue;
+      saveSlot(); freshParcel({ row, direct });
+      st.issues = new Set(Array.isArray(x.issues) ? x.issues : []); st.memo = String(x.memo || ''); st.other = String(x.other || '');
+      st.zoningConfirm = { relation: '', basis_doc: '', by: '', valuation_date: '', ...(x.zoningConfirm || {}) };
+      if (x.in_bundle) { addToBundle(); const slot = activeSlot(); if (slot) { if (x.ownership) slot.ownership = x.ownership; if (x.area_basis) slot.area_basis = x.area_basis; } }
+    }
+    if (st.bundle) { st.bundle.commonMemo = String(p.common_memo || ''); const m = $('[data-f-bundle-memo]'); if (m) m.value = st.bundle.commonMemo; }
+    const want = slots[p.active]; // 마지막에 보던 필지(담지 않은 필지는 복원 순서상 이미 열려 있음)
+    if (want?.in_bundle && st.bundle) { const i = slots.filter((x) => x.in_bundle).indexOf(want); const slot = st.bundle.slots[i]; if (slot && slot.pid !== st.slotId && !(active() && !activeSlot())) switchTo(slot.pid); }
+    $('[data-f-memo]').value = st.memo || '';
+    bundleKeys.bar = '';
+    render();
+  } finally { rec.suspend = false; }
+  rec.autosave.attach({ id: record.id, rev: record.rev, consulted_at: record.consulted_at, updated_at: record.updated_at, readOnly: missing.length > 0 });
+  rec.autosave.setResume(record.id);
+  return missing;
+}
+async function openRecord(id, { force = false } = {}) {
+  if (!RECORD_ID_RE.test(String(id || ''))) return;
+  const out = $('[data-f-records-out]');
+  if (!force) await rec.autosave.finalize();
+  const record = await rec.autosave.get(id);
+  if (!record) { if (out) out.textContent = '기록을 불러오지 못했습니다.'; return; }
+  const missing = restoreRecord(record);
+  const msg = `상담기록 ${record.id}를 다시 열었습니다(수정차수 ${record.rev}).${missing.length ? ` 현재 색인에서 찾지 못한 필지: ${missing.join(', ')} — 읽기 전용` : ' 수정하면 같은 기록에 자동저장됩니다.'}`;
+  if (out) out.textContent = msg;
+  $('[data-f-out]').textContent = msg;
+  toggleRecords(false);
+}
+const recTime = (iso) => (iso ? new Date(iso).toLocaleString('ko-KR', { hour12: false, year: '2-digit', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—');
+async function searchRecords() {
+  const q = $('[data-f-records-q]').value; const list = $('[data-f-records-list]'); const info = $('[data-f-records-info]');
+  const r = await rec.autosave.list(q, 50);
+  if (!r.ok) { list.innerHTML = ''; info.textContent = `상담기록을 불러오지 못했습니다(${r.error_code}).`; return; }
+  const cur = rec.autosave.state().id;
+  info.textContent = `${q.trim() ? `검색 결과 ${r.items.length}건` : `최근 ${r.items.length}건`} · 전체 ${r.total}건 · 이 PC 로컬 DB`;
+  list.innerHTML = r.items.length ? r.items.map((x) => `<li data-f-record="${esc(x.id)}"${x.id === cur ? ' data-current' : ''}><div class="f-rec-main"><b>${esc(x.jibun)}</b>${x.is_bundle ? ` <span class="chip">묶음 ${x.parcel_count}필지</span>` : ''}${x.id === cur ? ' <span class="chip ok">지금 열림</span>' : ''}
+      <div class="small muted">${esc(x.id)} · 상담 ${esc(recTime(x.consulted_at))} · 수정 ${esc(recTime(x.updated_at))}(${x.rev}차)${x.pnu ? ` · PNU ${esc(x.pnu)}` : ''}</div>
+      <div class="small">${x.issues.length ? `쟁점: ${esc(x.issues.join(', '))}` : '쟁점 없음'}${x.memo ? ` · ${esc(x.memo.slice(0, 60))}${x.memo.length > 60 ? '…' : ''}` : ''}</div></div>
+      <div class="f-rec-acts"><button type="button" class="secondary" data-f-record-open="${esc(x.id)}">열기</button><a class="ghost f-btn-link" href="${esc(rec.autosave.exportUrl('csv', x.id))}" download data-f-record-export="${esc(x.id)}">내보내기</a></div></li>`).join('')
+    : '<li class="muted small">기록이 없습니다.</li>';
+  list.querySelectorAll('[data-f-record-open]').forEach((b) => b.addEventListener('click', () => leaveDraftOpen(b.dataset.fRecordOpen)));
+}
+function leaveDraftOpen(id) { if (st.bundle) leaveDraft(() => openRecord(id)); else openRecord(id); }
+function toggleRecords(open = !rec.listOpen) {
+  rec.listOpen = open; const box = $('[data-f-records]'); box.hidden = !open;
+  $('[data-f-records-toggle]').setAttribute('aria-expanded', String(open));
+  if (open) { searchRecords(); $('[data-f-records-q]').focus({ preventScroll: true }); }
+}
+function initRecords() {
+  installAuthWatch();
+  rec.autosave = createAutosave({ fetchImpl: (...a) => fetch(...a), onState: renderSaveState, onAuthExpired: authExpired,
+    onFinalFail: (id, code) => { const a = $('[data-f-save-alert]'); if (rec.pairShown || !a) return; a.hidden = false; a.dataset.fSaveAlert = 'FINAL_FAILED'; a.textContent = `이전 상담 ${id}의 마지막 수정을 저장하지 못했습니다(${code}). 상담기록에서 다시 열어 확인하세요.`; } });
+  rec.autosave.setProducer(recordSnapshot);
+  renderSaveState(rec.autosave.state());
+  $('[data-f-records-toggle]').addEventListener('click', () => toggleRecords());
+  $('[data-f-records-close]').addEventListener('click', () => toggleRecords(false));
+  $('[data-f-records-form]').addEventListener('submit', (e) => { e.preventDefault(); searchRecords(); });
+  $('[data-f-records-backup]').addEventListener('click', async () => { const r = await rec.autosave.backup(); $('[data-f-records-out]').textContent = r.ok ? `백업했습니다: ${r.file} (${r.records}건 · 이 PC local-data\\field-server\\backups)` : `백업 실패(${r.error_code})`; });
+  // 화면 숨김(앱 전환·접기)·창 닫기: 마지막 내용까지 즉시 보낸다. 저장 안 된 내용이 남으면 닫기 전에 경고.
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') rec.autosave.flush({ keepalive: true }); });
+  window.addEventListener('pagehide', () => { rec.autosave.flush({ keepalive: true }); });
+  window.addEventListener('beforeunload', (e) => {
+    const x = rec.autosave.state();
+    if (!rec.autosave.enabled || x.status === SAVE_STATE.READONLY) return;
+    if (x.dirty || [SAVE_STATE.PENDING, SAVE_STATE.SAVING, SAVE_STATE.FAILED, SAVE_STATE.CONFLICT, SAVE_STATE.AUTH].includes(x.status)) { rec.autosave.flush({ keepalive: true }); if (x.status !== SAVE_STATE.PENDING && x.status !== SAVE_STATE.SAVING) { e.preventDefault(); e.returnValue = ''; } }
+  });
+}
+// 서버 기능 확인 뒤: 자동저장 켜고, 이 기기에서 열려 있던 상담을 복원(재접속·새로고침·브라우저 재시작·서버 재시작 후).
+async function enableRecords(bridge) {
+  if (!SERVED || !rec.autosave) return;
+  const caps = bridge?.capabilities;
+  if (!(Array.isArray(caps) && caps.includes('consult_records'))) { rec.offReason = Array.isArray(caps) ? '서버 V1.0 아님' : '서버 확인 실패'; rec.autosave.enable(false); return; }
+  rec.autosave.enable(true);
+  const record = await rec.autosave.resume();
+  if (record && !rec.autosave.state().id && !active() && !st.bundle) {
+    const missing = restoreRecord(record);
+    $('[data-f-out]').textContent = `이전 상담 ${record.id}를 이어서 열었습니다(${recTime(record.updated_at)} 저장분).${missing.length ? ` 찾지 못한 필지: ${missing.join(', ')} — 읽기 전용` : ''}`;
+    renderSaveState(rec.autosave.state());
+  }
+}
+
 function init() {
+  initRecords();
   $('[data-f-focus-toggle]').addEventListener('click', () => setFocusMode(!focusOn()));
   syncFocusUI();
   $('[data-f-form]').addEventListener('submit', (e) => {
@@ -1141,7 +1333,7 @@ function init() {
     render();
   }
   $('[data-f-new]').addEventListener('click', newConsultation);
-  $('[data-f-memo]').addEventListener('input', (e) => { st.memo = e.target.value; $('[data-f-out]').textContent = ''; });
+  $('[data-f-memo]').addEventListener('input', (e) => { st.memo = e.target.value; $('[data-f-out]').textContent = ''; recTouch(); });
   $('[data-f-copy]').addEventListener('click', () => copyCard('detail'));
   $('[data-f-copy-summary]').addEventListener('click', () => copyCard('summary'));
   $('[data-f-save]').addEventListener('click', saveCard);
@@ -1218,7 +1410,7 @@ function init() {
     $('[data-f-q]').disabled = false; $('[data-f-go]').disabled = false;
     $('[data-f-hint]').textContent = '색인 없음 — 전체 주소(시·군·구 + 읍·면·동·리 + 지번)로 전국 공적자료만 조회';
   }
-  bridgeStatus({ fetchImpl: (...a) => fetch(...a), location }).then((b) => { st.pdBridge = b; render(); });
+  bridgeStatus({ fetchImpl: (...a) => fetch(...a), location }).then((b) => { st.pdBridge = b; render(); enableRecords(b); });
   render();
 }
 

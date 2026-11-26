@@ -83,3 +83,14 @@ n8n-private/
 
 # 로컬 전용 실데이터(고시 세목 색인 등) — 저장소·CI·공개 빌드에 올리지 않는다.
 local-data/
+
+# BSO 현장상담 V1.0 상담기록 DB·백업·내보내기(실상담·개인정보). 로컬 PC에만 둔다. 공개 저장소 커밋 금지.
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite.*
+*.db
+상담기록_*.csv
+상담기록_*.json
+consult-records*.csv
+consult-records*.json

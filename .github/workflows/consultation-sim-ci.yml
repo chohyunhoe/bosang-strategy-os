@@ -10,6 +10,8 @@ on:
       - 'scripts/notice_index/**'
       - 'scripts/field_server.js'
       - 'scripts/standard_traits_cache.js'
+      - 'scripts/consult_store.js'
+      - 'scripts/consult_db.js'
       - 'tests/test_vworld_result_code.py'
       - 'scripts/serve_product_v2.js'
       - 'scripts/public_data_bridge.*'

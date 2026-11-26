@@ -562,3 +562,20 @@ body[data-f-focus="1"] .f-std-focus-traits{display:block;margin:8px 0;border:1px
   .f-grid>[data-f-map-panel] .f-map-frame{width:100%;max-width:none}
 }
 @media print{.f-std-strip,.f-direct-retry{display:none!important}}
+
+/* V1.0 상담기록 자동저장 · 검색/재열기 (현장 서버 V1.0에서만 표시) */
+.f-save-line{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:4px 0 2px}
+.f-save-line .badge{cursor:default}.f-save-line [data-f-save-id]{font-size:11px;overflow-wrap:anywhere}
+.f-save-line .f-records-toggle{padding:4px 12px;font-size:13px}
+.f-save-alert{display:flex;flex-wrap:wrap;align-items:center;gap:6px}.f-save-alert[hidden]{display:none}
+.f-save-alert button{padding:4px 10px;font-size:13px}.f-save-alert input{font-size:16px;width:7em;letter-spacing:.2em;padding:4px 6px}
+.f-records{border:1px solid var(--line,#d6dbe1);border-radius:10px;padding:8px 10px;margin:6px 0;background:var(--card,#fff)}
+.f-records .f-row input{min-width:0;flex:1 1 auto}
+.f-records-list{max-height:min(55vh,420px);overflow:auto;margin:6px 0;padding:0;list-style:none}
+.f-records-list li{display:flex;gap:8px;align-items:flex-start;justify-content:space-between;border-top:1px solid var(--line,#e3e6ea);padding:6px 0}
+.f-records-list li[data-current]{background:var(--ok-bg)}
+.f-records-list .f-rec-main{min-width:0;flex:1 1 auto;overflow-wrap:anywhere}
+.f-records-list .f-rec-acts{display:flex;gap:4px;flex:none;align-items:center}
+.f-btn-link{display:inline-flex;align-items:center;text-decoration:none;border-radius:10px;padding:8px 12px;min-height:44px;box-sizing:border-box}
+.f-btn-link.secondary{background:#fff;color:var(--accent);border:1px solid var(--accent);font-weight:650}.f-btn-link.ghost{color:var(--muted);border:1px dashed var(--muted)}
+@media print{.f-save-line,.f-save-alert,.f-records{display:none!important}}

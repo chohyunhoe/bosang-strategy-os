@@ -13,7 +13,7 @@ const src = path.join(root, 'browser', 'consultation-sim');
 const arg = (name) => { const i = process.argv.indexOf(`--${name}`); return i > 0 ? process.argv[i + 1] : null; };
 
 const ORDER = ['core/pnu.js', 'core/notice-index.js', 'core/field-issues.js', 'core/zoning-trace.js', 'core/zoning-basis.js', 'core/field-card.js', 'core/field-direct.js', 'core/field-public-data.js', 'core/field-map.js', 'core/ned-revisions.js', 'core/standard-land-engine.js', 'core/field-provenance.js', 'core/field-standard.js', 'core/field-bundle.js',
-  'profiles/osong3.js', 'profiles/index.js', 'field.js'];
+  'core/consult-autosave.js', 'profiles/osong3.js', 'profiles/index.js', 'field.js'];
 
 function transform(key, code) {
   const exported = [];
@@ -70,7 +70,7 @@ async function main() {
   const sha = crypto.createHash('sha256').update(html).digest('hex');
   const manifest = { schema_version: 'bso-notice-field/0.1', file: path.basename(out), sha256: sha, bytes: Buffer.byteLength(html),
     index: index ? { notice: index.notice?.notice_no, notice_id: index.notice?.id, rows: check.stats.rows, incorporated_area_m2_total: check.stats.incorporated_area_m2_total, ri_carried: check.stats.ri_carried } : null,
-    network: 'LOCAL_BRIDGE_ONLY_WHEN_SERVED_FROM_LOOPBACK (file:// = offline, no calls)', persistence: 'NONE_EXCEPT_EXPLICIT_COPY_SAVE_PRINT', fetch_sites: fetchTargets.length };
+    network: 'LOCAL_BRIDGE_ONLY_WHEN_SERVED_FROM_LOOPBACK (file:// = offline, no calls)', persistence: 'BROWSER_NONE · V1.0_LOCAL_SERVER_SQLITE_WHEN_SERVED_BY_FIELD_SERVER · EXPLICIT_COPY_SAVE_PRINT', fetch_sites: fetchTargets.length };
   fs.writeFileSync(out.replace(/\.html$/, '.manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
   console.log(`notice field built: ${out} (${manifest.bytes} bytes, sha256=${sha.slice(0, 12)}${index ? `, rows=${check.stats.rows}` : ', no index'})`);
 }
